@@ -73,6 +73,7 @@ static int ed_take_preset(const uint8_t *a, px_preset_t *q)
     }
     for (i = 0; i < PX_NBLK; i++) {
         if (q->on[i] > 1u || q->type[i] >= (uint8_t)px_ntypes((int)i)) return 0;
+        q->type[i] = (uint8_t)px_type_canonical((int)i, q->type[i]);
         for (k = 0; k < PX_NPAR; k++) if (q->p[i][k] > 100u) return 0;
     }
     return px_order_valid(q->order);
@@ -163,7 +164,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
             v = PRESET.on[b];
         } else if (a[1] == 2u) {
             uint32_t nt = (uint32_t)px_ntypes((int)b);
-            PRESET.type[b] = (uint8_t)(v < nt ? v : nt - 1u);
+            PRESET.type[b] = (uint8_t)px_type_canonical((int)b, (int)(v < nt ? v : nt - 1u));
             v = PRESET.type[b];
             ed_ui_fix();
         } else return;

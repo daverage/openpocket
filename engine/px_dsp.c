@@ -485,7 +485,8 @@ int px_order_valid(const uint8_t *o)
 typedef struct { const char *name; uint8_t np; const char *const *pn; } tdef;
 
 static const char *const PN_GATE[] = {"THRESH", "RELEASE", "PRESET LVL"};   /* (3rd: the preset's level, v36) */
-static const tdef T_GATE[] = {{"NOISE GATE", 3, PN_GATE}};
+static const char *const PN_SMART_GATE[] = {"SENS", "RELEASE", "PRESET LVL", "HOLD", "REDUCTION"};
+static const tdef T_GATE[] = {{"NOISE GATE", 3, PN_GATE}, {"SMART GATE", 5, PN_SMART_GATE}};
 
 static const char *const PN_CMP[] = {"SUSTAIN", "ATTACK", "LEVEL", "MIX"};
 static const char *const PN_OPTO[] = {"COMPRESS", "LEVEL", "MIX"};
@@ -521,6 +522,7 @@ static const tdef T_SFX[PX_SFX_COUNT] = {
 static const char *const PN_ORG[] = {"16'", "8'", "4'", "PERC", "DRY"};
 static const char *const PN_CHU[] = {"16'", "8'", "4'", "2'", "DRY"};
 static const char *const PN_STR[] = {"ATTACK", "RELEASE", "OCTAVE", "TONE", "DRY"};
+static const char *const PN_STRING_MACHINE[] = {"ATTACK", "RELEASE", "OCTAVE", "TONE", "ENSEMBLE"};
 static const char *const PN_CHO[] = {"ATTACK", "RELEASE", "VOWEL", "OCTAVE", "DRY"};
 static const char *const PN_MONO[] = {"WAVE", "OCTAVE", "CUTOFF", "RESO", "ENV"};
 static const char *const PN_PWM[] = {"WIDTH", "RATE", "CUTOFF", "RESO", "MIX"};
@@ -536,10 +538,11 @@ static const char *const PN_CEL[] = {"OCTAVE", "BOW", "VIBRATO", "RELEASE", "DRY
 static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ORGAN", 5, PN_ORG}, {"CHURCH ORGAN", 5, PN_CHU}, {"STRINGS", 5, PN_STR}, {"CHOIR", 5, PN_CHO},
     {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM}, {"BASS SYNTH", 5, PN_BSY}, {"12-STRING", 3, PN_12S},
-    {"ACOUSTIC", 4, PN_ACO}, {"SITAR", 4, PN_SIT}, {"BARITONE", 3, PN_BAR}, {"BRASS SYNTH", 5, PN_BRASS},
+    {"ACOUSTIC", 4, PN_ACO}, {"SITAR", 4, PN_SIT}, {"BARITONE", 3, PN_BAR}, {"POLY BRASS", 5, PN_BRASS},
     {"STRINGS HQ", 5, PN_STR}, {"CHOIR HQ", 5, PN_CHO}, {"ORGAN HQ", 5, PN_ORG}, {"CHURCH ORGAN HQ", 5, PN_CHU},
     {"BASS SYNTH HQ", 5, PN_BSY}, {"PWM SYNTH HQ", 5, PN_PWM}, {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
-    {"TRUMPET", 5, PN_TRP}, {"TRUMPET (LEGACY)", 0, PN_TRP}, {"BOWED CELLO", 5, PN_CEL}, {"CELLO ENSEMBLE", 5, PN_TRP}};
+    {"TRUMPET", 5, PN_TRP}, {"", 5, PN_TRP}, {"BOWED CELLO", 5, PN_CEL}, {"CELLO ENSEMBLE", 5, PN_TRP},
+    {"STRING MACHINE", 5, PN_STRING_MACHINE}};
 
 /* drives: each knob has a role; the name shown comes from the role */
 enum { R_DRIVE, R_DIST, R_FUZZ, R_SUST, R_BOOST, R_TONE, R_TREBLE, R_LEVEL, R_BASS, R_VOICE, R_GATE, R_BIAS,
@@ -683,15 +686,19 @@ const char *px_block_label(int b) { return (b >= 0 && b < PX_NBLK) ? BLK_LABEL[b
 const char *px_block_name(int b)  { return (b >= 0 && b < PX_NBLK) ? BLK_NAME[b] : "?"; }
 int px_ntypes(int b)
 {
-    static const uint8_t N[PX_NBLK] = {1, PX_CMP_COUNT, PX_PIT_COUNT, PX_SFX_COUNT, PX_DRV_COUNT, PX_AMP_NTYPES,
+    static const uint8_t N[PX_NBLK] = {PX_GATE_COUNT, PX_CMP_COUNT, PX_PIT_COUNT, PX_SFX_COUNT, PX_DRV_COUNT, PX_AMP_NTYPES,
                                        PX_CAB_COUNT, PX_EQ_COUNT, PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT,
                                        PX_SYN_COUNT};
     return (b >= 0 && b < PX_NBLK) ? N[b] : 1;
 }
+int px_type_canonical(int b, int t)
+{
+    return b == PX_B_SYN && t == PX_SYN_TRUMPET_MODEL ? PX_SYN_TRUMPET : t;
+}
 static const tdef *tdef_of(int b, int t)
 {
     switch (b) {
-    case PX_B_GATE: return &T_GATE[0];
+    case PX_B_GATE: return &T_GATE[t];
     case PX_B_COMP: return &T_COMP[t];
     case PX_B_PITCH: return &T_PITCH[t];
     case PX_B_SFX: return &T_SFX[t];
@@ -882,7 +889,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             put_int(buf, (int)(db + (db < 0.0f ? -0.5f : 0.5f)), 1);
             return 1;
         }
-        if ((t == PX_SYN_STRINGS || t == PX_SYN_CHOIR || t == PX_SYN_STRINGS_HQ || t == PX_SYN_CHOIR_HQ) && k < 2) {
+        if ((t == PX_SYN_STRINGS || t == PX_SYN_CHOIR || t == PX_SYN_STRINGS_HQ || t == PX_SYN_CHOIR_HQ || t == PX_SYN_STRING_MACHINE) && k < 2) {
             put_int(buf, (int)((k == 0 ? syn_att_ms(x) : syn_rel_ms(x)) + 0.5f), 0); return 1;
         }
         if (t == PX_SYN_MONO && k == 1) { put_int(buf, syn_oct(v), 1); return 1; }
@@ -1084,6 +1091,22 @@ static void rc_dyn(px_engine *e)
     const uint8_t *q = p->p[PX_B_GATE];
     e->gate_thr = db2lin(-80.0f + f01(q[0]) * 60.0f);
     e->gate_rel = expf(-1.0f / (0.001f * (5.0f + f01(q[1]) * 495.0f) * sr));
+
+    const int smart = p->type[PX_B_GATE] == PX_GATE_SMART && p->on[PX_B_GATE];
+    if (smart && !e->smart_gate.active) memset(&e->smart_gate, 0, sizeof e->smart_gate);
+    e->smart_gate.active = smart;
+    if (smart) {
+        e->smart_gate.dc_k = onepole_k(sr, 0.0018f);   /* 88 Hz high-pass sidechain */
+        e->smart_gate.split_k = onepole_k(sr, 0.00023f);
+        e->smart_gate.env_k = onepole_k(sr, 0.004f);
+        e->smart_gate.slow_k = onepole_k(sr, 0.085f);
+        e->smart_gate.learn_k = onepole_k(sr, 0.45f);
+        e->smart_gate.fast_k = onepole_k(sr, 0.08f);
+        e->smart_gate.attack = onepole_k(sr, 0.0006f);
+        e->smart_gate.sensitivity = db2lin(-62.0f + 34.0f * f01(q[0]));
+        e->smart_gate.hold = (unsigned)((0.025f + 0.125f * f01(q[3])) * sr);
+        e->smart_gate.range = db2lin(-20.0f - 60.0f * f01(q[4]));
+    }
 
     q = p->p[PX_B_COMP];
     int t = p->type[PX_B_COMP] % PX_CMP_COUNT;
@@ -2125,7 +2148,7 @@ static void syn_voice(px_engine *e, int v, float st, float W, float lvl)
 static float opk(float sr, float hz) { float k = 2.0f * PI_F * hz / sr; return k > 0.9f ? 0.9f : k; }   /* one-pole */
 static int syn_octave_hq(int t)
 {
-    return (t >= PX_SYN_STRINGS_HQ && t <= PX_SYN_CHURCH_HQ) || t == PX_SYN_OCT_FUZZ;
+    return (t >= PX_SYN_STRINGS_HQ && t <= PX_SYN_CHURCH_HQ) || t == PX_SYN_OCT_FUZZ || t == PX_SYN_STRING_MACHINE;
 }
 
 static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, float f);   /* v48: px_acoustic.h */
@@ -2134,7 +2157,7 @@ static void rc_syn(px_engine *e)
     const px_preset_t *p = &e->cur;
     float sr = e->sr;
     const uint8_t *q = p->p[PX_B_SYN];
-    int t = p->type[PX_B_SYN] % PX_SYN_COUNT;
+    int t = px_type_canonical(PX_B_SYN, p->type[PX_B_SYN] % PX_SYN_COUNT);
     float a = f01(q[0]), b = f01(q[1]), c = f01(q[2]), d = f01(q[3]), f = f01(q[4]);
     if (t != e->syn_type) {                            /* new instrument: start from a quiet state */
         if (syn_octave_hq(t)) memset(&e->erb_syn, 0, sizeof e->erb_syn);
@@ -2143,7 +2166,7 @@ static void rc_syn(px_engine *e)
             memset(&e->syn_fuzz_down, 0, sizeof e->syn_fuzz_down);
             e->syn_lp = 0.0f;
         }
-        if (t == PX_SYN_BRASS || t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
+        if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
             pxt_reset(e, &pxa_trk, &pxa_lay);           /* v49 */
         }
@@ -2185,8 +2208,8 @@ static void rc_syn(px_engine *e)
         e->syn_linc[0] = 0.4f / sr; e->syn_linc[1] = 5.0f / sr; e->syn_cbase = 0.008f * sr;
     } break;
     case PX_SYN_STRINGS: case PX_SYN_CHOIR:
-    case PX_SYN_STRINGS_HQ: case PX_SYN_CHOIR_HQ: {    /* tape replay / string machine: swell + octave + ensemble */
-        int strings = t == PX_SYN_STRINGS || t == PX_SYN_STRINGS_HQ;
+    case PX_SYN_STRINGS_HQ: case PX_SYN_CHOIR_HQ: case PX_SYN_STRING_MACHINE: {    /* tape replay / string machine: swell + octave + ensemble */
+        int strings = t == PX_SYN_STRINGS || t == PX_SYN_STRINGS_HQ || t == PX_SYN_STRING_MACHINE;
         float oct = strings ? c : d;
         e->syn_ka = onepole_k(sr, syn_att_ms(a) * 0.001f); e->syn_kr = onepole_k(sr, syn_rel_ms(b) * 0.001f);
         const float sub = strings ? 0.0f : 0.3f;
@@ -2209,25 +2232,23 @@ static void rc_syn(px_engine *e)
             e->syn_lpk = opk(sr, 4000.0f);
             e->syn_out = 0.96f;
         }
-        e->syn_dry = f;
+        e->syn_dry = t == PX_SYN_STRING_MACHINE ? 0.0f : f;
+        e->syn_sym = f;                                /* String Machine ensemble mix */
     } break;
     case PX_SYN_BRASS:
-        /* A real synth-brass voice: track one note, excite a band-limited oscillator, then open a resonant
-         * low-pass envelope. This avoids merely compressing and clipping the guitar into octave-like harmonics. */
-        synth_hq_filters(&e->syn_f[0], &e->syn_f[1], sr);
-        bq_highpass(&e->syn_f[2], sr, 50.0f, 0.7f);
-        e->syn_wave = d;                                 /* bite: saw -> pulse */
-        e->syn_cut = 350.0f + 2600.0f * c * c;           /* bright: body to open brass edge */
-        e->syn_res = 0.32f + 0.45f * d;
-        e->syn_ea2 = 0.65f + 0.35f * c;
-        e->syn_ka = onepole_k(sr, 0.004f + 0.10f * a * a);
-        e->syn_kr = onepole_k(sr, 0.03f + 0.25f * b * b);
-        e->syn_out = 0.34f;
+        e->syn_thr = 0.0012f;
+        e->syn_ka = onepole_k(sr, 0.003f + 0.065f * a * a);
+        e->syn_kr = onepole_k(sr, 0.015f + 0.16f * b * b);
+        bq_bandpass(&e->syn_f[0], sr, 680.0f + 470.0f * c, 0.8f);
+        bq_bandpass(&e->syn_f[1], sr, 1650.0f + 1550.0f * c, 1.05f);
+        e->syn_lpk = opk(sr, 1800.0f + 4200.0f * c);
+        e->syn_wave = 1.0f + 0.65f * d;
+        e->syn_pwd = 0.2f + 0.65f * d;
+        e->syn_out = 0.43f;
         e->syn_dry = f;
         break;
-    case PX_SYN_TRUMPET: case PX_SYN_TRUMPET_MODEL: case PX_SYN_CELLO: case PX_SYN_CELLO_SECTION:
-        /* The former model slot remains readable in saved presets but now aliases the sampled trumpet. */
-        pxa_setup(e, t == PX_SYN_TRUMPET_MODEL ? PX_SYN_TRUMPET : t, a, b, c, d, f);
+    case PX_SYN_TRUMPET: case PX_SYN_CELLO: case PX_SYN_CELLO_SECTION:
+        pxa_setup(e, t, a, b, c, d, f);
         break;
     case PX_SYN_OCT_FUZZ:
         e->syn_lvl[0] = b;
@@ -3126,8 +3147,8 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
     }
 #endif
     case PX_SYN_STRINGS: case PX_SYN_CHOIR:
-    case PX_SYN_STRINGS_HQ: case PX_SYN_CHOIR_HQ: {
-        const int strings = t == PX_SYN_STRINGS || t == PX_SYN_STRINGS_HQ;
+    case PX_SYN_STRINGS_HQ: case PX_SYN_CHOIR_HQ: case PX_SYN_STRING_MACHINE: {
+        const int strings = t == PX_SYN_STRINGS || t == PX_SYN_STRINGS_HQ || t == PX_SYN_STRING_MACHINE;
         float xs = syn_keys(e, x);
         if (strings) xs = px_tanh(xs * 2.3f) * 0.43f;   /* sustained reed-like source for the ensemble */
         y = xs * e->syn_d8;
@@ -3135,7 +3156,7 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
             y += erb_octaves(e, &e->erb_syn, xs, e->syn_lvl[0], e->syn_lvl[1], ERB_FULL);
         } else {
             e->syn_buf[e->syn_w] = xs;
-            y += syn_shift(e, 0) * e->syn_lvl[0];
+            if (e->syn_lvl[0] != 0.0f) y += syn_shift(e, 0) * e->syn_lvl[0];
             if (!strings) y += syn_shift(e, 1) * e->syn_lvl[1];
             if (++e->syn_w >= PX_PS_N) e->syn_w = 0;
         }
@@ -3155,28 +3176,22 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
         }
         if (++e->syn_cw >= PX_SYN_CB) e->syn_cw = 0;
         y = px_tanh(w * 0.4f) * 2.5f;
+        if (t == PX_SYN_STRING_MACHINE) y = e->syn_hp + e->syn_sym * (y * (1.0f / 3.0f) - e->syn_hp);
         const float swell = strings ? e->syn_kg * e->syn_kg : e->syn_kg;
         return y * swell * e->syn_out + x * e->syn_dry + e->dn;
     }
     case PX_SYN_BRASS: {
-        float a = px_abs(x);
-        e->syn_env += (a - e->syn_env) * (a > e->syn_env ? e->syn_ea : e->syn_er);
-        e->syn_slow += (e->syn_env - e->syn_slow) * e->syn_glk;
-        int on = e->syn_key ? e->syn_env > e->syn_thr * 0.5f : e->syn_env > e->syn_thr;
-        if ((on && !e->syn_key) || e->syn_env > 1.6f * e->syn_slow + e->syn_thr) e->syn_fenv = 1.0f;
-        e->syn_key = on;
-        e->syn_kg += ((on ? 1.0f : 0.0f) - e->syn_kg) * (on ? e->syn_ka : e->syn_kr);
-        if (e->syn_kg < 1e-6f) e->syn_kg = 0.0f;
-        pxt_layer_run(&pxa_lay, &pxa_trk, x, pxt_run(e, &pxa_trk, x));
-        pxt_drive(&e->syn_track_hq, &pxa_lay, e->sr);
-        float dt = e->syn_track_hq.step * 4.0f;
-        float saw = syn_saw(e->syn_track_hq.phase, dt), pulse = saw;
-        float ph2 = e->syn_track_hq.phase + 0.35f; if (ph2 >= 1.0f) ph2 -= 1.0f;
-        pulse -= syn_saw(ph2, dt);
-        const float source = saw + (pulse - saw) * e->syn_wave;
-        e->syn_fenv *= e->syn_fdk;
-        y = syn_ladder(e, source * 0.75f, e->syn_cut * (0.35f + 0.65f * e->syn_kg + e->syn_ea2 * e->syn_fenv * 5.0f));
-        return y * e->syn_kg * e->syn_out + x * e->syn_dry + e->dn;
+        float held = syn_keys(e, x);
+        /* A soft onset opens into the upper bell band as the note swells. */
+        const float drive = held * e->syn_wave;
+        const float reed = px_tanh(drive + 0.07f * drive * drive);
+        float body = bq_run(&e->syn_f[0], reed);
+        float edge = bq_run(&e->syn_f[1], reed);
+        const float breath = e->syn_env > 0.1f ? 1.0f : e->syn_env * 10.0f;
+        const float opening = e->syn_kg * e->syn_kg;
+        y = 0.36f * held + 0.68f * body + edge * opening * e->syn_pwd * (0.35f + 0.65f * breath);
+        e->syn_lp += e->syn_lpk * (y - e->syn_lp);
+        return px_tanh(e->syn_lp * 1.3f) * e->syn_kg * e->syn_out + x * e->syn_dry + e->dn;
     }
     case PX_SYN_OCT_FUZZ: {
         const float shifted = erb_octaves(e, &e->erb_syn, x, e->syn_lvl[0], e->syn_lvl[1], ERB_FULL);
@@ -3326,6 +3341,44 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
     }
 }
 
+/* Shared by the block and scalar engines. The sidechain filters never touch the output. */
+static float smart_gate_sample(px_engine *e, float x)
+{
+    e->smart_gate.dc += e->smart_gate.dc_k * (x - e->smart_gate.dc);
+    const float side = x - e->smart_gate.dc;
+    e->smart_gate.split += e->smart_gate.split_k * (side - e->smart_gate.split);
+    const float bands[2] = {px_abs(e->smart_gate.split), px_abs(side - e->smart_gate.split)};
+    int attack = 0, sustain = 0;
+    for (int i = 0; i < 2; ++i) {
+        float env = e->smart_gate.band[i];
+        env += e->smart_gate.env_k * (bands[i] - env);
+        e->smart_gate.band[i] = env;
+        float slow = e->smart_gate.slow[i];
+        float floor = e->smart_gate.floor[i];
+        const float min = e->smart_gate.sensitivity * (i == 0 ? 1.0f : 0.65f);
+        const float open = floor * 3.0f + min;
+        if (env > open && env > slow * 1.5f + 0.25f * min) attack = 1;
+        if (env > floor * 1.8f + 0.45f * min) sustain = 1;
+
+        /* Learn idle noise. Bound upward learning so a missed attack cannot rapidly poison the floor. */
+        if (env < floor) floor += (env - floor) * e->smart_gate.fast_k;
+        else if (!e->smart_gate.open && env < slow * 1.25f + min) {
+            float rise = env - floor;
+            if (rise > min) rise = min;
+            floor += rise * e->smart_gate.learn_k;
+        }
+        e->smart_gate.floor[i] = floor;
+        e->smart_gate.slow[i] += (env - slow) * e->smart_gate.slow_k;
+    }
+
+    if (attack || (e->smart_gate.open && sustain)) e->smart_gate.remaining = e->smart_gate.hold;
+    else if (e->smart_gate.remaining) --e->smart_gate.remaining;
+    e->smart_gate.open = e->smart_gate.remaining != 0;
+    const float target = e->smart_gate.open ? 1.0f : e->smart_gate.range;
+    const float coefficient = e->smart_gate.open ? e->smart_gate.attack : 1.0f - e->gate_rel;
+    e->smart_gate.gain += (target - e->smart_gate.gain) * coefficient;
+    return x * e->smart_gate.gain;
+}
 /* ---- v40.4: blocks over a run of samples, pass by pass ----
  * px_engine_part ran these blocks sample by sample inside its own loop: every sample went through the block switch and
  * the type switch, and the block's state was read from and written to the engine at each one (the function is too large
@@ -3558,27 +3611,23 @@ typedef char px_cabm_even[(PX_CABM & 1) ? -1 : 1];     /* (the resonators run in
 /* GATE, COMP */
 static __attribute__((noinline)) void gate_run(px_engine *e, int on, float *xb, int n, float strim)
 {
-    float env = e->gate_env, g = e->gate_g, noise = e->gate_noise;
+    float env = e->gate_env, g = e->gate_g;
     const float thr = e->gate_thr, rel = e->gate_rel;
-    const float attack = onepole_k(e->sr, 0.0015f);
     for (int k = 0; k < n; k++) {
         float x = xb[k];
-        if (on) {
+        if (on && e->smart_gate.active) x = smart_gate_sample(e, x);
+        else if (on) {
             const float a = px_abs(x);
-            /* Track the quiet bed only while safely below the user's threshold. Raise the effective threshold
-             * above changing pickup / room noise, but never lower the existing THRESH setting. */
-            if (a < thr * 0.7f) noise += (a - noise) * 0.000045f;
-            const float adaptive = noise * 3.0f > thr ? noise * 3.0f : thr;
             env = (a > env) ? a : a + (env - a) * 0.9995f;
-            const float tg = (env > adaptive) ? 1.0f : 0.0f;
-            g = (tg > g) ? g + (tg - g) * attack : tg + (g - tg) * rel;
+            const float tg = (env > thr) ? 1.0f : 0.0f;
+            g = (tg > g) ? tg : tg + (g - tg) * rel;
             if (g < 1e-6f) g = 0.0f;                   /* closed: exact zero, never a denormal */
             x *= g;
         }
         x += (k & 1) ? 1e-15f : -1e-15f;
         xb[k] = x * strim;
     }
-    e->gate_env = env; e->gate_g = g; e->gate_noise = noise;
+    e->gate_env = env; e->gate_g = g;
     if (n > 0) e->dn = ((n - 1) & 1) ? 1e-15f : -1e-15f;
 }
 static __attribute__((noinline)) void comp_run(px_engine *e, int swell, float *xb, int n, float strim)
@@ -3835,7 +3884,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     const int mod_t = p->type[PX_B_MOD] % PX_MOD_COUNT;
     const int dly_t = p->type[PX_B_DELAY] % PX_DLY_COUNT;
     const int drv_on = p->on[PX_B_DRIVE], amp_on = p->on[PX_B_AMP], amp_os = amp_on && e->amp_n > 0;
-    const int syn_t = p->type[PX_B_SYN] % PX_SYN_COUNT;
+    const int syn_t = px_type_canonical(PX_B_SYN, p->type[PX_B_SYN] % PX_SYN_COUNT);
     /* the blocks to run, in this preset's order (GATE always: it carries the anti-denormal offset) */
     uint8_t st[PX_NBLK];
     float tr[PX_NBLK];                                 /* each block's level trim */
@@ -4032,7 +4081,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         switch (sblk) {
         case PX_B_GATE:
             /* ---- gate ---- */
-            if (p->on[PX_B_GATE]) {
+            if (p->on[PX_B_GATE] && e->smart_gate.active) x = smart_gate_sample(e, x);
+            else if (p->on[PX_B_GATE]) {
                 float a = px_abs(x);
                 e->gate_env = (a > e->gate_env) ? a : a + (e->gate_env - a) * 0.9995f;
                 float tg = (e->gate_env > e->gate_thr) ? 1.0f : 0.0f;

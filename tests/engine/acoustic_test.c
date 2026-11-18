@@ -47,6 +47,7 @@ static float pitch_of(const float *y, int len, float lo, float hi)
 static void steady(int t, float fg, float ex, float *y, int n)
 {
     set_type(t);
+    if (t == PX_SYN_TRUMPET_MODEL) pxa_setup(&E, t, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f);
     px_acoustic *s = &E.syn_ac; pxa_rate_consts(s);
     for (int i = 0; i < n; i++) { s->gate = 1; s->onset = i == 0; s->vel = ex; s->expr = ex; s->f0s = fg; y[i] = pxa_voice(&E, s, t); }
 }
@@ -147,6 +148,17 @@ int main(int argc, char **argv)
             const float c = cents(got, want);
             if (fabsf(c) > 10.0f || pk < 1e-3f) { bad++; printf("PROBLEM %s steady %.1f Hz: %.1f Hz (%+.0f cents, peak %.4f)\n", TN[v], want, got, c, pk); }
         }
+        /* Presets using the retired slot must render the same sampled voice as TRUMPET. */
+        pluck(55, 0.8f, 0.8f, x, n);
+        set_type(PX_SYN_TRUMPET);
+        engine_run(x, y, n);
+        set_type(PX_SYN_TRUMPET_MODEL);
+        engine_run(x, y + n, n);
+        if (memcmp(y, y + n, (size_t)n * sizeof *y)) {
+            bad++;
+            puts("PROBLEM retired trumpet slot differs from TRUMPET");
+        }
+
         /* 2. a plucked note through the whole engine (note layer + tracker): the instrument's pitch */
         const float pm[6] = {40, 45, 50, 55, 59, 64};
         for (int v = 0; v < 4; v++) for (int q = 0; q < 6; q++) {

@@ -10,7 +10,7 @@ const ed = new Editor(access);
 await ed.connect();
 const cat = await ed.catalog();
 const SYN = 11, syn = cat.blocks[SYN];
-const want = (process.env.TYPES || "TRUMPET,TRUMPET MODEL,CELLO,CELLO SECTION,BASS SYNTH HQ,PWM SYNTH HQ,STRINGS HQ,POLY OCT FUZZ,BRASS,PITCH:POLY OCTAVE HQ").split(",");   // (PITCH:name: a PITCH type)
+const want = (process.env.TYPES || "TRUMPET,BOWED CELLO,CELLO ENSEMBLE,BASS SYNTH HQ,PWM SYNTH HQ,STRINGS HQ,POLY OCT FUZZ,POLY BRASS,PITCH:POLY OCTAVE HQ").split(",");   // (PITCH:name: a PITCH type)
 const st = await ed.state(), was = st.preset;
 const sleep = (s) => new Promise((r) => setTimeout(r, s * 1000));
 let p = parsePing(await ed.request(C.PING));

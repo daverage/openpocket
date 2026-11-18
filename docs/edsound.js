@@ -44,8 +44,10 @@ export function setOn(b, v) {
 export const toggle = (b) => setOn(b, !app.st.preset.on[b]);
 export function setType(b, t) {
   if (comparing()) return undefined;
-  const n = blk(b).types.length;
+  const types = blk(b).types, n = types.length;
+  const direction = t < app.st.preset.type[b] ? -1 : 1;
   t = ((t % n) + n) % n;
+  while (!types[t].name) t = (t + direction + n) % n;
   return act(async () => { app.st.preset.type[b] = await app.ed.setType(b, t); await sync(); renderTiles(); renderPage(); });
 }
 async function sendOrder(order) {
@@ -184,9 +186,9 @@ function renderPage(fromPush) {
   sw.querySelector("span").textContent = is ? "On" : "Off";
   $("mvl").disabled = pos <= 0; $("mvr").disabled = pos >= p.order.length - 1;
   const sel = $("type");
-  if (sel.dataset.b !== String(b) || sel.options.length !== B.types.length) {
+  if (sel.dataset.b !== String(b) || sel.options.length !== B.types.filter((t) => t.name).length) {
     sel.textContent = "";
-    B.types.forEach((t, i) => sel.append(h("option", { value: i, text: t.name })));
+    B.types.forEach((t, i) => { if (t.name) sel.append(h("option", { value: i, text: t.name })); });
     sel.dataset.b = b;
   }
   sel.value = p.type[b];

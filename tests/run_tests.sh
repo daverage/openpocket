@@ -57,7 +57,7 @@ $CC -O2 -Iengine -Ifirmware tests/engine/change_test.c firmware/px_math.c -lm -o
 $CC -O2 -Iengine -Ifirmware tests/engine/ir_test.c firmware/px_math.c -lm -o build/ir_test && build/ir_test | tail -1
 $CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/wet_test && build/wet_test | tail -1
 # v48: the tracked acoustic voices (engine/px_acoustic.h): tuning, plucked notes through the engine, release, level
-$CC -O2 -Iengine -Ifirmware tests/engine/acoustic_test.c firmware/px_math.c -lm -o build/acoustic_test && build/acoustic_test | tail -1
+$CC -O2 -Iengine -Ifirmware tests/engine/acoustic_test.c firmware/px_math.c -lm -o build/acoustic_test && build/acoustic_test
 echo "== NAM (fixed point against the float reference, every factory model)"
 $CC -O2 -DPXN_EMUVEC -Iengine tests/engine/nam_test.c engine/px_nam.c -o build/nam_test
 if python3 -c "import numpy" 2>/dev/null; then mkdir -p build/nam; python3 tests/test_nam.py build/nam_test > build/nam/log.txt || { cat build/nam/log.txt; exit 1; }; tail -1 build/nam/log.txt; else echo "(numpy not installed: NAM comparison skipped)"; fi

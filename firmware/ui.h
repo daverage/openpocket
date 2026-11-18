@@ -526,7 +526,9 @@ static void ui_knob(int dd, int fast)
     } else if (ui_mode == M_EDIT) {
         if (ui_item == 0u) {
             int nt = px_ntypes((int)ui_blk);
-            PRESET.type[ui_blk] = (uint8_t)((PRESET.type[ui_blk] + nt + dd) % nt);
+            int type = PRESET.type[ui_blk];
+            do { type = (type + nt + dd) % nt; } while (!px_type_name((int)ui_blk, type)[0]);
+            PRESET.type[ui_blk] = (uint8_t)type;
         } else if (ui_item >= 2u) {
             int k = (int)ui_item - 2, t = PRESET.type[ui_blk], ln = ui_list_n((int)ui_blk, t, k);
             if (ln) {                                  /* one filled item a detent, at any speed; it stops at the ends */

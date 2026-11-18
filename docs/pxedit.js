@@ -352,7 +352,10 @@ export function presetFromJSON(o, cat, base) {
     const i = byLabel.get(ob.block);
     if (i === undefined) { warn.push(`unknown block ${ob.block}`); continue; }
     q.on[i] = ob.on ? 1 : 0;
-    let t = typeof ob.type === "number" ? ob.type : cat.blocks[i].types.findIndex((x) => x.name === ob.type);
+    const aliases = { "TRUMPET MODEL": "TRUMPET", "CELLO": "BOWED CELLO", "CELLO SECTION": "CELLO ENSEMBLE", "BRASS": "POLY BRASS" };
+    const type = ob.block === "SYN" && typeof ob.type === "string" && !cat.blocks[i].types.some((x) => x.name === ob.type)
+      ? aliases[ob.type] || ob.type : ob.type;
+    let t = typeof ob.type === "number" ? ob.type : cat.blocks[i].types.findIndex((x) => x.name === type);
     const moved = typeof ob.type === "string" && t < 0 && V33_TYPES[ob.block] && V33_TYPES[ob.block][ob.type];
     if (moved) {
       t = cat.blocks[i].types.findIndex((x) => x.name === moved);

@@ -79,8 +79,9 @@ Played with a normal guitar: no special pickup, no MIDI.
 | Keyboards (chords OK) | ORGAN | 16', 8', 4', PERC, DRY | drawbars: −1 octave, the guitar's own pitch, +1 octave; key click; percussion (+19 semitones, decaying) |
 | | CHURCH ORGAN | 16', 8', 4', 2', DRY | pipe organ: slow speech, long release, slight celeste |
 | | STRINGS | ATTACK, RELEASE, OCTAVE, TONE, DRY | string machine: bowed swell, softened reed-like source, optional +1 octave, and a 3-voice ensemble |
+| | STRING MACHINE | ATTACK, RELEASE, OCTAVE, TONE, ENSEMBLE | an unshifted string voice with optional HQ octave up and optional three-tap ensemble |
 | | CHOIR | ATTACK, RELEASE, VOWEL, OCTAVE, DRY | the strings through vocal formants, "ooh" (0) to "aah" (100) |
-| Tracked brass synth (one note at a time) | BRASS SYNTH | ATTACK, RELEASE, BRIGHT, BITE, DRY | a band-limited saw/pulse voice follows the played note; an attack envelope opens its resonant filter, while BITE adds upper harmonics. DRY adds the unprocessed guitar. |
+| Horns (chords OK) | POLY BRASS | ATTACK, RELEASE, BRIGHT, BITE, DRY | short swells, moderate waveshaping, and separate body and bite bands. DRY blends in clean guitar. |
 | Octave fuzz (chords OK) | POLY OCT FUZZ | SUB, OCT UP, DRIVE, TONE, LEVEL | combines the guitar and two octave voices into the built-in Fuzz Face model. LEVEL trims the fuzz output from −12 to +6 dB, with 0 dB at noon. |
 | Acoustic instruments (v48; one note at a time) | TRUMPET | OCTAVE, TONE, DYNAMICS, RELEASE, DRY | a trumpet played by your note: v49 keeps the attack of each University of Iowa recording (mf, ff) and continues it with a sustain synthesised from that recording's harmonics: it follows your pitch, bends and slides; pick strength chooses a soft or loud recording, and the string's level sets loudness and brightness. Sounds an octave above the guitar at OCTAVE 0 (−1 / 0 / +1). |
 | | BOWED CELLO | OCTAVE, BOW, VIBRATO, RELEASE, DRY | a physical model of a bowed string and cello body: the guitar's level controls bow speed; BOW sets pressure and VIBRATO adds movement. At the guitar's pitch at OCTAVE 0. |
@@ -93,6 +94,8 @@ Played with a normal guitar: no special pickup, no MIDI.
 | | ACOUSTIC | BODY, BASS, TREBLE, ROOM | magnetic pickup → flat-top: body resonance (parlour to jumbo), top, sparkle, body reflections |
 | | SITAR | KEY, BUZZ, SYMPATH, DECAY | bridge buzz (jawari) + 6 sympathetic strings tuned to KEY |
 | | BARITONE | TUNE, TONE, MIX | the whole guitar 1 to 12 semitones down |
+
+Old TRUMPET MODEL presets load as TRUMPET. The sample-free Bluetooth build still uses the physical model as TRUMPET’s fallback.
 
 Keyboards hold the note while the string sounds (like a key held down) and release when it dies away or when you
 mute it. MONO SYNTH needs single notes: it finds the pitch in 30–80 ms and is accurate to a few cents.
@@ -107,9 +110,11 @@ or A3 for the A string through fret 12. The filter tapers around the cutoff and 
 Dry and OCT +1 keep their full range.
 
 ### Effects
+
+SMART GATE uses a filtered detector and learns the background while closed. Lower SENS to pick up quieter attacks. HOLD keeps it open through short gaps, RELEASE sets the closing fade, and REDUCTION sets how far the level dips. Start with a brief pause so the detector can hear the idle signal. A sudden noise jump can still open it.
 | Block | Types |
 |---|---|
-| GT | NOISE GATE (THRESH, RELEASE) |
+| GT | NOISE GATE (THRESH, RELEASE), SMART GATE (SENS, RELEASE, HOLD, REDUCTION) |
 | CMP | SQUASH (Dyna Comp), STUDIO (parallel, MIX), OPTO LA-2 (optical, slow release), SLOW SWELL (attack removed: violin effect) |
 | PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (−1 and +1 octave), POLY OCTAVE HQ (same controls, phase-scaled octave voices), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents) |
 | SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, SQUARE SYNTH (square-wave synth + sub, opening filter), SQUARE SYNTH HQ (monophonic pitch-tracked square + sub with the same controls) |

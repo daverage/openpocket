@@ -36,6 +36,7 @@ enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_DRIVE, PX_B_AMP, PX_B_CA
        PX_B_DELAY, PX_B_REVERB, PX_B_SYN, PX_NBLK };   /* SYN appended (v29): older presets keep their indices */
 #define PX_NPAR 5
 
+enum { PX_GATE_NORMAL, PX_GATE_SMART, PX_GATE_COUNT };
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ, PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
@@ -62,8 +63,7 @@ enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, P
        PX_SYN_12STR, PX_SYN_ACOUSTIC, PX_SYN_SITAR, PX_SYN_BARI, PX_SYN_BRASS, PX_SYN_STRINGS_HQ, PX_SYN_CHOIR_HQ,
        PX_SYN_ORGAN_HQ, PX_SYN_CHURCH_HQ, PX_SYN_BASS_HQ, PX_SYN_PWM_HQ, PX_SYN_OCT_FUZZ,
        /* v48: tracked acoustic voices (engine/px_acoustic.h) */
-       PX_SYN_TRUMPET, PX_SYN_TRUMPET_MODEL, /* reserved: keep the saved-preset index stable */
-       PX_SYN_CELLO, PX_SYN_CELLO_SECTION, PX_SYN_COUNT };
+       PX_SYN_TRUMPET, PX_SYN_TRUMPET_MODEL, PX_SYN_CELLO, PX_SYN_CELLO_SECTION, PX_SYN_STRING_MACHINE, PX_SYN_COUNT };
 enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
        PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO, PX_MOD_COUNT };
@@ -88,6 +88,7 @@ int  px_order_valid(const uint8_t *order);   /* 1 = a permutation of 0..PX_NBLK-
 const char *px_block_label(int blk);
 const char *px_block_name(int blk);
 int         px_ntypes(int blk);
+int         px_type_canonical(int blk, int type);
 const char *px_type_name(int blk, int type);
 int         px_nparams(int blk, int type);
 const char *px_param_name(int blk, int type, int k);
@@ -200,7 +201,13 @@ typedef struct {
     float dc_x1, dc_y1, odc_x1, odc_y1, dn;          /* dn: alternating 1e-15 anti-denormal offset */
 
     /* gate */
-    float gate_env, gate_g, gate_thr, gate_rel, gate_noise;
+    float gate_env, gate_g, gate_thr, gate_rel;
+    struct {
+        float dc, split, band[2], floor[2], slow[2], gain;
+        float dc_k, split_k, env_k, slow_k, learn_k, fast_k, attack, range, sensitivity;
+        unsigned hold, remaining;
+        int open, active;
+    } smart_gate;
     /* comp */
     float cmp_env, cmp_slow, cmp_att, cmp_rel, cmp_k, cmp_make, cmp_mix, cmp_sw, cmp_thr, cmp_rise, cmp_slowk;
     /* pitch: delay-line shifters (2 voices) + analog octaver */
