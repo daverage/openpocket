@@ -1,15 +1,15 @@
 /* Host experiment (v49): which filter bank gives a clean octave up? Not firmware.
  *   cc -O2 -Iengine -Ifirmware tools/sim/octave_banks.c firmware/px_math.c -lm -o build/octave_banks
  *   build/octave_banks [IN.wav ...]
- * Every bank does the same per band, out = Re(z^2 / |z|) (Thuillier's phase doubling, as POLY OCTAVE HQ and the MIT
- * Terrarium Poly Octave both do); only the bands differ:
- *   TODAY      POLY OCTAVE HQ itself (erb_octaves: 43 ERB-spaced bands 65 Hz .. 4 kHz, 1.5x ERB wide, half rate)
- *   TERRARIUM  80 bands, centre 480 * 2^(0.027 n) - 420 (60 Hz .. 2.1 kHz), width the harmonic mean of the spacings
- *              (schult/terrarium-poly-octave util/OctaveGenerator.h, MIT)
- *   TERR x1.5  the same centres, 1.5x wider (a faster low end)
- *   TERR 3k    TERRARIUM's spacing continued to 3.3 kHz (106 bands)
- * Scores: the share of octave-voice energy at exactly twice each partial (single notes, chords; +-10 cents); the level
- * wobble the octave adds over the input's (dB); the time the octave of an 82 Hz pluck takes to reach half its level. */
+ * The up comparison doubles the phase of each analytic band (Thuillier's method).
+ *   ENGINE NOW: current quarter-rate POLY OCTAVE HQ.
+ *   V48 BANK: former spacing and widths evaluated at full rate.
+ *   TERRARIUM=1: reference geometry at full rate (80 bands, 60 Hz to ~1.69 kHz,
+ *   schult/terrarium-poly-octave util/OctaveGenerator.h, MIT).
+ *   COMPACT: alternate layout through the current quarter-rate shifter.
+ * DOWN=1 compares phase halving for ENGINE NOW and COMPACT.
+ * Scores: energy near shifted partials, level wobble on DI, and wet response to
+ * controlled tone attacks. */
 #include "../../engine/px_dsp.c"
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,9 +30,9 @@ static int law_bands(float s0, float c)  /* (width: LAW_W of the spacing) */
     while (f < 2100.0f && n < 127) { LAWC[n++] = f; f += s0 + c * f; }
     LAWC[n] = f; return n;
 }
-static void make_bank(bank_t *k, int nb, float widen)
+static void make_bank(bank_t *k, int nb, float widen, double sr)
 {
-    const double sr = 44100.0, pi = 3.14159265358979;
+    const double pi = 3.14159265358979;
     k->n = nb;
     for (int n = 0; n < nb; n++) {
         const double f0 = center(n - 1), f1 = center(n), f2 = center(n + 1), a = f2 - f1, b = f1 - f0;
@@ -77,13 +77,22 @@ static void run_bank(const bank_t *k, const float *x, float *y, int n)
     }
 }
 static px_engine E;
-static void run_today(const float *x, float *y, int n)
-{
-    static px_erb_octave st; memset(&st, 0, sizeof st);
-    for (int t = 0; t < n; t++) y[t] = erb_octaves(&E, &st, x[t], 1.0f, 0.0f, ERB_FULL);
-}
 static bank_t BK[3];
-static void render(int which, const float *x, float *y, int n) { if (which == 0) run_today(x, y, n); else run_bank(&BK[which - 1], x, y, n); }
+static float ratio = 2.0f;
+static void render(int which, const float *x, float *y, int n)
+{
+    if (which == 1 || which == 2) { run_bank(&BK[which - 1], x, y, n); return; }
+    px_erb_band saved[PX_ERB_BANDS];
+    if (which == 3) {
+        memcpy(saved, erb_band, sizeof saved);
+        memset(erb_band, 0, sizeof erb_band);
+        memcpy(erb_band, BK[2].b, (size_t)BK[2].n * sizeof erb_band[0]);
+    }
+    px_erb_octave state = {0};
+    for (int t = 0; t < n; t++)
+        y[t] = erb_octaves(&E, &state, x[t], ratio == 2.0f, ratio == 0.5f, ERB_FULL);
+    if (which == 3) memcpy(erb_band, saved, sizeof saved);
+}
 
 /* ---- test signals and scores ---- */
 static void tones(float *x, int n, const float *f0, int nf, float vib, int start)
@@ -99,7 +108,7 @@ static float target(const float *y, int n, const float *f0, int nf)
     const int a = n / 4, L = 16384; double tot = 0, hit = 0;
     for (int b = 1; b < L / 2 && b * 44100.0 / L < 6000; b++) {
         const double fb = b * 44100.0 / L; int want = 0;
-        for (int s = 0; s < nf; s++) for (int h = 1; h <= 10; h++) { const double f = 2 * f0[s] * h * (1.0 + 0.0002 * h * h); if (fabs(1200 * log2(fb / f)) < 10) want = 1; }
+        for (int s = 0; s < nf; s++) for (int h = 1; h <= 10; h++) { const double f = ratio * f0[s] * h * (1.0 + 0.0002 * h * h); if (fabs(fb - f) <= 2.0 * 44100.0 / L) want = 1; }
         double re = 0, im = 0; const double w = 2 * M_PI * b / L;
         for (int i = 0; i < L; i += 1) { const double hw = 0.5 - 0.5 * cos(2 * M_PI * i / L); re += y[a + i] * hw * cos(w * i); im -= y[a + i] * hw * sin(w * i); }
         const double p = re * re + im * im; tot += p; if (want) hit += p;
@@ -130,7 +139,7 @@ static float arrival(int which, float f)
     memset(x, 0, 4 * n); for (int i = s0; i < n; i++) x[i] = 0.3f * sinf(2 * 3.14159265f * f * (i - s0) / 44100.0f);
     render(which, x, y, n);
     double ref = 0; for (int i = 22050; i < 22050 + 4410; i++) ref += (double)y[i] * y[i]; ref /= 4410;
-    const int W = (int)(44100.0f / (2 * f)) + 1;            /* one octave cycle */
+    const int W = (int)(44100.0f / (ratio * f)) + 1;            /* one octave cycle */
     float t = -1;
     for (int i = s0; i + W < n; i += 16) { double e = 0; for (int q = 0; q < W; q++) e += (double)y[i + q] * y[i + q];
         if (sqrt(e / W) > 0.5 * sqrt(ref)) { t = (i + W / 2 - s0) * 1000.0f / 44100.0f; break; } }
@@ -159,39 +168,44 @@ static float *wav_read(const char *fn, int *n)
 int main(int argc, char **argv)
 {
     px_engine_init(&E, 44100.0f); erb_prepare(&E);
+    if (getenv("DOWN")) ratio = 0.5f;
     const float s1 = getenv("S1") ? atof(getenv("S1")) : 37.5f, c1 = getenv("C1") ? atof(getenv("C1")) : 0.04f, w1 = getenv("W1") ? atof(getenv("W1")) : 0.8f;
     const float s2 = getenv("S2") ? atof(getenv("S2")) : 50.0f, c2 = getenv("C2") ? atof(getenv("C2")) : 0.03f, w2 = getenv("W2") ? atof(getenv("W2")) : 0.8f;
     make_v48(&BK[0]);
-    int n1 = law_bands(s1, c1); make_bank(&BK[1], n1, w1);
-    int n2 = law_bands(s2, c2); make_bank(&BK[2], n2, w2);
+    const int terrarium = getenv("TERRARIUM") != NULL;
+    int n1 = terrarium ? 80 : law_bands(s1, c1);
+    make_bank(&BK[1], n1, terrarium ? 1.0f : w1, 44100.0);
+    int n2 = law_bands(s2, c2);
+    if (n2 > PX_ERB_BANDS) { fputs("Compact candidate exceeds the engine bank capacity\n", stderr); return 1; }
+    make_bank(&BK[2], n2, w2, 11025.0);
     LAW_S0 = 0;
     static char l1[40], l2[40]; snprintf(l1, 40, "%.0f+%.3f w%.1f(%d)", s1, c1, w1, n1); snprintf(l2, 40, "%.0f+%.3f w%.1f(%d)", s2, c2, w2, n2);
-    static const char *NM[4]; NM[0] = "ENGINE NOW"; NM[1] = "V48 BANK"; NM[2] = l1; NM[3] = l2;
-    printf("%-34s", ""); for (int q = 0; q < 4; q++) printf(" %20s", NM[q]); printf("\n");
+    static const char *NM[4]; NM[0] = "ENGINE NOW"; NM[1] = "V48 BANK"; NM[2] = terrarium ? "TERRARIUM LAYOUT" : l1; NM[3] = l2;
+    printf("%-34s", ratio == 2.0f ? "OCTAVE UP" : "OCTAVE DOWN"); for (int q = 0; q < 4; q++) printf(" %20s", ratio == 0.5f && (q == 1 || q == 2) ? "-" : NM[q]); printf("\n");
     const int n = 3 * 44100; float *x = malloc(4 * n), *y = malloc(4 * n);
     double tgt[4] = {0}, lat[4] = {0}, latmax[4] = {0}, hi[4] = {0}, ch[4] = {0}; int nt = 0, nl = 0;
     for (int m = 40; m <= 76; m += 3) {                      /* single notes E2 .. E5 */
         const float f = 440.0f * powf(2.0f, (m - 69) / 12.0f); tones(x, n, &f, 1, 0, 0);
-        for (int q = 0; q < 4; q++) { render(q, x, y, n); tgt[q] += target(y, n, &f, 1); }
+        for (int q = 0; q < 4; q++) { if (ratio == 0.5f && (q == 1 || q == 2)) continue; render(q, x, y, n); tgt[q] += target(y, n, &f, 1); }
         nt++;
     }
     for (int m = 38; m <= 52; m++) {                          /* arrival: D2 .. E3 */
         const float f = 440.0f * powf(2.0f, (m - 69) / 12.0f);
-        for (int q = 0; q < 4; q++) { const float a = arrival(q, f); lat[q] += a; if (a > latmax[q]) latmax[q] = a; }
+        for (int q = 0; q < 4; q++) { if (ratio == 0.5f && (q == 1 || q == 2)) continue; const float a = arrival(q, f); lat[q] += a; if (a > latmax[q]) latmax[q] = a; }
         nl++;
     }
-    for (int q = 0; q < 4; q++) hi[q] = arrival(q, 1500.0f);
+    for (int q = 0; q < 4; q++) if (ratio == 2.0f || q == 0 || q == 3) hi[q] = arrival(q, 1500.0f);
     static const float C[3][3] = {{82.41f, 123.47f, 164.81f}, {110.0f, 164.81f, 220.0f}, {196.0f, 246.94f, 293.66f}};
-    for (int c = 0; c < 3; c++) { tones(x, n, C[c], 3, 0, 0); for (int q = 0; q < 4; q++) { render(q, x, y, n); ch[q] += target(y, n, C[c], 3) / 3; } }
-    printf("%-34s", "single notes E2..E5, on target"); for (int q = 0; q < 4; q++) printf(" %19.1f%%", tgt[q] / nt); printf("\n");
-    printf("%-34s", "chords E5 A5 G, on target");       for (int q = 0; q < 4; q++) printf(" %19.1f%%", ch[q]); printf("\n");
-    printf("%-34s", "arrival D2..E3 mean / worst (ms)"); for (int q = 0; q < 4; q++) printf(" %12.1f / %5.1f", lat[q] / nl, latmax[q]); printf("\n");
-    printf("%-34s", "arrival 1.5 kHz (ms)");            for (int q = 0; q < 4; q++) printf(" %20.1f", hi[q]); printf("\n");
+    for (int c = 0; c < 3; c++) { tones(x, n, C[c], 3, 0, 0); for (int q = 0; q < 4; q++) { if (ratio == 0.5f && (q == 1 || q == 2)) continue; render(q, x, y, n); ch[q] += target(y, n, C[c], 3) / 3; } }
+    printf("%-34s", "single notes E2..E5, on target"); for (int q = 0; q < 4; q++) if (ratio == 0.5f && (q == 1 || q == 2)) printf(" %20s", "-"); else printf(" %19.1f%%", tgt[q] / nt); printf("\n");
+    printf("%-34s", "chords E5 A5 G, on target");       for (int q = 0; q < 4; q++) if (ratio == 0.5f && (q == 1 || q == 2)) printf(" %20s", "-"); else printf(" %19.1f%%", ch[q]); printf("\n");
+    printf("%-34s", "arrival D2..E3 mean / worst (ms)"); for (int q = 0; q < 4; q++) if (ratio == 0.5f && (q == 1 || q == 2)) printf(" %20s", "-"); else printf(" %12.1f / %5.1f", lat[q] / nl, latmax[q]); printf("\n");
+    printf("%-34s", "arrival 1.5 kHz (ms)");            for (int q = 0; q < 4; q++) if (ratio == 0.5f && (q == 1 || q == 2)) printf(" %20s", "-"); else printf(" %20.1f", hi[q]); printf("\n");
     for (int a = 1; a < argc; a++) {
         int m; float *r = wav_read(argv[a], &m); if (!r) continue;
         float *o = malloc(4 * m); const char *b = strrchr(argv[a], '/');
         printf("%-30.30s", b ? b + 1 : argv[a]);
-        for (int q = 0; q < 4; q++) { render(q, r, o, m); printf(" %12.2f", wobble(r, o, m)); }
+        for (int q = 0; q < 4; q++) { if (ratio == 0.5f && (q == 1 || q == 2)) { printf(" %12s", "-"); continue; } render(q, r, o, m); printf(" %12.2f", wobble(r, o, m)); }
         printf("   (added wobble dB)\n"); free(r); free(o);
     }
     return 0;

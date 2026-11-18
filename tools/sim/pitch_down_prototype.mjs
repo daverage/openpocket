@@ -142,6 +142,7 @@ const spectralCandidates = [
 for (const mode of modes) {
   const candidates = mode.ratio === 0.5
     ? [spectralCandidates[0], ["pedal-hq", (samples, config) => stock(samples, { ...config, type: 5 })],
+      ...(process.env.BYOD_DOWN ? [["byod-delay", samples => runProcessor(process.env.BYOD_DOWN, [], samples)]] : []),
       ...spectralCandidates.slice(1),
       ["erb-down-1", samples => runProcessor(erb, ["1", "2", "down"], samples)],
       ["erb-down-1.5", samples => runProcessor(erb, ["1.5", "2", "down"], samples)]]
@@ -160,7 +161,7 @@ for (const mode of modes) {
   if (mode.ratio === 0.5) repickConsistency(mode);
   if (!outputDirectory) continue;
   mkdirSync(outputDirectory, { recursive: true });
-  for (const clip of ["chug", "riff", "chords"]) {
+  for (const clip of ["chug", "riff", "chords", "arpeggio", "lead"]) {
     const { samples } = readWav(readFileSync(join(root, "assets/loops", `${clip}.wav`)));
     const dry = samples.map(sample => sample * GUITAR_LEVEL);
     for (const [name, process] of candidates) {

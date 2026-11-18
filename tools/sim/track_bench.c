@@ -6,6 +6,9 @@
 #include "../../engine/px_dsp.c"
 #include <stdio.h>
 #include "pulse_poly.h"
+#ifdef PXT_HOST_JOINT
+#include "joint_track.h"
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -57,6 +60,9 @@ int main(int argc, char **argv)
         synth_hq_track(&hq, b, env > 0.003f, 44100.0f);
         const int fr = pxt_run(&e, &t, v);
         pxt_layer_run(&L, &t, v, fr);
+#ifdef PXT_HOST_JOINT
+        if (fr) joint_candidates(&t);
+#endif
         int pick[2] = {0};
         if (pulse) {
             int active[2] = {voices[0].active, voices[1].active};

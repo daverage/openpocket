@@ -2,7 +2,7 @@
 """Scores tools/sim/track_bench CSVs against note annotations (v49, docs/NOTE-TRACKING.md). Host only.
 
   python3 tools/sim/track_eval.py lead                 the bundled lead loop against its transcription (build/acoustic)
-  python3 tools/sim/track_eval.py guitarset [N]        GuitarSet's mono pickup mix against its per-string notes
+  python3 tools/sim/track_eval.py guitarset [N] [offset] GuitarSet's mono pickup mix against its per-string notes
                                                        (build/guitarset: annotation/*.jams, mono/*_mix.wav), N files each
 Single notes (a mono voice follows the newest note): for every played note of at least 60 ms, over the time it is
 the newest note: right when the tracker is within 50 cents for most of its middle half; octave when it is an octave
@@ -10,6 +10,8 @@ off instead; the time from the onset to the first right frame. Chords (GuitarSet
 found against the notes sounding, matched within 50 cents: precision, recall; and the lowest note (the bass).
 """
 import csv, glob, json, math, os, subprocess, sys
+from bisect import bisect_right
+from statistics import median
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BENCH = os.environ.get("BENCH", os.path.join(ROOT, "build", "track_bench"))   # BENCH=build/q_bench: another tracker's CSV
@@ -84,7 +86,7 @@ def poly_score(rows, notes):
     return dict(precision=p, recall=rc, f=2 * p * rc / max(1e-9, p + rc), bass=bass_ok / max(1, bass_n))
 
 
-def dyad_score(rows, notes):
+def dyad_score(rows, notes, intervals=None):
     """Count settled dyad frames and false extra candidates on settled single notes."""
     starts = sorted((a + 0.03, b, m) for a, b, m in notes if b > a + 0.03)
     active = []
@@ -108,9 +110,70 @@ def dyad_score(rows, notes):
                 {i for i, f in enumerate(candidates) if abs(cents(f, 440 * 2 ** ((m - 69) / 12))) < 50}
                 for m in pitches
             ]
-            both += any(i != j for i in hits[0] for j in hits[1])
+            pair_hit = any(i != j for i in hits[0] for j in hits[1])
+            both += pair_hit
+            if intervals is not None:
+                distance = round(pitches[1] - pitches[0])
+                totals = intervals.setdefault(distance, [0, 0])
+                totals[0] += pair_hit
+                totals[1] += 1
             lowest += bool(candidates) and candidates.index(min(candidates)) in hits[0]
     return dyads, both, lowest, singles, extra
+
+
+def dyad_entry_delays(rows, notes):
+    """First simultaneous hit after a second pitch enters a held note.
+
+    Require a held note already sounding for 30 ms and both notes to last at
+    least 100 ms after entry. Return None for misses inside that window.
+    """
+    from bisect import bisect_left
+
+    times = [row["t"] for row in rows]
+    delays = []
+    for start, end, midi in notes:
+        if end < start + 0.1:
+            continue
+        held = {m for a, b, m in notes if a < start - 0.03 and b >= start + 0.1}
+        other = {m for a, b, m in notes if a <= start and b > start}
+        if len(held) != 1 or other != held | {midi} or midi in held:
+            continue
+        expected = [440 * 2 ** ((m - 69) / 12) for m in (midi, next(iter(held)))]
+        delay = None
+        for row in rows[bisect_left(times, start):bisect_left(times, start + 0.1)]:
+            found = [row[f"n{i}"] for i in range(1, int(row["nn"]) + 1)]
+            if all(any(abs(cents(f, wanted)) < 50 for f in found) for wanted in expected):
+                delay = 1000 * (row["t"] - start)
+                break
+        delays.append(delay)
+    return delays
+
+
+def matched_rows(csv_path, target_rows):
+    with csv_path.open() as source:
+        candidates = [{key: float(val) for key, val in row.items()} for row in csv.DictReader(source)]
+    times = [row["t"] for row in candidates]
+    aligned = []
+    for row in target_rows:
+        i = bisect_right(times, row["t"] + 0.000005) - 1  # CSV timestamps are rounded to 5 decimals
+        if i >= 0:
+            aligned.append({**candidates[i], "t": row["t"]})
+    return aligned
+
+
+def report_detector(name, dyads, chords, entries):
+    n, both, low, single, extra = map(sum, zip(*dyads))
+    print(f"{name}: {both}/{n} dyads both right ({100 * both / max(1, n):.1f}%), "
+          f"lowest {100 * low / max(1, n):.1f}%; "
+          f"extra candidates on singles {100 * extra / max(1, single):.1f}% of {single} frames")
+    detected = [value for value in entries if value is not None]
+    if detected:
+        print(f"second-note entries: {len(detected)}/{len(entries)} found within 100 ms, "
+              f"median {median(detected):.1f} ms among hits")
+    else:
+        print(f"second-note entries: 0/{len(entries)} found within 100 ms")
+    print("Comping " + ", ".join(f"{k} {100 * sum(c[k] for c in chords) / len(chords):.1f}%"
+                                 for k in ("precision", "recall", "f", "bass")))
 
 
 def chord_mono(rows, notes, key="layer"):
@@ -178,10 +241,13 @@ def main():
         report("lead loop (single notes)", mono_score(rows, notes, keys))
         return
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+    offset = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    if n <= 0 or offset < 0:
+        raise ValueError("takes must be positive and offset nonnegative")
     gs = os.path.join(ROOT, "build", "guitarset")
     out = os.path.join(gs, "csv"); os.makedirs(out, exist_ok=True)
     for kind in ("solo", "comp"):
-        files = sorted(glob.glob(os.path.join(gs, "mono", f"*_{kind}_mix.wav")))[:n]
+        files = sorted(glob.glob(os.path.join(gs, "mono", f"*_{kind}_mix.wav")))[offset:offset + n]
         tot = None; poly = []; cm = []; dyad = []
         for w in files:
             base = os.path.basename(w).replace("_mix.wav", "")

@@ -94,6 +94,14 @@ try {
     ["erb-1.5-half", input => erb(input, 1.5, 2)],
     ["erb-2", input => erb(input, 2)],
   ];
+  if (process.env.BYOD_UP) candidates.push(["byod-v2", input => {
+    const result = spawnSync(process.env.BYOD_UP, [], {
+      input: Buffer.from(input.buffer, input.byteOffset, input.byteLength), maxBuffer: 16 * 1024 * 1024,
+    });
+    if (result.error || result.status !== 0 || result.stdout.length !== input.byteLength)
+      throw result.error ?? new Error("BYOD reference failed");
+    return Float32Array.from({ length: input.length }, (_, i) => result.stdout.readFloatLE(4 * i));
+  }]);
   const material = [[73, 110, 147], [82, 110, 147], [82, 87], [196, 247, 330, 392]];
   const chords = material.map(frequencies => Float32Array.from({ length: rate * 2 }, (_, i) =>
     frequencies.reduce((sum, f) => sum + 0.06 * Math.sin(2 * Math.PI * f * i / rate), 0)));
@@ -110,7 +118,7 @@ try {
   }
   if (outputDirectory) {
     mkdirSync(outputDirectory, { recursive: true });
-    for (const clip of ["chords", "arpeggio", "chug"]) {
+    for (const clip of ["chug", "riff", "chords", "arpeggio", "lead"]) {
       const { samples } = readWav(readFileSync(join(root, "assets/loops", `${clip}.wav`)));
       const input = samples.map(sample => sample * GUITAR_LEVEL);
       for (const [name, process] of [["dry", input => input], ...candidates]) {
