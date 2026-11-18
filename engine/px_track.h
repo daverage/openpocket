@@ -70,6 +70,13 @@
 #define PXT_NB      15                 /* the bands it reads: those up to 790 Hz (the fundamentals and first partials of the
                                           guitar's range: on the test sets as accurate as all 29, at half the cost) */
 #endif
+/* Host experiments can adjust these without changing the default firmware tracker. */
+#ifndef PXT_SECOND_REL
+#define PXT_SECOND_REL 0.20f
+#endif
+#ifndef PXT_SHARED_RESIDUAL
+#define PXT_SHARED_RESIDUAL 0
+#endif
 #define PXT_DEC     256                /* decimated history (power of two) */
 #ifndef PXT_PD1
 #define PXT_PD1     0.3f               /* the octave check: the chosen period this poor (normalised difference) .. */
@@ -223,10 +230,16 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
         for (int j = 0; j < n; j++) for (int h = 1; h <= 5; h++) {
             const float f0 = p[j].f / (float)h;
             if (f0 < PXT_FMIN || f0 > PXT_FMAX) continue;
+#if PXT_SHARED_RESIDUAL
+            int duplicate = 0;
+            for (int j = 0; j < t->nnotes; ++j)
+                if (px_abs(f0 / t->notes[j] - 1.0f) < 0.035f) duplicate = 1;
+            if (duplicate) continue;
+#endif
             uint32_t m; const float s = pxt_salience(p, n, f0, &m);
             if (s > best * 1.0001f) { best = s; bf = f0; bm = m; }
         }
-        if (best <= 0.0f || (k > 0 && best < 0.2f * first)) break;
+        if (best <= 0.0f || (k > 0 && best < PXT_SECOND_REL * first)) break;
         /* a weak fundamental (common on a guitar pickup): the note an octave (a twelfth) below wins when its own
          * fundamental is there and it explains nearly as much */
         {   float amax = 0.0f; for (int j = 0; j < n; j++) if (p[j].a > amax) amax = p[j].a;
@@ -234,6 +247,12 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
             for (int d = 2; d <= 5; d++) {
                 const float lo = bf / (float)d;
                 if (lo < PXT_FMIN) break;
+#if PXT_SHARED_RESIDUAL
+                int duplicate = 0;
+                for (int j = 0; j < t->nnotes; ++j)
+                    if (px_abs(lo / t->notes[j] - 1.0f) < 0.035f) duplicate = 1;
+                if (duplicate) continue;
+#endif
                 uint32_t m; const float sl = pxt_salience(p, n, lo, &m);
                 float a1 = 0.0f;
                 for (int j = 0; j < n; j++) { const float r = p[j].f / lo; if (r > 0.95f && r < 1.05f && p[j].a > a1) a1 = p[j].a; }   /* (5 %: the sparse low bands misplace a partial) */
@@ -272,7 +291,17 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
             if (t->mono < PXT_REFINE_F) { const float r = pxt_refine(t, t->mono); if (r > 0.0f) t->mono = r; }
         }
         t->notes[t->nnotes] = bf; t->sal[t->nnotes] = best; t->nnotes++;
-        int w = 0; for (int j = 0; j < n; j++) if (!(bm >> j & 1u)) p[w++] = p[j];
+        int w = 0;
+        for (int j = 0; j < n; ++j) {
+            if (!(bm >> j & 1u)) p[w++] = p[j];
+#if PXT_SHARED_RESIDUAL
+            else if (p[j].f > 1.5f * bf) {
+                /* Retain some overlapping upper-harmonic evidence for the next candidate. */
+                p[j].a *= 0.35f;
+                p[w++] = p[j];
+            }
+#endif
+        }
         n = w;
     }
     for (int a = 1; a < t->nnotes; a++)                   /* lowest first */

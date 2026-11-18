@@ -43,3 +43,32 @@ A second synthetic run added independent repicks while both notes decayed. It pr
 the first attack, lost an assigned voice around the second onset, and did not reliably retrigger the intended
 voice. Keep the allocator on the host. Compare candidate extraction, pitch-specific onset evidence and assignment
 separately before trying another oscillator preset.
+
+## Candidate sweep after v50
+
+The first 24 GuitarSet comping takes give 59,172 settled two-pitch frames and 48,520 settled single-pitch frames.
+All rows use the same recordings, candidate matching within 50 cents, and the existing decimator.
+
+| Host configuration | Both notes right | Lowest note right on dyads | Extra candidates on single pitches |
+| --- | ---: | ---: | ---: |
+| 15 bands, current default | 20.7% | 45.7% | 53.0% |
+| 22 bands | 20.5% | 45.6% | 53.3% |
+| 29 bands | 20.3% | 45.5% | 53.3% |
+| Minimum second-note salience 35%, up from 20% | 16.3% | 43.6% | 42.8% |
+| Leave 35% residual energy on shared upper harmonics | 25.8% | 46.0% | 67.0% |
+| Shared residual and higher salience threshold | 19.3% | 43.9% | 46.1% |
+
+To reproduce, compile the benchmark with `-DPXT_NB=22`, `-DPXT_SECOND_REL=0.35f`, or
+`-DPXT_SHARED_RESIDUAL=1` as appropriate:
+
+```sh
+cc -O2 -Iengine -Ifirmware tools/sim/track_bench.c firmware/px_math.c -lm -o build/track_bench
+python3 tools/sim/track_eval.py guitarset 24
+```
+
+Use a distinct `SUFFIX` for each build if retaining its CSVs. The larger bank cost did not help on this subset.
+Partial reuse recovered some real dyads but admitted many more false notes. The next comparison should require
+evidence specific to a proposed second fundamental while allowing shared upper harmonics to support it.
+Test causal resonator candidates against the same recordings and include deliberate guitar and bass repicks.
+The current 60 Hz minimum structurally excludes bass low E and low B. A bass benchmark needs a lower
+frequency analysis path and must report the extra onset delay separately.

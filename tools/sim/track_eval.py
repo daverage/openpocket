@@ -14,7 +14,7 @@ import csv, glob, json, math, os, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BENCH = os.environ.get("BENCH", os.path.join(ROOT, "build", "track_bench"))   # BENCH=build/q_bench: another tracker's CSV
 SUFFIX = os.environ.get("SUFFIX", "")                                          # (its CSVs beside, with this suffix)
-NOT_KEYS = {"t", "conf", "onset", "level", "nn", "n1", "n2", "n3", "n4", "n5", "n6", "old_layer"}
+NOT_KEYS = {"t", "conf", "onset", "level", "nn", "n1", "n2", "n3", "n4", "n5", "n6", "old_layer", "v1", "v2", "pick1", "pick2"}
 
 
 def cents(a, b): return 1200 * math.log2(a / b)
@@ -82,6 +82,35 @@ def poly_score(rows, notes):
         if est and abs(cents(min(est), min(tf))) < 50: bass_ok += 1
     p = tp / max(1, tp + fp); rc = tp / max(1, tp + fn)
     return dict(precision=p, recall=rc, f=2 * p * rc / max(1e-9, p + rc), bass=bass_ok / max(1, bass_n))
+
+
+def dyad_score(rows, notes):
+    """Count settled dyad frames and false extra candidates on settled single notes."""
+    starts = sorted((a + 0.03, b, m) for a, b, m in notes if b > a + 0.03)
+    active = []
+    cursor = 0
+    dyads = both = lowest = singles = extra = 0
+    for row in rows:
+        t = row["t"]
+        while cursor < len(starts) and starts[cursor][0] <= t:
+            _, stop, midi = starts[cursor]
+            active.append((stop, midi))
+            cursor += 1
+        active = [(stop, midi) for stop, midi in active if t < stop]
+        pitches = sorted({midi for _, midi in active})
+        candidates = [row[f"n{i}"] for i in range(1, int(row["nn"]) + 1)]
+        if len(pitches) == 1:
+            singles += 1
+            extra += len(candidates) > 1
+        elif len(pitches) == 2:
+            dyads += 1
+            hits = [
+                {i for i, f in enumerate(candidates) if abs(cents(f, 440 * 2 ** ((m - 69) / 12))) < 50}
+                for m in pitches
+            ]
+            both += any(i != j for i in hits[0] for j in hits[1])
+            lowest += bool(candidates) and candidates.index(min(candidates)) in hits[0]
+    return dyads, both, lowest, singles, extra
 
 
 def chord_mono(rows, notes, key="layer"):
@@ -153,7 +182,7 @@ def main():
     out = os.path.join(gs, "csv"); os.makedirs(out, exist_ok=True)
     for kind in ("solo", "comp"):
         files = sorted(glob.glob(os.path.join(gs, "mono", f"*_{kind}_mix.wav")))[:n]
-        tot = None; poly = []; cm = []
+        tot = None; poly = []; cm = []; dyad = []
         for w in files:
             base = os.path.basename(w).replace("_mix.wav", "")
             notes = jams_notes(os.path.join(gs, "annotation", base + ".jams"))
@@ -162,11 +191,16 @@ def main():
                 r = mono_score(rows, notes, keys); tot = r if tot is None else merge(tot, r)
             else:
                 poly.append(poly_score(rows, notes)); cm.append(chord_mono(rows, notes))
+                dyad.append(dyad_score(rows, notes))
         if kind == "solo" and tot: report(f"GuitarSet solo, {len(files)} files (single notes)", tot)
         if poly:
             m = {k: sum(p[k] for p in poly) / len(poly) for k in poly[0]}
             print(f"GuitarSet comping, {len(poly)} files (chords, new tracker): precision {100 * m['precision']:.1f} %, recall "
                   f"{100 * m['recall']:.1f} %, F {100 * m['f']:.1f} %, lowest note right {100 * m['bass']:.1f} % of frames")
+            nd, hit, low, ns, extra = map(sum, zip(*dyad))
+            print(f"  settled dyads: {hit}/{nd} both ({100 * hit / max(1, nd):.1f} %), "
+                  f"lowest {100 * low / max(1, nd):.1f} %; "
+                  f"extra candidates on single pitches {100 * extra / max(1, ns):.1f} % of {ns} frames")
             print(f"  one-note voice (layer) under chords: on a chord tone {100 * sum(c[0] for c in cm) / len(cm):.1f} % of frames, "
                   f"{sum(c[1] for c in cm) / len(cm):.1f} jumps a second")
 
