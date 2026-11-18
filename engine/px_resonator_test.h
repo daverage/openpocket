@@ -17,32 +17,36 @@
 #error "PXR_FIRST_MIDI outside resonator bank"
 #endif
 
-static struct {
+typedef struct {
     px_erb_complex coeff[PXR_BANDS], state[PXR_BANDS];
     float hz[PXR_BANDS];
     uint8_t age[PXR_BANDS];
     unsigned hop;
-} pxr_test PX_LO(pxr_test);
+} pxr_bank;
 
-static void pxr_reset(float sample_rate)
+#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST)
+static pxr_bank pxr_test PX_LO(pxr_test);
+#endif
+
+static void pxr_reset_bank(pxr_bank *bank, float sample_rate)
 {
-    memset(&pxr_test, 0, sizeof pxr_test);
+    memset(bank, 0, sizeof *bank);
     const float rate = 0.25f * sample_rate;
     const float decay = expf(-1.0f / (0.0226644f * rate));
     for (int i = PXR_FIRST_MIDI - PXR_LOW; i < PXR_BANDS; ++i) {
         const float hz = 440.0f * expf((i + PXR_LOW - 69) * 0.057762265f);
         const float phase = 2.0f * PI_F * hz / rate;
-        pxr_test.hz[i] = hz;
-        pxr_test.coeff[i] = (px_erb_complex){decay * cosf(phase), decay * sinf(phase)};
+        bank->hz[i] = hz;
+        bank->coeff[i] = (px_erb_complex){decay * cosf(phase), decay * sinf(phase)};
     }
 }
 
-static __attribute__((noinline)) void pxr_pick(px_track *out)
+static __attribute__((noinline)) void pxr_pick(pxr_bank *bank, px_track *out)
 {
     float energy[PXR_BANDS], maximum = 0.0f;
     const int start = PXR_FIRST_MIDI - PXR_LOW;
     for (int i = start; i < PXR_BANDS; ++i) {
-        const px_erb_complex z = pxr_test.state[i];
+        const px_erb_complex z = bank->state[i];
         energy[i] = z.r * z.r + z.i * z.i;
         if (energy[i] > maximum) maximum = energy[i];
     }
@@ -71,35 +75,39 @@ static __attribute__((noinline)) void pxr_pick(px_track *out)
         for (int j = 0; j < k; ++j) if (peaks[j] == bin - 12) octave = 1;
         if (octave) continue;
         present[bin] = 1;
-        if (pxr_test.age[bin] < 3) ++pxr_test.age[bin];
-        if (k > 0 && pxr_test.age[bin] < 3) continue;
+        if (bank->age[bin] < 3) ++bank->age[bin];
+        if (k > 0 && bank->age[bin] < 3) continue;
         if (k == 0) {
-            out->mono = pxr_test.hz[bin];     /* diagnostic mono audition uses the strongest note */
+            out->mono = bank->hz[bin];     /* diagnostic mono audition uses the strongest note */
             out->conf = 1.0f;
         }
         int j = out->nnotes++;
-        while (j > 0 && out->notes[j - 1] > pxr_test.hz[bin]) {
+        while (j > 0 && out->notes[j - 1] > bank->hz[bin]) {
             out->notes[j] = out->notes[j - 1];
             out->sal[j] = out->sal[j - 1];
             --j;
         }
-        out->notes[j] = pxr_test.hz[bin];
+        out->notes[j] = bank->hz[bin];
         out->sal[j] = energy[bin] / maximum;
     }
-    for (int i = start; i < PXR_BANDS; ++i) if (!present[i]) pxr_test.age[i] = 0;
+    for (int i = start; i < PXR_BANDS; ++i) if (!present[i]) bank->age[i] = 0;
 }
 
-static __attribute__((noinline)) int pxr_run(px_track *out, float input)
+static __attribute__((noinline)) int pxr_run_bank(pxr_bank *bank, px_track *out, float input)
 {
     float x;
     if (!pxt_decimate(out, input, &x)) return 0;
     for (int i = PXR_FIRST_MIDI - PXR_LOW; i < PXR_BANDS; ++i) {
-        const px_erb_complex c = pxr_test.coeff[i], z = pxr_test.state[i];
-        pxr_test.state[i] = (px_erb_complex){x + c.r * z.r - c.i * z.i, c.i * z.r + c.r * z.i};
+        const px_erb_complex c = bank->coeff[i], z = bank->state[i];
+        bank->state[i] = (px_erb_complex){x + c.r * z.r - c.i * z.i, c.i * z.r + c.r * z.i};
     }
-    if (++pxr_test.hop < PXR_HOP) return 0;
-    pxr_test.hop = 0;
-    pxr_pick(out);
+    if (++bank->hop < PXR_HOP) return 0;
+    bank->hop = 0;
+    pxr_pick(bank, out);
     return 1;
 }
+#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST)
+static void pxr_reset(float rate) { pxr_reset_bank(&pxr_test, rate); }
+static int pxr_run(px_track *out, float input) { return pxr_run_bank(&pxr_test, out, input); }
+#endif
 #endif

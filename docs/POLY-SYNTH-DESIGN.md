@@ -72,3 +72,71 @@ evidence specific to a proposed second fundamental while allowing shared upper h
 Test causal resonator candidates against the same recordings and include deliberate guitar and bass repicks.
 The current 60 Hz minimum structurally excludes bass low E and low B. A bass benchmark needs a lower
 frequency analysis path and must report the extra onset delay separately.
+
+## v56 Pulse Poly on Full
+
+The opt-in `pulse-test` channel adds **PULSE POLY** at the end of the SYN
+catalogue. It keeps the shared ladder and uses a separate full-rate PolyBLEP
+phase, envelope and running pitch for each of the two voices. The quarter-rate
+resonator bank proposes pitches and phase differences refine their frequency.
+The allocator confirms new pitches across three reports, keeps existing
+voices across brief dropouts and uses a rise in absolute note power as repick
+evidence. Independent second and third partials can support a bass fundamental
+that misses the raw peak shortlist.
+
+The controls are **WIDTH**, **PWM**, **CUTOFF**, **RESO** and **RELEASE**.
+Pulse has its own resonator state, including when Lowest Octave HQ is in the
+same preset. Existing SYN type IDs and the five-byte parameter format are
+preserved. The test build keeps AMP, NAM, CAB, user IR and Lowest Octave HQ.
+
+| GuitarSet, 24 held-out comping takes | Raw resonator | Pulse voices |
+| --- | ---: | ---: |
+| Standard tuning dyads, both pitches within 50 cents | 42.2% | 33.6% |
+| Standard tuning single-note frames with extra pitches | 37.4% | 37.1% |
+| Standard tuning second-note entries within 100 ms | 160/270 | 109/270 |
+| Five-semitone-lower DI proxy, both dyad pitches within 50 cents | 37.4% | 29.2% |
+| Five-semitone-lower DI proxy, single-note frames with extra pitches | 34.4% | 32.7% |
+
+Voice scoring uses oscillator gain above 0.065 and looks at settled frames
+from 30 ms after annotation onset. The lower guitar set uses varispeed on the
+same recordings. It is a proxy for physical down-tuning.
+
+Two voices scored 93–97% on synthetic staggered fourth, fifth and octave
+sustains. Semitone sustain scored 0%. A synthetic two-semitone bend under a
+held upper note stayed within 50 cents in 88.1% of the bend window, with a
+20-cent median error. On four recorded round-robin 4 bass pairs, the first
+correct low voice appeared 54–65 ms after attack. Both-note sustain was
+0–20% across those B0/E1 and E1/A1 pairs. The wet trace includes the oscillator
+and envelope timing and excludes converters. Soft repicks, close intervals,
+individual mutes and bass sustain still need work before this allocator is
+ready for Saw Poly or Arcade Poly.
+
+### Build and audition
+
+```sh
+OP_CHANNEL=pulse-test sh firmware/build.sh
+cc -O2 -Iengine -Ifirmware tools/sim/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+build/pulse_poly_bench notes.csv < mono-44100.f32 > pulse.f32
+```
+
+Both packages are 675,968 bytes and use a 482,416-byte app. Full v56 leaves
+144 bytes in the RAM code window, 864 bytes in low RAM, 5,720 bytes in
+general RAM and 1,456 bytes in the DSP pool. The per-report peak picker
+runs from flash in this channel. The native sweep passed 3,010 configurations,
+the Pulse replay passed ASan and UBSan, and the standard engine matched the
+previous revision bit for bit in 1,022 equivalence runs.
+
+The BlackBox updated successfully and reported `BlackBox_956`. All three
+saved presets matched their v55 checksum. The editor read back all five
+controls at 0, 50 and 100, and the bypass toggle passed. The probe restored
+and read back the original sound.
+
+| BlackBox v56 smoke test | Peak callback load |
+| --- | ---: |
+| PWM Synth HQ | 22% |
+| Pulse Poly | 18% |
+| Pulse Poly with Smart Gate | 23% |
+
+Core 2 stayed active with zero late blocks and no safety bypass. The input
+was uncontrolled. Active-playing peak load and audible onset still need a
+guitar-input test.

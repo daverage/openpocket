@@ -453,7 +453,7 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
            ap - am * c + tsa, 2 * (am - ap * c), ap - am * c - tsa);
 }
 #include "px_track.h"                                  /* v49: the note tracker (band bank, salience, note layer) */
-#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST)
+#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST) || defined(PX_PULSE_TEST)
 #include "px_resonator_test.h"
 #endif
 static float tan_pi(float fs, float f) { float w = PI_F * clampf_hz(fs, f) / fs; return sinf(w) / cosf(w); }
@@ -552,6 +552,9 @@ static const char *const PN_BRASS[] = {"ATTACK", "RELEASE", "BRIGHT", "BITE", "D
 static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
 static const char *const PN_TRP[] = {"OCTAVE", "TONE", "DYNAMICS", "RELEASE", "DRY"};       /* v48 (px_acoustic.h) */
 static const char *const PN_CEL[] = {"OCTAVE", "BOW", "VIBRATO", "RELEASE", "DRY"};
+#ifdef PX_PULSE_TEST
+static const char *const PN_PULSE_POLY[] = {"WIDTH", "PWM", "CUTOFF", "RESO", "RELEASE"};
+#endif
 static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ORGAN", 5, PN_ORG}, {"CHURCH ORGAN", 5, PN_CHU}, {"STRINGS", 5, PN_STR}, {"CHOIR", 5, PN_CHO},
     {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM}, {"BASS SYNTH", 5, PN_BSY}, {"12-STRING", 3, PN_12S},
@@ -559,7 +562,11 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"STRINGS HQ", 5, PN_STR}, {"CHOIR HQ", 5, PN_CHO}, {"ORGAN HQ", 5, PN_ORG}, {"CHURCH ORGAN HQ", 5, PN_CHU},
     {"BASS SYNTH HQ", 5, PN_BSY}, {"PWM SYNTH HQ", 5, PN_PWM}, {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     {"TRUMPET", 5, PN_TRP}, {"", 5, PN_TRP}, {"BOWED CELLO", 5, PN_CEL}, {"CELLO ENSEMBLE", 5, PN_TRP},
-    {"STRING MACHINE", 5, PN_STRING_MACHINE}};
+    {"STRING MACHINE", 5, PN_STRING_MACHINE},
+#ifdef PX_PULSE_TEST
+    {"PULSE POLY", 5, PN_PULSE_POLY},
+#endif
+};
 
 /* drives: each knob has a role; the name shown comes from the role */
 enum { R_DRIVE, R_DIST, R_FUZZ, R_SUST, R_BOOST, R_TONE, R_TREBLE, R_LEVEL, R_BASS, R_VOICE, R_GATE, R_BIAS,
@@ -2204,6 +2211,9 @@ static void syn_fuzz_reset(px_engine *e)
     e->syn_fuzz.dcs = e->syn_lp = 0.0f;
 }
 
+#ifdef PX_PULSE_TEST
+static void pulse_poly_reset(px_engine *e, int configure);
+#endif
 static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, float f);   /* v48: px_acoustic.h */
 static void rc_syn(px_engine *e)
 {
@@ -2215,6 +2225,9 @@ static void rc_syn(px_engine *e)
     if (t != e->syn_type) {                            /* new instrument: start from a quiet state */
         if (syn_octave_hq(t)) memset(&e->erb_syn, 0, sizeof e->erb_syn);
         if (t == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
+#ifdef PX_PULSE_TEST
+        if (t == PX_SYN_PULSE_POLY) pulse_poly_reset(e, 1);
+#endif
         if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
             pxt_reset(e, &pxa_trk, &pxa_lay);           /* v49 */
@@ -2312,6 +2325,17 @@ static void rc_syn(px_engine *e)
         e->syn_out = db2lin(syn_fuzz_level_db(f));
         break;
     }
+#ifdef PX_PULSE_TEST
+    case PX_SYN_PULSE_POLY:
+        e->syn_pw0 = 0.5f + (a - 0.5f) * 0.76f;
+        e->syn_pwd = 0.15f * b;
+        e->syn_linc[0] = 0.65f / sr;
+        e->syn_cut = 250.0f * powf(32.0f, c);
+        e->syn_res = 0.90f * d;
+        e->syn_ka = onepole_k(sr, 0.004f);
+        e->syn_kr = onepole_k(sr, 0.003f + 0.052f * f * f);
+        break;
+#endif
     case PX_SYN_MONO:                                  /* one note: tracker -> oscillator -> 24 dB ladder */
         bq_lowpass(&e->syn_f[0], sr, 110.0f, 0.54f); bq_lowpass(&e->syn_f[1], sr, 110.0f, 1.31f);
         bq_highpass(&e->syn_f[2], sr, 50.0f, 0.7f);   /* no DC / rumble in the tracker */
@@ -2546,6 +2570,9 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
             if (b == PX_B_SYN && syn_octave_hq(p->type[b]))
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
             if (b == PX_B_SYN && p->type[b] == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
+#ifdef PX_PULSE_TEST
+            if (b == PX_B_SYN && p->type[b] == PX_SYN_PULSE_POLY) pulse_poly_reset(e, 0);
+#endif
             if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ)) {
                 memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq); pxt_reset(e, &pxa_trk, &pxa_lay);
 #ifdef PX_RESONATOR_TEST
@@ -3099,10 +3126,15 @@ static inline float synth_hq_pulse(const px_synth_tracking *track, int harmonic,
     return syn_saw(phase, advance) - syn_saw(wrap1(phase + width), advance);
 }
 
-static inline float syn_ladder(px_engine *e, float in, float fc)
-{   /* 4 one-poles, tanh on the feedback: a 24 dB/oct "transistor ladder" low-pass, resonant */
+static inline float syn_ladder_coefficient(const px_engine *e, float fc)
+{
     if (fc > e->sr * 0.42f) fc = e->sr * 0.42f;
-    float wc = PI_F * fc / e->sr, g = wc / (1.0f + wc);
+    const float wc = PI_F * fc / e->sr;
+    return wc / (1.0f + wc);
+}
+
+static inline float syn_ladder_step(px_engine *e, float in, float g)
+{   /* 4 one-poles, tanh on the feedback: a 24 dB/oct "transistor ladder" low-pass, resonant */
     float u = px_tanh(in - e->syn_res * 4.0f * e->syn_lad[3]);
     e->syn_lad[0] += g * (u - e->syn_lad[0]);
     e->syn_lad[1] += g * (e->syn_lad[0] - e->syn_lad[1]);
@@ -3110,6 +3142,13 @@ static inline float syn_ladder(px_engine *e, float in, float fc)
     e->syn_lad[3] += g * (e->syn_lad[2] - e->syn_lad[3]);
     return e->syn_lad[3] * (1.0f + e->syn_res * 1.5f);
 }
+static inline float syn_ladder(px_engine *e, float in, float fc)
+{
+    return syn_ladder_step(e, in, syn_ladder_coefficient(e, fc));
+}
+#ifdef PX_PULSE_TEST
+#include "px_pulse_poly.h"
+#endif
 static inline float syn_tap(const px_engine *e, float d)   /* ensemble / doubler line, d samples back */
 {
     float pos = (float)e->syn_cw - d; if (pos < 0.0f) pos += (float)PX_SYN_CB;
@@ -4130,6 +4169,12 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             }
             goto faded;
         }
+#ifdef PX_PULSE_TEST
+        if (sblk == PX_B_SYN && syn_t == PX_SYN_PULSE_POLY) {
+            pulse_poly_block(e, xb, n, strim);
+            goto faded;
+        }
+#endif
         if (sblk == PX_B_SYN && pxa_is(syn_t)) { pxa_run(e, syn_t, xb, n, strim); goto faded; }   /* v48 */
 #if PX_RUNS
         if (sblk == PX_B_SYN && (syn_t == PX_SYN_ORGAN || syn_t == PX_SYN_CHURCH ||
