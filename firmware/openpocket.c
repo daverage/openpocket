@@ -261,7 +261,9 @@ static uint32_t cur_preset = 0;
 static uint32_t master_vol = 80;        /* 0..100, follows the MASTER knob (ADC channel 2) */
 static void st_get(uint32_t k, px_preset_t *p);   /* px_store.h: the saved preset of slot k, else the factory one */
 static uint8_t preset_new;                             /* v40.3: a preset was loaded: the sound follows at once */
-static void load_preset(uint32_t i) { st_get(i, &PRESET); preset_new = 1; }
+static uint8_t ui_fs = 0xFFu;                          /* v48: the footswitches' assignment beside PRESET (ui.h, px_store.h) */
+static uint8_t st_fs_of(uint32_t k);
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); preset_new = 1; }
 
 #if AUDIO_PROBE
 void fm1_timer5_irq(void) { }
@@ -308,7 +310,7 @@ static void fm1_fault(const fm1_crash_t *c)
 #define PH_DIR  (*(volatile uint32_t *)0x501C8u)
 #define ENC_MASK 0x3u      /* PC0=A, PC1=B */
 #ifndef OP_VERSION_NUM                  /* a test channel build (firmware/build.sh, OP_CHANNEL) sets its own number and tag */
-#define OP_VERSION_NUM "42"
+#define OP_VERSION_NUM "49"
 #endif
 #ifndef OP_TAG
 #define OP_TAG ""
@@ -764,6 +766,7 @@ static void app_main(void)
     a_hold = 1;                          /* DSP bypassed until the UI is up and 1.5 s have passed */
     px_flash_boot();                     /* the flash's size; a staging area an update left */
     px_store_boot();                     /* the saved presets and the settings; start on the last one saved */
+    ui_stomp = st_ui & 1u;               /* v48: STOMP mode as last saved */
     px_usb_start();                      /* USB-MIDI device + update entry (web installer); v42: USB audio when set */
     nm_scan();                           /* v37: the NAM user models (names, levels) */
     ir_scan();                           /* v38: the user cabinet IRs (names) */
@@ -914,6 +917,8 @@ static void app_main(void)
                         (uint32_t)(btn[B_FX].stab != 0) << UB_FX | (uint32_t)(btn[B_MOD].stab != 0) << UB_MOD |
                         (uint32_t)(btn[B_AMP].stab != 0) << UB_AMP | (uint32_t)(btn[B_CAB].stab != 0) << UB_CAB |
                         (uint32_t)(btn[B_DLY].stab != 0) << UB_DLY | (uint32_t)(btn[B_REV].stab != 0) << UB_REV);
+        a_ubyp = ui_byp;                 /* v48: BYPASS on a footswitch: the dry guitar */
+        st_ui = (uint8_t)((st_ui & ~1u) | ui_stomp);   /* v48: STOMP mode goes into the store with the next save */
 #endif
         if (mv >= 0) {
             /* smoothing (x16 moving average, ~160 ms) then hysteresis of 2 on the 0..100 volume */

@@ -28,7 +28,10 @@ static void st_get(uint32_t k, px_preset_t *p) { if (saved_ok[k]) *p = saved[k];
 static int st_save(uint32_t k, const px_preset_t *p) { saved[k] = *p; saved_ok[k] = 1; return 0; }
 static int st_reset(uint32_t k) { saved_ok[k] = 0; return 0; }
 static int st_saved(uint32_t k) { return saved_ok[k]; }
-static void load_preset(uint32_t i) { st_get(i, &PRESET); }
+static uint8_t saved_fs[52], ui_fs = 0xFFu;                 /* v48: footswitch assignments */
+static uint8_t st_fs_of(uint32_t k) { return saved_ok[k] ? saved_fs[k] : 0xFFu; }
+static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs) { st_save(k, p); saved_fs[k] = fs; return 0; }
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); }
 static int a_level_db(int ch) { return ch ? -84 : -62; }
 static uint8_t a_pf[PX_NBLK + 1] = {0, 0, 0, 0, 0, 0, 3, 0, 0, 5, 7, 0, 64};   /* v38: CPU per block (the tuner's footer) */
 static uint32_t a_wcut = 2;                            /* v39: wet blocks cut short */

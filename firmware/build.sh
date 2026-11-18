@@ -81,7 +81,7 @@ RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_bl
   px_nam_lp_b px_nam_lp_queued px_nam_lp_split px_nam_lp_split_now pxn_lp_a pxn_lp_b pxn_lp_queued pxn_lp_split
   pxn_lp_split_now pxn_frame_ticks px_nam_lp_handed px_nam_lp_before pxn_lp_handed pxn_lp_before
   px_nam_lp_split_used px_nam_lp_force pxn_lp_split_used pxn_lp_force px_nam_lp_gave_up pxn_lp_gave_up
-  ps_voice_run syn_organ_run pitch_run cab_detail_run gate_run comp_run bq_chain"
+  ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run synth_hq_track syn_fuzz_clip cab_detail_run gate_run comp_run bq_chain"
 # v40.2: the layer split's path (pxn_lp_*, lp_job, dsp_lp_run) in RAM; out of it, to make the room: the frame split's serving
 # (now the fallback when the layer split cannot run), the vector unit's paths (never chosen: slower) and the C versions
 # of the hand routines (used only if a hand one fails its start-up check: the network is then too slow anyway)
@@ -106,12 +106,13 @@ def sym(n):
     m=re.search(rf"^([0-9a-f]+) .*\s{n}$",syms,re.M); return int(m.group(1),16) if m else None
 load=sym("_data_load"); rt_load=sym("_rt_load"); start=sym("_start")
 be,cl,ch,nb=sym("_bss_end"),sym("_cram_lo"),sym("_cram_hi"),sym("_ble_stack_hi")
-re_,hs,he=sym("_rt_end"),sym("_bss_hi_start"),sym("_bss_hi_end")
+rs,re_,hs,he=sym("_rt_start"),sym("_rt_end"),sym("_bss_hi_start"),sym("_bss_hi_end")
+hi_limit=sym("_guard0")
 ls_,le=sym("_bss_lo_start"),sym("_bss_lo_end")
 if ls_ is not None and le and le > ls_: print(f"low RAM   : {le-ls_} of 24576 bytes (below the RAM)")
 ps_,pe=sym("_pool_tail_start"),sym("_pool_tail_end")
-if ps_ and pe: print(f"pool tail : {pe-ps_} bytes, {0x01C5E000-pe} left before the RAM code")
-if re_ and he: print(f"hi RAM    : RAM code {re_-0x01C5E000}, data {he-hs}, free {0x01C74000-he} of 90112 bytes (the RAM code window)")
+if ps_ and pe: print(f"pool tail : {pe-ps_} bytes, {rs-pe} left before the RAM code")
+if re_ and he: print(f"hi RAM    : RAM code {re_-rs}, data {he-hs}, free {hi_limit-he} of {hi_limit-rs} bytes (the RAM code window)")
 if be: print(f"RAM       : {be-0x01C08000} of 98304 bytes ({98304-(be-0x01C08000)} free)")
 if nb and nb >= 0x01C7C000 and nb > sym("_ble_stack_lo"): print(f"NOINIT    : {nb-0x01C7C000} of 15696 bytes up to the BLE task stacks' end")
 if cl is not None and ch is not None: print(f"cache RAM : {ch-cl} of 28672 bytes (the rest, {28672-(ch-cl)}, to the NAM network's vector unit)")

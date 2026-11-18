@@ -156,6 +156,43 @@ await act("/api/press/home");
 await click(); await click();
 ok((await state()).mode === "move", "two clicks within 350 ms: MOVE");
 await act("/api/press/home");
+
+// v48: STOMP mode (hold CAB), footswitches assigned by holding one and pressing a block button, BYPASS
+{
+  const slot0 = (await state()).slot;
+  await act("/api/down/cab"); await sleep(860); await act("/api/up/cab");
+  let t = await state();
+  ok(t.stomp === 1 && t.mode === "chain", "CAB held 0.8 s: STOMP mode, still on PLAY");
+  await act("/api/down/cab"); await act("/api/up/cab");
+  ok((await state()).mode === "block" && (await state()).block === 6, "a short CAB press still opens the CAB page (at its release)");
+  await act("/api/press/home");
+  const amp0 = (await state()).preset.on[5];
+  await act("/api/down/fs_dn"); await act("/api/down/amp"); await act("/api/up/amp"); await act("/api/up/fs_dn");
+  t = await state();
+  ok(t.fs[0] === 5 && t.preset.on[5] === amp0 && t.slot === slot0, "hold the left footswitch + AMP: it switches the AMP (its own press taken back, no preset change)");
+  ok(t.dirty === 1, "an assignment is an edit of the preset");
+  await act("/api/press/fs_dn");
+  ok((await state()).preset.on[5] === 1 - amp0 && (await state()).slot === slot0, "the left footswitch: AMP on / off, the preset stays");
+  await act("/api/press/fs_dn");
+  await act("/api/down/fs_up");
+  for (let i = 0; i < 8; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // DRV SFX SYN PIT CMP GT EQ BYP
+  await act("/api/up/fs_up");
+  t = await state();
+  ok(t.fs[1] === 12, "hold the right footswitch + FX eight times: BYPASS");
+  await act("/api/press/fs_up");
+  ok((await state()).bypass === 1 && (await state()).dsp.bypass === 0, "the right footswitch: BYPASS on (the user's, not the overload's)");
+  await act("/api/press/fs_up");
+  ok((await state()).bypass === 0, "and off again");
+  await act("/api/down/fs_dn"); await act("/api/down/fs_up"); await act("/api/up/fs_dn"); await act("/api/up/fs_up");
+  t = await state();
+  ok(t.mode === "tuner" && t.preset.on[5] === amp0, "both footswitches in STOMP mode: the tuner, the first one's toggle taken back");
+  await act("/api/press/home");
+  await act("/api/press/cab_long");
+  ok((await state()).stomp === 0, "CAB held again: PATCH mode");
+  await act("/api/press/fs_up");
+  ok((await state()).slot === (slot0 + 1) % 52, "PATCH mode: the footswitch changes the preset again");
+  await act("/api/press/fs_dn");
+}
 const k0 = (await state()).knob;
 await act("/api/knob/3");
 ok((await state()).knob === k0 + 3, "the state counts the knob's detents");

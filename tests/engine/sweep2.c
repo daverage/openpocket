@@ -2,9 +2,112 @@
  * (like the UI); detects NaN/Inf/blow-up */
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "px_dsp.h"
 static px_engine e;
 static long bad;
+
+static int poly_oct_fuzz_missing_at_minimum_level(void)
+{
+    const int sample_rate = 44100;
+    px_preset_t preset;
+    px_engine_init(&e, (float)sample_rate);
+    px_preset_factory(&preset, 0);
+    memset(preset.on, 0, sizeof preset.on);
+    preset.on[PX_B_SYN] = 1;
+    preset.type[PX_B_SYN] = PX_SYN_OCT_FUZZ;
+    preset.p[PX_B_SYN][0] = preset.p[PX_B_SYN][1] = 0;
+    preset.p[PX_B_SYN][2] = 50;
+    preset.p[PX_B_SYN][3] = 70;
+    preset.p[PX_B_SYN][4] = 0;                       /* lowest trim and legacy DRY = 0 */
+    preset.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    px_engine_set(&e, &preset);
+
+    /* Measure how much energy remains after projection onto the input tone. */
+    float real = 0.0f, imag = 0.0f, energy = 0.0f;
+    for (int i = 0; i < sample_rate * 2; i++) {
+        const float phase = 6.2831853f * 110.0f * (float)(i % sample_rate) / (float)sample_rate;
+        float input = 0.024f * sinf(phase), output;
+        px_engine_process(&e, &input, &output, 1);
+        if (!isfinite(output)) return 1;
+        if (i < sample_rate) continue;
+        energy += output * output;
+        real += output * cosf(phase);
+        imag += output * sinf(phase);
+    }
+    const float fundamental = 2.0f * (real * real + imag * imag) / (float)sample_rate;
+    return !(energy > 0.0f && fundamental < 0.98f * energy);
+}
+
+static int hq_octave_inaccurate(float ratio)
+{
+    const int frequencies[] = {82, 110, 147};
+    const int sample_rate = 44100;
+    px_preset_t preset;
+    px_engine_init(&e, (float)sample_rate);
+    px_preset_factory(&preset, 0);
+    memset(preset.on, 0, sizeof preset.on);
+    preset.on[PX_B_PITCH] = 1;
+    preset.type[PX_B_PITCH] = PX_PIT_POLYOCT_HQ;
+    preset.p[PX_B_PITCH][0] = 0;
+    preset.p[PX_B_PITCH][1] = ratio < 1.0f ? 100 : 0;
+    preset.p[PX_B_PITCH][2] = ratio > 1.0f ? 100 : 0;
+    preset.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    px_engine_set(&e, &preset);
+
+    float real[3] = {0}, imag[3] = {0}, energy = 0.0f;
+    for (int i = 0; i < 2 * sample_rate; i++) {
+        float input = 0.0f, output;
+        const float phase = 6.2831853f * (float)(i % sample_rate) / (float)sample_rate;
+        for (int n = 0; n < 3; ++n) input += 0.06f * sinf(phase * frequencies[n]);
+        px_engine_process(&e, &input, &output, 1);
+        if (!isfinite(output)) return 1;
+        if (i < sample_rate) continue;
+        energy += output * output;
+        for (int n = 0; n < 3; ++n) {
+            real[n] += output * cosf(phase * ratio * frequencies[n]);
+            imag[n] += output * sinf(phase * ratio * frequencies[n]);
+        }
+    }
+    float target = 0.0f;
+    for (int n = 0; n < 3; ++n) target += real[n] * real[n] + imag[n] * imag[n];
+    return !(energy > 0.0f && 2.0f * target / ((float)sample_rate * energy) > (ratio < 1.0f ? 0.7f : 0.5f));
+}
+
+static int mono_retrigger_broken(void)
+{
+    const float sample_rate = 44100.0f, first = 82.41f, second = 146.83f;
+    px_preset_t preset;
+    px_engine_init(&e, sample_rate);
+    px_preset_factory(&preset, 0);
+    memset(preset.on, 0, sizeof preset.on);
+    preset.on[PX_B_SYN] = 1;
+    preset.type[PX_B_SYN] = PX_SYN_MONO;
+    px_engine_set(&e, &preset);
+
+    float input, output;
+    for (int i = 0; i < 10000; i++) {
+        input = 0.2f * sinf(i * 6.2831853f * first / sample_rate);
+        px_engine_process(&e, &input, &output, 1);
+    }
+    if (e.syn_kg < 0.8f || fabsf(e.syn_f0 - first) > 1.0f) return 1;
+
+    input = 0.0f;
+    for (int i = 0; i < 15000; i++) px_engine_process(&e, &input, &output, 1);
+    if (e.syn_key) return 1;
+
+    int waited_for_pitch = 0;
+    for (int i = 0; i < 4000; i++) {
+        input = 0.2f * sinf(i * 6.2831853f * second / sample_rate);
+        px_engine_process(&e, &input, &output, 1);
+        if (!e.syn_key) continue;
+        if (!e.syn_snap) return !waited_for_pitch || fabsf(e.syn_f0 - second) > 3.0f;
+        if (e.syn_kg != 0.0f) return 1;
+        waited_for_pitch = 1;
+    }
+    return 1;
+}
+
 static int run(int blocks, float amp){
   float in[64], out[64]; int nan = 0; static unsigned seed = 1;
   for (int b = 0; b < blocks; b++) {
@@ -51,6 +154,10 @@ int main(void){
       if (run(40, 1.0f) | run(20, 0.0f) | run(10, 3.0f)) { bad++; printf("PROBLEM order preset %d x%d\n", pr, x); px_engine_init(&e,44100.0f); }
     }
   }
+  if (mono_retrigger_broken()) { bad++; puts("PROBLEM MONO SYNTH played stale pitch or failed to acquire the new note"); }
+  if (hq_octave_inaccurate(2.0f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the doubled chord frequencies"); }
+  if (hq_octave_inaccurate(0.5f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the halved chord frequencies"); }
+  if (poly_oct_fuzz_missing_at_minimum_level()) { bad++; puts("PROBLEM POLY OCT FUZZ lost its distortion at minimum LEVEL"); }
   printf("%ld configurations tested, %ld problems\n", n, bad);
   return bad != 0;
 }

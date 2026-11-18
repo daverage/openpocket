@@ -20,7 +20,7 @@
 #define ED_H0 0x7Du
 #define ED_H1 0x4Fu
 #define ED_H2 0x50u
-#define ED_PROTO 4u                             /* 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
+#define ED_PROTO 5u                             /* 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
 #define ED_NAME_MAX 13u
 #define ED_P_SIZE 110u
 #if OP_UADEV
@@ -36,7 +36,8 @@ enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_OR
        ED_FOCUS, ED_LIST, ED_SLOT_GET, ED_SLOT_PUT, ED_COMMIT, ED_SAVE, ED_WATCH, ED_PING,
        ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,
        ED_IR_LIST, ED_IR_WRITE, ED_IR_COMMIT, ED_IR_ERASE,     /* v38: 24..27 */
-       ED_USB_AUDIO };                                         /* v42: 28 */
+       ED_USB_AUDIO,                                           /* v42: 28 */
+       ED_FOOTSWITCH };                                        /* v48: 29 */
 
 static uint8_t ed_out[1024];
 static uint32_t ed_n;
@@ -83,7 +84,7 @@ static int ed_dirty(void)
     static px_preset_t ref;
     static uint32_t ref_slot = ~0u, ref_gen = ~0u;
     if (ref_slot != cur_preset || ref_gen != st_gen) { st_get(cur_preset, &ref); ref_slot = cur_preset; ref_gen = st_gen; }
-    return memcmp(&ref, &PRESET, sizeof ref) != 0;
+    return memcmp(&ref, &PRESET, sizeof ref) != 0 || ui_fs != st_fs_of(cur_preset);   /* v48: and its footswitches */
 }
 static uint32_t ed_state_hash(void)
 {
@@ -92,6 +93,7 @@ static uint32_t ed_state_hash(void)
     for (i = 0; i < sizeof PRESET; i++) h = (h ^ b[i]) * 16777619u;
     h = (h ^ cur_preset) * 16777619u;
     h = (h ^ ui_blk) * 16777619u;
+    h = (h ^ (ui_fs | (uint32_t)ui_stomp << 8 | (uint32_t)ui_byp << 9)) * 16777619u;   /* v48: footswitches, STOMP, BYPASS */
     return (h ^ st_gen) * 16777619u;
 }
 static void ed_state_frame(void)
@@ -233,7 +235,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         break;
     case ED_SAVE:
         if (n < 1u || a[0] >= ST_NSLOT) return;
-        rc = st_save(a[0], &PRESET) ? 2 : 0;
+        rc = st_save_fs(a[0], &PRESET, ui_fs) ? 2 : 0;   /* v48: with its footswitches */
         if (!rc) cur_preset = a[0];
         st_gen++;
         if (!rc) load_preset(cur_preset);
@@ -309,6 +311,13 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
 #else
         ed_b(0); ed_b(1); ed_b(0); ed_b(0);            /* (this image has no USB audio) */
 #endif
+        break;
+    case ED_FOOTSWITCH:                                /* v48: the current preset's footswitches, STOMP mode, BYPASS */
+        if (n >= 3u) {                                 /* (each: a value to set, or 127 to leave it) */
+            for (k = 0; k < 2u; k++) if (a[k] != 127u) ui_fs_put((int)k, a[k] <= UI_FS_BYP ? a[k] : UI_FS_NONE);
+            if (a[2] != 127u && (a[2] ? 1u : 0u) != ui_stomp) ui_stomp_toggle();
+        }
+        ed_b(ui_fs_get(0)); ed_b(ui_fs_get(1)); ed_b(ui_stomp); ed_b(ui_byp);
         break;
 #ifdef ED_DIAG_LINES
     case ED_DIAG: {                                    /* read only: nothing here changes the pedal */

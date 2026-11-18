@@ -96,6 +96,16 @@ int main(void)
     CHECK(q.p[PX_B_DELAY][0] == 23 && q.order[0] == PX_B_SYN && px_order_valid(q.order), "last slot (second sector): its newest save, with its block order");
     loader_bytes_clear();
 
+    /* v48: a slot's footswitch assignment and the STOMP setting come back after a reboot; an earlier save has none */
+    CHECK(st_fs_of(5) == 0xFFu, "a slot saved without footswitches: nothing assigned");
+    CHECK(st_save_fs(5, &p, 0xC5u) == 0, "save slot 6 with its footswitches (left AMP, right BYPASS)");
+    st_ui = 1u; CHECK(st_save_fs(5, &p, 0xC5u) == 0, "and with STOMP mode on");
+    reboot();
+    st_get(5, &q);
+    CHECK(st_fs_of(5) == 0xC5u && !memcmp(&q, &p, sizeof q) && st_ui == 1u, "after a reboot: the footswitches, the sound and STOMP mode");
+    CHECK(st_fs_of(6) == 0xFFu, "a factory slot: nothing assigned");
+    st_ui = 0u;
+
     /* factory reset of a slot */
     CHECK(st_reset(ST_NSLOT - 1u) == 0, "restore the last slot to factory");
     reboot();

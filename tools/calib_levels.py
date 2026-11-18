@@ -17,7 +17,7 @@ RISE = 6.0                          # dB from GAIN 0 to GAIN 100
 EXE = os.path.join(ROOT, "build", "lvl_chain")
 TRIM = os.path.join(ROOT, "engine", "px_trim.h")
 B = dict(GT=0, CMP=1, PIT=2, SFX=3, DRV=4, AMP=5, CAB=6, EQ=7, MOD=8, DLY=9, REV=10, SYN=11)
-NT = dict(CMP=4, PIT=5, SFX=7, DRV=4, CAB=7, MOD=11, DLY=8, REV=8, SYN=11)
+NT = dict(CMP=4, PIT=5, SFX=7, DRV=5, CAB=7, MOD=11, DLY=8, REV=8, SYN=11)
 
 
 def kweight(x):

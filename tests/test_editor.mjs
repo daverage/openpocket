@@ -56,7 +56,7 @@ let s = sim(["--dump", flash1]);
 await s.ready;
 let ed = new Editor(s.access);
 const info = await ed.connect();
-ok(info && info.proto === 4 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
+ok(info && info.proto === 5 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
 ok(info && info.nblk === 12 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 12 blocks, 5 parameters, 52 slots, names of 13");
 const t0 = Date.now();
 const cat = await ed.catalog();
@@ -67,6 +67,18 @@ const withTexts = cat.blocks.flatMap((b) => b.types.flatMap((t) => t.params.filt
 ok(withTexts > 0 && cat.blocks[9].types[0].params.some((p) => p.texts && p.texts.some((x) => /ms|\d/.test(x))), `catalogue: value texts for ${withTexts} parameters (delay time...)`);
 let st = await ed.state();
 ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st.preset.name}", not changed`);
+
+// v48 (protocol 5): FOOTSWITCH, the current preset's footswitches in STOMP mode
+{
+  const f0 = await ed.footswitch();
+  ok(ed.hasFootswitch && f0.left === 15 && f0.right === 15 && !f0.stomp && !f0.bypass, "FOOTSWITCH: nothing assigned, PATCH mode");
+  const f1 = await ed.footswitch({ left: 4, right: 12, stomp: true });
+  ok(f1.left === 4 && f1.right === 12 && f1.stomp && (await ed.state()).dirty, "FOOTSWITCH set: left DRV, right BYPASS, STOMP mode; the preset is edited");
+  const f2 = await ed.footswitch({ left: 99, stomp: false });
+  ok(f2.left === 15 && f2.right === 12 && !f2.stomp, "an out-of-range block is nothing; a field left out stays; PATCH again");
+  const f3 = await ed.footswitch({ right: 15 });
+  ok(f3.right === 15 && !(await ed.state()).dirty, "nothing assigned again: the preset is as saved");
+}
 
 // ---- 2. live editing ----
 const amp = 5;

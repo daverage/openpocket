@@ -1,7 +1,7 @@
 # OpenPocket editor protocol (SysEx over USB-MIDI)
 
 The web editor (`docs/editor.html`, `docs/pxedit.js`) talks to the pedal with this protocol. The firmware side is
-`firmware/px_editor.h`; `tests/edsim.c` runs the same code on a PC for the tests. Protocol version 4 (OpenPocket v42: `USB_AUDIO`, command 28; version 3: v38, the cabinet IR commands 24..27; version 2: v37, without them;
+`firmware/px_editor.h`; `tests/edsim.c` runs the same code on a PC for the tests. Protocol version 5 (OpenPocket v48: `FOOTSWITCH`, command 29; version 4: v42, `USB_AUDIO`, command 28; version 3: v38, the cabinet IR commands 24..27; version 2: v37, without them;
 version 1: v32 to v36, also without the NAM commands 19..22). A later version only adds commands: an editor written for
 an earlier one works unchanged.
 
@@ -54,6 +54,7 @@ The 12 blocks, by index: 0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 
 | 26 IR_COMMIT | slot (0..7) | slot, rc (0 ok, 1 invalid: header, CRC; 2 flash). Checks the pieces received and writes them to the slot |
 | 27 IR_ERASE | slot (0..7) | slot, rc (0 ok, 1 invalid, 2 flash). Empties the slot |
 | 28 USB_AUDIO | nothing, or on (0/1) | on (0/1), rc (0 ok, 1 this firmware has no USB audio, 2 flash), state, n (20), then n counts of 4 bytes each (bits 0-6, 7-13, 14-20, 21-27). Without an argument it only reads. With one it sets the USB AUDIO setting and, if it changed, writes it to the flash; see "USB audio" below |
+| 29 FOOTSWITCH | nothing, or left, right, stomp (each 127: leave it) | left, right, stomp (0/1), bypass (0/1). The current preset's footswitch assignment in STOMP mode (protocol 5, v48): a block index 0..11, 12 BYPASS, 15 nothing. It is part of the preset: setting it marks the preset edited, `SAVE` keeps it in the slot. STOMP mode (hold CAB on the pedal) is written to the flash with the next save. BYPASS is the dry guitar with the DSP off, switched on a footswitch |
 
 ### NAM models (protocol 2)
 

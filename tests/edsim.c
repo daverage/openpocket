@@ -15,7 +15,8 @@
  * and, for the hosted simulator, each answered by one line that starts with the same word:
  *   in   "#press NAME"           a control, as the pedal's main loop (openpocket.c) dispatches it: fs_up fs_dn fx home
  *                                push mod amp cab dly rev, push_long (SAVE), dpush (double click: MOVE), fx_long (MIDI),
- *                                feet (both footswitches: tuner), home_long (hold HOME: tuner, on the tuner: diagnostics).
+ *                                feet (both footswitches: tuner), home_long (hold HOME: tuner, on the tuner: diagnostics),
+ *                                cab_long (hold CAB: STOMP mode on / off, v48).
  *                                "#press ok" / "#press err REASON"
  *   in   "#down NAME"            a button goes down / comes up, timed as the main loop times it: fs_up fs_dn fx home push
  *   in   "#up NAME"              mod amp cab dly rev. "#down ok" / "#up ok" / "... err REASON"
@@ -112,7 +113,9 @@ static uint8_t px_flash_ok = 1;
 static px_preset_t PRESET;
 static uint32_t cur_preset;
 static void st_get(uint32_t k, px_preset_t *p);
-static void load_preset(uint32_t i) { st_get(i, &PRESET); }
+static uint8_t ui_fs = 0xFFu;                          /* v48: the footswitches' assignment (ui.h) */
+static uint8_t st_fs_of(uint32_t k);
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); }
 static uint32_t master_vol = 80;
 static int bat_mv = 3920, bat_usb_mv = 0;
 static int32_t bat_raw[5] = {612, 1, 0, 3, 91};   /* bat_read's raw values (the tuner page shows them) */
@@ -192,7 +195,7 @@ static void pedal(const char *l)
 static const char *const BUTTON[] = {"fs_up", "fs_dn", "push", "home", "fx", "mod", "amp", "cab", "dly", "rev"};   /* (UB_ order) */
 enum { N_BUTTON = sizeof BUTTON / sizeof *BUTTON };
 static const struct { const char *name; int act; } GESTURE[] = {
-    {"push_long", UA_SAVE}, {"dpush", UA_MOVE}, {"home_long", UA_TUNER}, {"fx_long", UA_MIDI}, {"feet", UA_FEET}};
+    {"push_long", UA_SAVE}, {"dpush", UA_MOVE}, {"home_long", UA_TUNER}, {"fx_long", UA_MIDI}, {"feet", UA_FEET}, {"cab_long", UA_STOMP}};
 static char last_press[32];
 static uint32_t n_press;
 static void noted(const char *n) { snprintf(last_press, sizeof last_press, "%s", n); n_press++; }
@@ -220,7 +223,7 @@ static void knob(int n, int fast)
 static uint32_t held;
 static void buttons_at(uint32_t now)                   /* ui_buttons, and what acted as last_press: a press, a release, a hold */
 {
-    static const char *const HOLD[UB_N] = {[UB_PUSH] = "push_long", [UB_HOME] = "home_long", [UB_FX] = "fx_long"};
+    static const char *const HOLD[UB_N] = {[UB_PUSH] = "push_long", [UB_HOME] = "home_long", [UB_FX] = "fx_long", [UB_CAB] = "cab_long"};
     uint32_t was = ug.held;
     uint8_t fired[UB_N];
     memcpy(fired, ug.fired, sizeof fired);
@@ -282,6 +285,7 @@ static void status(void)
            "\"last_press\":", ed_dirty(), st_saved(cur_preset), MODE[ui_mode], ui_blk, ui_item, master_vol, bat_mv, bat_usb_mv,
            (double)tuner_hz, writes_ok, fb_gen, ed_load(), ed_flags() & 1u, ed_flags() >> 1 & 1u);
     json_str(last_press);
+    printf(",\"stomp\":%u,\"bypass\":%u,\"fs\":[%u,%u]", ui_stomp, ui_byp, ui_fs_get(0), ui_fs_get(1));   /* v48 */
     printf(",\"presses\":%u,\"knob\":%d,\"held\":[", n_press, knob_pos);
     for (int i = 0, n = 0; i < N_BUTTON; i++) if (held >> i & 1u) { printf(n++ ? "," : ""); json_str(BUTTON[i]); }
     printf("],\"preset\":{\"name\":");

@@ -15,8 +15,8 @@ MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 96K
-    POOL   (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x3E000   /* free SRAM (like CLIPPER): DSP engine (v40: was 0x54000) */
-    RAMTEXT (rwx): ORIGIN = 0x01C5E000, LENGTH = 0x16000   /* v40: the RAM code, audio path included (was 24 KB at 0x01C00000) */
+    POOL   (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x3F000   /* DSP engine, including the HQ octave filter state */
+    RAMTEXT (rwx): ORIGIN = 0x01C5F000, LENGTH = 0x15000   /* RAM code, including the audio path */
     NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
     LOWRAM (rw)  : ORIGIN = 0x01C00000, LENGTH = 0x6000    /* v40.1: v37's RAM code window, free since v40 (see .bss_lo) */
     CRAM   (rw)  : ORIGIN = 0x01F28000, LENGTH = 0x7000    /* PXC_BEGIN..PXC_END (px_cacheram.h) */
@@ -24,9 +24,10 @@ MEMORY
 SECTIONS
 {
     .text : { KEEP(*(.text.crt0)) *(EXCLUDE_FILE(*libjl.a:*) .text*) *(EXCLUDE_FILE(*libjl.a:*) .rodata*) _etext_fw = .;
-              *libjl.a:*(.text* .rodata*) *(.*_code) *(.*_const) . = ALIGN(4); _etext = .; } > XIP
+              *libjl.a:*(.text* .rodata*) *(.*_code) *(.*_const) . = ALIGN(4); *(.pxbank*) . = ALIGN(4); _etext = .; } > XIP
     /* (_etext_fw: the end of the firmware's own flash code; the Bluetooth controller library's (libjl.a) comes after
-     * it and never calls the RAM code: firmware/build.sh sends its memcpy / memset to flash copies) */
+     * it and never calls the RAM code: firmware/build.sh sends its memcpy / memset to flash copies. v48: .pxbank, the
+     * acoustic voices' samples (engine/px_acoustic_bank.h), after it too: data, read by loads, outside the call range) */
     .ram_text : { _rt_start = .; KEEP(*(.ram_text*))
                   . = ALIGN(4); _c1_start = .; KEEP(*(.c1_text*)) . = ALIGN(4); _c1_end = .;   /* the second core's loop */
                   _rt_end = .; } > RAMTEXT AT > XIP

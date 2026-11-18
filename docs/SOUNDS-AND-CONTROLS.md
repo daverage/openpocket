@@ -57,30 +57,38 @@ Each cabinet also has a detail layer: the cone's breakup resonances between 1.2 
 off-axis mic (MIC 0 = cone edge: dip around 6 kHz; MIC 100 = centre: out of the audio band) and the rear wave of
 the open-back cabinets (1x12 US, 2x12 BLUE), computed with resonators.
 
-### DRV — 4 drives, fitted to captures (DRIVE / DIST, TONE, LEVEL)
+### DRV — overdrive, distortion and fuzz
 | Type | Style | Reference |
 |---|---|---|
 | TS9 | overdrive (mid hump) | Ibanez TS9 |
 | KLON | transparent overdrive | Klon Centaur (clone) |
 | M77 OD | boost / hot overdrive | MXR M77 Custom Badass |
 | SWEDE HM-2 (LOW, HIGH) | Swedish distortion | Boss HM-2 |
+| FUZZ FACE (FUZZ, LEVEL) | two-stage germanium-style fuzz | Dunlop JDF2 |
 
-Each drive follows its circuit (input filter, the TS "shelf", clipping type, original tone control), with its
-numbers fitted to a capture of the pedal at noon. Level-matched: at noon every drive comes out at the same level as
-the guitar.
+The TS9, KLON, M77 and HM-2 are fitted to pedal captures at noon. FUZZ FACE uses two biased clipping stages with
+input and output coupling filters, inspired by the germanium JDF2. FUZZ sets gain and LEVEL sets the output.
+The shared clipping model uses a fixed amount of work per sample in both blocks.
+[Dunlop JDF2 manual](https://www.jimdunlop.com/content/manuals/JDF2.pdf) · [Fuzz Face circuit measurements](https://www.gitec-forum-eng.de/wp-content/uploads/2019/02/poteg-10-08-05-5-fuzz-face.pdf) · [Embedded circuit-model research](https://doi.org/10.1007/978-1-4020-9823-9_7)
 
-### SYN — 11 synths, keyboards and other guitars (v29)
+### SYN — synths, keyboards and other guitars
 Played with a normal guitar: no special pickup, no MIDI.
 
 | Family | Type | Settings | How it works |
 |---|---|---|---|
 | Keyboards (chords OK) | ORGAN | 16', 8', 4', PERC, DRY | drawbars: −1 octave, the guitar's own pitch, +1 octave; key click; percussion (+19 semitones, decaying) |
 | | CHURCH ORGAN | 16', 8', 4', 2', DRY | pipe organ: slow speech, long release, slight celeste |
-| | STRINGS | ATTACK, RELEASE, OCTAVE, TONE, DRY | tape-replay / string machine: swell, +1 octave layer, 3-voice ensemble |
+| | STRINGS | ATTACK, RELEASE, OCTAVE, TONE, DRY | string machine: bowed swell, softened reed-like source, optional +1 octave, and a 3-voice ensemble |
 | | CHOIR | ATTACK, RELEASE, VOWEL, OCTAVE, DRY | the strings through vocal formants, "ooh" (0) to "aah" (100) |
+| Tracked brass synth (one note at a time) | BRASS SYNTH | ATTACK, RELEASE, BRIGHT, BITE, DRY | a band-limited saw/pulse voice follows the played note; an attack envelope opens its resonant filter, while BITE adds upper harmonics. DRY adds the unprocessed guitar. |
+| Octave fuzz (chords OK) | POLY OCT FUZZ | SUB, OCT UP, DRIVE, TONE, LEVEL | combines the guitar and two octave voices into the built-in Fuzz Face model. LEVEL trims the fuzz output from −12 to +6 dB, with 0 dB at noon. |
+| Acoustic instruments (v48; one note at a time) | TRUMPET | OCTAVE, TONE, DYNAMICS, RELEASE, DRY | a trumpet played by your note: v49 keeps the attack of each University of Iowa recording (mf, ff) and continues it with a sustain synthesised from that recording's harmonics: it follows your pitch, bends and slides; pick strength chooses a soft or loud recording, and the string's level sets loudness and brightness. Sounds an octave above the guitar at OCTAVE 0 (−1 / 0 / +1). |
+| | BOWED CELLO | OCTAVE, BOW, VIBRATO, RELEASE, DRY | a physical model of a bowed string and cello body: the guitar's level controls bow speed; BOW sets pressure and VIBRATO adds movement. At the guitar's pitch at OCTAVE 0. |
+| | CELLO ENSEMBLE | OCTAVE, TONE, DYNAMICS, RELEASE, DRY | a sampled cello section (VSCO 2 CE, CC0), played from the guitar. At the guitar's pitch at OCTAVE 0. |
 | Synths that follow your note (one note at a time) | MONO SYNTH | WAVE, OCTAVE, CUTOFF, RESO, ENV | pitch tracker → band-limited saw / square / pulse → 24 dB resonant ladder filter with envelope |
 | Synths that follow the waveform (no delay) | PWM SYNTH | WIDTH, RATE, CUTOFF, RESO, MIX | the guitar turned into a pulse wave whose width moves, then the ladder filter |
 | | BASS SYNTH | OCT -1, OCT -2, CUTOFF, ENV, DRY | square waves one and two octaves down, filter swept by each attack |
+| Synths that follow your note (one note at a time) | PWM SYNTH HQ, BASS SYNTH HQ | same as their standard versions | a period tracker drives band-limited pulse oscillators. Acquisition takes a few cycles at the start of the note. |
 | Other guitars | 12-STRING | OCTAVE, DETUNE, TONE | thin octave strings, slightly out of tune, plus the doubled unison strings |
 | | ACOUSTIC | BODY, BASS, TREBLE, ROOM | magnetic pickup → flat-top: body resonance (parlour to jumbo), top, sparkle, body reflections |
 | | SITAR | KEY, BUZZ, SYMPATH, DECAY | bridge buzz (jawari) + 6 sympathetic strings tuned to KEY |
@@ -89,13 +97,22 @@ Played with a normal guitar: no special pickup, no MIDI.
 Keyboards hold the note while the string sounds (like a key held down) and release when it dies away or when you
 mute it. MONO SYNTH needs single notes: it finds the pitch in 30–80 ms and is accurate to a few cents.
 
+STRINGS HQ, CHOIR HQ, ORGAN HQ, and CHURCH ORGAN HQ use the same controls as their standard versions.
+Their octave layers use the phase-scaling filter bank from POLY OCTAVE HQ. HQ costs more DSP,
+so start by trying it with other blocks bypassed.
+
+POLY OCTAVE HQ's **RANGE** dial limits the **OCT −1** voice. The default `FULL` keeps all bands.
+Turn up from `FULL` to select a cutoff from B1 to E5. Try E3 for the low E string through fret 12,
+or A3 for the A string through fret 12. The filter tapers around the cutoff and follows pitch across all strings.
+Dry and OCT +1 keep their full range.
+
 ### Effects
 | Block | Types |
 |---|---|
 | GT | NOISE GATE (THRESH, RELEASE) |
 | CMP | SQUASH (Dyna Comp), STUDIO (parallel, MIX), OPTO LA-2 (optical, slow release), SLOW SWELL (attack removed: violin effect) |
-| PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (clean −1 and +1 octave), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents) |
-| SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, SQUARE SYNTH (square-wave synth + sub, opening filter) |
+| PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (−1 and +1 octave), POLY OCTAVE HQ (same controls, phase-scaled octave voices), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents) |
+| SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, SQUARE SYNTH (square-wave synth + sub, opening filter), SQUARE SYNTH HQ (monophonic pitch-tracked square + sub with the same controls) |
 | EQ | 5 BAND, GRAPHIC 5 (the Mesa "V"), PARAMETRIC |
 | MOD | CE CHORUS, DIMENSION (4 modes), FLANGER, PHASE 90, SMALL STONE, UNI-VIBE, OPTO TREMOLO, BIAS TREMOLO, HARMONIC TREM, ROTARY (Leslie, real SLOW↔FAST ramp), VIBRATO |
 | DLY | DIGITAL, ANALOG BBD, MEMORY MAN (modulated repeats), TAPE EP-3 (wow & flutter), SPACE ECHO (3 heads, 7 combinations), REVERSE, LO-FI, DUAL TAP (quarter + dotted eighth) — TIME 20–2000 ms (REVERSE 250–1000 ms) |
@@ -146,6 +163,9 @@ block type, with its knobs at noon, keeps the loudness when switched on; each pr
 | HOME | back to PLAY · on PLAY: the **preset list** (knob = browse by name, PUSH = load, HOME = back) · **long press (0.7 s) = tuner**, keep holding (1.4 s) = **diagnostics** |
 | Right / left footswitch | next / previous preset (on a block's EDIT page it also goes back to PLAY, where the preset shows). Coming back to a preset you edited without saving gives the edit back (one edit is kept) |
 | **Both footswitches** | **tuner** (the first one changes the preset at once, as always; the second within about 0.15 s changes it back and opens the tuner). Both again leave it |
+| **Hold CAB** (0.8 s) | **STOMP / PATCH mode** (v48). PATCH: the footswitches change presets, as above. STOMP: each footswitch switches what the preset assigns it (a block on / off, or BYPASS); presets do not change (hold CAB again for PATCH). The footer on PLAY shows `STOMP   L: DRV   R: BYP`. A short CAB press still opens the CAB page, at its release |
+| Footswitch held + a block button (STOMP) | assigns that footswitch: MOD, AMP, CAB, DLY or REV directly; FX steps through DRV, SFX, SYN, PIT, CMP, GT, EQ, BYPASS and nothing. The footswitch's own press is taken back. The assignment is part of the preset (EDITED; hold PUSH to save). The web editor's protocol can set it too (`FOOTSWITCH`, EDITOR-PROTOCOL.md) |
+| BYPASS on a footswitch (STOMP) | the dry guitar, every block off (DSP off); the footer turns red (`BYPASSED`). Press again to come back. Leaving STOMP mode ends it. STOMP mode is kept in the flash with the next save |
 | AMP, CAB, DLY, REV, MOD | jump to the block; press again = on/off |
 | FX | the next of DRV, SFX, SYN, PIT, CMP, GT and EQ in the order of the preset's chain, as the tiles read · **long press (0.8 s)** = MIDI page |
 | MASTER | output volume |

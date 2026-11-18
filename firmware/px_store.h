@@ -34,7 +34,11 @@ typedef char st_size_check[(sizeof(px_preset_t) < ST_SLOT && ST_NSLOT == 52u) ? 
 #endif
 
 /* pad[0]: the MIDI settings (px_midi.h, px_midi_cfg_pack); 0 = the defaults, which is what every earlier save wrote.
- * pad[1] (v42): bit 0 = USB AUDIO on (px_midi.h, px_ua_on); the other bits 0. 0 = off, as every earlier save wrote */
+ * pad[1] (v42): bit 0 = USB AUDIO on (px_midi.h, px_ua_on); the other bits 0. 0 = off, as every earlier save wrote.
+ * pad[2] (v48): bit 0 = STOMP mode (firmware/ui.h); 0 = PATCH mode, as every earlier save wrote.
+ * v48: each slot's last byte (ST_SLOT - 1, after the preset and its mark) holds the footswitches' assignment in
+ * STOMP mode (firmware/ui.h, ui_fs): low 4 bits the left footswitch, high 4 the right; 0..11 a block, 12 BYPASS,
+ * 15 nothing. Earlier saves left it 0xFF (erased): nothing assigned. The format is unchanged. */
 typedef struct { uint32_t magic, seq; uint16_t crc; uint8_t ver, nslot, last, pad[3]; } st_hdr_t;   /* 16 B */
 static uint8_t st_slot[ST_NSLOT][ST_SLOT] __attribute__((aligned(4)));
 static uint32_t st_seq, st_cur;                 /* sequence of the copy in use, its base (0: none yet) */
@@ -42,6 +46,7 @@ static uint8_t st_ok;                           /* the store can be written (the
 static uint8_t st_last;                         /* the slot to start on (the last one saved) */
 static uint8_t st_midi;                         /* the MIDI settings byte (header pad[0]) */
 static uint8_t st_usb;                          /* the USB settings byte (header pad[1]) */
+static uint8_t st_ui;                           /* v48: the pedal settings byte (header pad[2]): bit 0 STOMP */
 
 static uint32_t st_slot_off(uint32_t base, uint32_t k)
 {
@@ -135,7 +140,7 @@ static void st_load(void)
             bseq = h.seq;
             st_last = h.last;
             st_midi = h.pad[0];
-            st_usb = h.pad[1];
+            st_usb = h.pad[1]; st_ui = h.pad[2];
             bh = h;
         }
     }
@@ -148,7 +153,7 @@ static void st_load(void)
         memset(st_slot, 0xFF, sizeof st_slot);
         st_last = 0;
         st_midi = 0;
-        st_usb = 0;
+        st_usb = 0; st_ui = 0;
     }
     if (st_last >= ST_NSLOT) st_last = 0;
     if (best && bh.ver < 3u) st_types_v34();        /* saved before v34: the old amp / drive / cab numbers */
@@ -187,7 +192,7 @@ static int st_commit(void)
     int rc = 0;
     if (!st_ok) return -1;
     memset(&h, 0, sizeof h);
-    h.magic = ST_MAGIC; h.seq = st_seq + 1u; h.crc = (uint16_t)st_crc(); h.ver = ST_VER; h.nslot = ST_NSLOT; h.last = st_last; h.pad[0] = st_midi; h.pad[1] = st_usb;
+    h.magic = ST_MAGIC; h.seq = st_seq + 1u; h.crc = (uint16_t)st_crc(); h.ver = ST_VER; h.nslot = ST_NSLOT; h.last = st_last; h.pad[0] = st_midi; h.pad[1] = st_usb; h.pad[2] = st_ui;
     st_audio_hold(1);
     if (fl_erase4k(base, &k) || fl_erase4k(base + 0x1000u, &k)) rc = -2;
     for (k = ST_S0N; !rc && k < ST_NSLOT; k++)
@@ -206,16 +211,22 @@ static int st_commit(void)
     return rc;
 }
 
-/* save p to slot k (becomes the start slot) */
-static int st_save(uint32_t k, const px_preset_t *p)
+/* v48: slot k's footswitch assignment (0xFF: nothing, also for a slot never saved) */
+static uint8_t st_fs_of(uint32_t k) { return st_saved(k) ? st_slot[k][ST_SLOT - 1u] : 0xFFu; }
+typedef char st_fs_check[(sizeof(px_preset_t) + 1u < ST_SLOT) ? 1 : -1];   /* the mark, then this byte */
+
+/* save p, with its footswitch assignment fs, to slot k (becomes the start slot) */
+static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs)
 {
     if (k >= ST_NSLOT) return -1;
     memset(st_slot[k], 0xFF, ST_SLOT);
     memcpy(st_slot[k], p, sizeof *p);
     st_slot[k][sizeof *p] = ST_MARK;
+    st_slot[k][ST_SLOT - 1u] = fs;
     st_last = (uint8_t)k;
     return st_commit();
 }
+static int st_save(uint32_t k, const px_preset_t *p) { return st_save_fs(k, p, 0xFFu); }
 
 /* slot k back to its factory preset */
 static int st_reset(uint32_t k)

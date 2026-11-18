@@ -98,6 +98,7 @@ static uint32_t a_lds, a_cls[2];
  * knee (0.8 of full scale; it used to be a hard clip at full scale) */
 static volatile uint32_t a_xrun, a_xrun_at, a_clip, a_peak_all;
 static volatile uint8_t a_bypass, a_over, a_hold;   /* a_hold: DSP held off (boot, safe mode) */
+static volatile uint8_t a_ubyp;                     /* v48: BYPASS chosen on a footswitch (ui.h): the dry guitar, DSP off */
 static volatile uint8_t a_mute;                      /* output zeros (a flash write is coming) */
 static volatile uint8_t a_tmute;                     /* v36: tuner open: the output fades to silence (5 ms) */
 static float a_mg = 1.0f;
@@ -137,7 +138,7 @@ static void dsp_block(void)
 {
     uint32_t t0 = fm1_ticks();
     a_commit();
-    if (!a_bypass && !a_hold) {
+    if (!a_bypass && !a_hold && !a_ubyp) {
         for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
             px_engine_process(&g_eng, a_in + o, a_out + o, PX_MAX_BLOCK);
     } else {
@@ -457,7 +458,7 @@ static void dsp_pipe(uint32_t t_irq)
 {
     uint32_t t0 = fm1_ticks();
     if (g_eng.nam_lp) {
-        dsp_lp_run(!a_bypass && !a_hold, t_irq);
+        dsp_lp_run(!a_bypass && !a_hold && !a_ubyp, t_irq);
         const uint32_t c1 = a_lpc1, c0 = fm1_ticks() - t_irq + a_decw + a_uat;
         t0 = fm1_ticks() - (c1 > c0 ? c1 : c0);         /* the busier core */
         for (int k = 0; k < 2; k++) {                   /* each core's own (PING's profile) */
@@ -466,7 +467,7 @@ static void dsp_pipe(uint32_t t_irq)
             a_cl[k] = a_cls[k] / 8u;
             if (pc > a_cpk[k]) a_cpk[k] = pc;
         }
-    } else { dsp_pipe_run(!a_bypass && !a_hold); t0 -= a_uat; }   /* (USB audio's time in a_dec: CPU0's too) */
+    } else { dsp_pipe_run(!a_bypass && !a_hold && !a_ubyp); t0 -= a_uat; }   /* (USB audio's time in a_dec: CPU0's too) */
     dsp_load(t0, 93u);                                 /* (CPU0's whole block here, the UI gets the rest) */
 }
 #endif

@@ -10,7 +10,7 @@ const H = [0x7D, 0x4F, 0x50];
 export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 6, ORDER: 7, NAME: 8, PUT: 9, SELECT: 10,
   FOCUS: 11, LIST: 12, SLOT_GET: 13, SLOT_PUT: 14, COMMIT: 15, SAVE: 16, WATCH: 17, PING: 18,
   NAM_LIST: 19, NAM_WRITE: 20, NAM_COMMIT: 21, NAM_ERASE: 22, DIAG: 23, IR_LIST: 24, IR_WRITE: 25, IR_COMMIT: 26, IR_ERASE: 27,
-  USB_AUDIO: 28 };
+  USB_AUDIO: 28, FOOTSWITCH: 29 };
 export const NAM_CHUNK = 112;     // bytes per NAM_WRITE (firmware/px_models.h NM_CHUNK)
 export const P_SIZE = 110;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -300,6 +300,17 @@ export class Editor {
       "recFillLow", "recFillHigh", "playStarts", "playPackets", "playFrames", "playEmpty", "playFull", "blockTicks", "recSkipped", "playSkipped", "blockSwaps"];
     return { on: !!r[0], rc: r[1], recording: !!(r[2] & 1), flowing: !!(r[2] & 2), playing: !!(r[2] & 4), sounding: !!(r[2] & 8),
       counts: Object.fromEntries(names.map((k, i) => [k, v[i] ?? 0])) };
+  }
+  // v48 (protocol 5): the current preset's footswitches in STOMP mode, and the mode. footswitch() reads; footswitch({ left,
+  // right, stomp }) sets what is given first. A footswitch: a block index 0..11, 12 BYPASS, 15 nothing. The assignment
+  // is part of the preset (it marks it edited; SAVE keeps it); STOMP goes to the flash with the next save.
+  // -> { left, right, stomp, bypass }
+  get hasFootswitch() { return !!(this.info && this.info.proto >= 5); }
+  async footswitch(set) {
+    const v = (x) => (x === undefined ? 127 : x);
+    const args = set ? [v(set.left), v(set.right), set.stomp === undefined ? 127 : set.stomp ? 1 : 0] : [];
+    const r = await this.request(C.FOOTSWITCH, args);
+    return { left: r[0], right: r[1], stomp: !!r[2], bypass: !!r[3] };
   }
   // the CAB USER IR type's IR texts name the slots, which change: always asked again (not cached)
   async irTexts() {

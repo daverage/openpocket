@@ -37,9 +37,10 @@ enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_DRIVE, PX_B_AMP, PX_B_CA
 #define PX_NPAR 5
 
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
-enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_COUNT };
-enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH, PX_SFX_COUNT };
-enum { PX_DRV_TS9, PX_DRV_KLON, PX_DRV_M77, PX_DRV_HM2, PX_DRV_COUNT };
+enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ, PX_PIT_COUNT };
+enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
+       PX_SFX_SYNTH_HQ, PX_SFX_COUNT };
+enum { PX_DRV_TS9, PX_DRV_KLON, PX_DRV_M77, PX_DRV_HM2, PX_DRV_FUZZ_FACE, PX_DRV_COUNT };
 enum { PX_AMP_TWIN, PX_AMP_AC15, PX_AMP_JCM900, PX_AMP_JCM2000, PX_AMP_MARK4, PX_AMP_SHIRLEY, PX_AMP_PROMOD,
        PX_AMP_5150, PX_AMP_COUNT };
 /* v37: Neural Amp Modeler A2-Lite (px_nam.c) as one more AMP type, after the 8 fitted amps. Its 5 settings: MODEL,
@@ -58,7 +59,11 @@ enum { PX_CAB_112JN, PX_CAB_212BLUE, PX_CAB_412GB, PX_CAB_412T75, PX_CAB_412V30,
 #define PX_IR_N   8
 #define PX_IR_LEN 1024
 enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, PX_SYN_PWM, PX_SYN_BASS,
-       PX_SYN_12STR, PX_SYN_ACOUSTIC, PX_SYN_SITAR, PX_SYN_BARI, PX_SYN_COUNT };
+       PX_SYN_12STR, PX_SYN_ACOUSTIC, PX_SYN_SITAR, PX_SYN_BARI, PX_SYN_BRASS, PX_SYN_STRINGS_HQ, PX_SYN_CHOIR_HQ,
+       PX_SYN_ORGAN_HQ, PX_SYN_CHURCH_HQ, PX_SYN_BASS_HQ, PX_SYN_PWM_HQ, PX_SYN_OCT_FUZZ,
+       /* v48: tracked acoustic voices (engine/px_acoustic.h) */
+       PX_SYN_TRUMPET, PX_SYN_TRUMPET_MODEL, /* reserved: keep the saved-preset index stable */
+       PX_SYN_CELLO, PX_SYN_CELLO_SECTION, PX_SYN_COUNT };
 enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
        PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO, PX_MOD_COUNT };
@@ -137,6 +142,45 @@ typedef struct { float b0, b1, b2, a1, a2, z1, z2; } px_bq;
 typedef struct { float b0, b1, a1, z; } px_op;      /* first-order section (RC) */
 typedef struct { float x[6], y[6]; } px_hb;           /* v38: a half-band filter's all-pass sections (x2 up or down) */
 
+/* v49: the HQ octave's analysis: 29 complex band-pass filters from 60 Hz to 2.05 kHz, each 37.5 Hz + 4 % of its
+ * frequency from the next and 0.8 of that wide (32 Hz at the bottom, 95 Hz at the top), at a quarter of the rate
+ * (11.025 kHz). Narrower than a guitar note's harmonic spacing up to where its partials matter, so a partial gets a
+ * band of its own; v42 .. v48's 43 ERB-wide bands (up to 360 Hz) mixed several in one, and their doubled phases then
+ * made the octave's gargle, warble and drop-outs (docs/NOTE-TRACKING.md). */
+#define PX_ERB_BANDS 29
+typedef struct { float r, i; } px_erb_complex;
+typedef struct { float b0; px_erb_complex b1, b2, a1, a2; } px_erb_band;
+typedef struct {
+    px_erb_complex z1[PX_ERB_BANDS], z2[PX_ERB_BANDS];
+    float input[32], up[32];                           /* 44.1 kHz in; 22.05 kHz out (its odd slots stay zero) */
+    float in2[32], up2[32];                            /* v49: 22.05 kHz in; 11.025 kHz out (the voices, mixed) */
+    uint8_t half_phase[PX_ERB_BANDS];
+    unsigned pos, pos2;
+    unsigned idle;                                     /* v49: samples with every voice at zero (the bank rests) */
+} px_erb_octave;
+typedef struct {
+    float previous, peak, elapsed, period[2], step, target, phase;
+    int armed, gate, crossed;
+} px_synth_tracking;
+
+/* v48: the state of the tracked acoustic voices (engine/px_acoustic.h); it shares the SYN ensemble buffer (syn_cb) */
+#define PXA_HIST 160
+typedef struct { int smp, active, fade; float pos, gain, rise; } px_acoustic_player;   /* v49: rise, its fade-in */
+typedef struct {
+    px_synth_tracking hi;
+    px_bq lo1, lo2, u0, u1, u2, h1, h2, body[6];
+    float k_ea, k_er, k_ha, k_hr, k_hs, k_xa, k_xr, k_att, k_fade10, k_fade20, k_fade5, k_bow_a, k_bow_r, k_br_a, k_br_r;
+    float env, envs, hf, hfs, f0s, onset_peak, held_f0, cand_f0, ref_b[2], vel, peak_ref, expr;
+    int key, state, cand_n, peak_n, stable_b[2], refractory, hw, hist_n, sel, sel_n, gate, onset, nbody, held;
+    float hist[PXA_HIST];
+    float oct_mul, rel_k, dry, bow, vib, bright, tone, dyn_db, gain, sr, inv_sr;
+    px_acoustic_player pl[3]; float root_f, lp, root_t;   /* v49: root_t, since its last change of recording */
+    int nw, bw, ow; unsigned tick; uint32_t rnd;
+    float str_lp, bowv, vib_ph, vib_amt, held_t, noise_lp, kick_p, kick_a; int kick_n;   /* v49: kick, the string set going */
+    float lip_y1, lip_y2, lip_a1, lip_g, dc_x, dc_y, breath, out_lp, fb, last_f, amp, lvl_t;
+    float mp;                                         /* v49: the brass's blowing pressure for the note's pitch */
+} px_acoustic;
+
 #define PX_PS_N 2048                   /* pitch shifter buffer (46 ms) */
 #define PX_SYN_CB 1024                 /* SYN: ensemble / doubler / body reflections (23 ms) */
 #define PX_DLY_N 45056                 /* v40: 2.04 s of delay at half rate (22.05 kHz, 16-bit: 88 KB), as the stock */
@@ -156,12 +200,15 @@ typedef struct {
     float dc_x1, dc_y1, odc_x1, odc_y1, dn;          /* dn: alternating 1e-15 anti-denormal offset */
 
     /* gate */
-    float gate_env, gate_g, gate_thr, gate_rel;
+    float gate_env, gate_g, gate_thr, gate_rel, gate_noise;
     /* comp */
     float cmp_env, cmp_slow, cmp_att, cmp_rel, cmp_k, cmp_make, cmp_mix, cmp_sw, cmp_thr, cmp_rise, cmp_slowk;
     /* pitch: delay-line shifters (2 voices) + analog octaver */
     float ps_buf[PX_PS_N]; int ps_w, ps_nv;
     float ps_ph[2], ps_inc[2], ps_W[2], ps_lvl[2], ps_off[2][2], ps_dry, ps_r, ps_rt, ps_glide, ps_invW;
+    px_erb_octave erb_pitch, erb_syn;                 /* (v49: the bank's coefficients are shared statics, px_dsp.c) */
+    float erb_pitch_range;
+    int erb_pitch_active;
     px_bq oct_lp, oct_lp2, oct_sublp, oct_sublp2, oct_bp, oct_uphp;
     float oct_env, oct_ff, oct_ff2, oct_prev, oct_dry, oct_s1, oct_s2, oct_up;
     /* special fx */
@@ -169,6 +216,8 @@ typedef struct {
     float sfx_a, sfx_b, sfx_c, sfx_d, sfx_mix, sfx_qd;
     int   sfx_pat, crush_n, crush_k; float crush_v, crush_q;
     px_bq sfx_f1, sfx_f2;
+    px_synth_tracking sfx_track, syn_track_hq;
+    int sfx_track_active;
     /* oversampling (set A: amp, or drive + amp together; set B: a drive that is not right before the amp; set C: x2, a
      * drive before a NAM amp). v38: polyphase IIR half-band filters (two all-pass branches, one multiply a section), in
      * two x2 stages: per set the state of stage 1 up, stage 2 up, stage 2 down, stage 1 down */
@@ -178,7 +227,8 @@ typedef struct {
     uint8_t ord[PX_NBLK];
     /* synth / instrument block (v29) */
     float syn_buf[PX_PS_N]; int syn_w;                 /* shifter source (organ, strings...); sitar: string combs */
-    float syn_cb[PX_SYN_CB]; int syn_cw;
+    px_hb syn_fuzz_up, syn_fuzz_down;
+    union { float syn_cb[PX_SYN_CB]; px_acoustic syn_ac; }; int syn_cw;   /* v48: syn_ac (px_acoustic.h) */
     float syn_ph[3], syn_off[3][2], syn_inc[3], syn_W[3], syn_lvl[3]; int syn_nv;
     float syn_dry, syn_out, syn_d8;                    /* dry guitar, effect level, organ 8' (the guitar's own pitch) */
     float syn_env, syn_slow, syn_ea, syn_er, syn_sr2;  /* envelope (fast, slow), coefficients */
