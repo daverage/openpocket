@@ -41,6 +41,9 @@ int main(int argc, char **argv)
     const float g = argc > 3 ? (float)atof(argv[3]) : 1.0f;
     static px_engine e; px_engine_init(&e, 44100.0f);
     static px_track t; memset(&t, 0, sizeof t); pxt_prepare(&e);
+#ifdef PX_RESONATOR_TEST
+    pxr_reset(44100.0f);
+#endif
     pxt_layer L; pxt_layer_init(&L, 44100.0f);
     /* for comparison: BASS HQ's tracker alone (the v48 acoustic voices' note layer is gone: its scores are in
      * docs/NOTE-TRACKING.md) */
@@ -58,7 +61,11 @@ int main(int argc, char **argv)
         const float b = bq_run(&f2, bq_run(&f1, v)), a = fabsf(v);
         env += (a - env) * (a > env ? 0.0224f : 0.00075f);
         synth_hq_track(&hq, b, env > 0.003f, 44100.0f);
+#ifdef PX_RESONATOR_TEST
+        const int fr = pxr_run(&t, v);
+#else
         const int fr = pxt_run(&e, &t, v);
+#endif
         pxt_layer_run(&L, &t, v, fr);
 #ifdef PXT_HOST_JOINT
         if (fr) joint_candidates(&t);

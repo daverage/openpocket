@@ -41,7 +41,9 @@ CHAN="${OP_CHANNEL:-}"
 : > "$O/channel.h"
 if [ -n "$CHAN" ]; then
   case "$CHAN" in *[!a-z0-9-]*|"") echo "ERROR: OP_CHANNEL must be lowercase letters, digits and -"; exit 1;; esac
-  TESTVER="${OP_TEST_VERSION:-42}"
+  DEFAULT_TESTVER=42
+  [ "$CHAN" = lowest-test ] && DEFAULT_TESTVER=54
+  TESTVER="${OP_TEST_VERSION:-$DEFAULT_TESTVER}"
   printf '#define OP_VERSION_NUM "%s"\n#define OP_TAG " %s"\n' "$TESTVER" "$(echo "$CHAN" | tr a-z- A-Z' ')" > "$O/channel.h"
   APP="$HERE/openpocket-$CHAN.bin"; PKG="$HERE/../docs/firmware/$CHAN"
   rm -f "$APP"
@@ -50,6 +52,11 @@ fi
 # AC791N hardware FPU (same options as the JieLi SDK for the WL82) + DSP engine at 44.1 kHz
 FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
+[ "$CHAN" = resonator-test ] && DSPDEF="$DSPDEF -DPX_RESONATOR_TEST=1"
+if [ "$CHAN" = lowest-test ]; then
+  DSPDEF="$DSPDEF -DPX_LOWEST_TEST=1"
+  [ "$TESTVER" = 53 ] && DSPDEF="$DSPDEF -DPX_LOWEST_V53=1"
+fi
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
@@ -82,6 +89,8 @@ RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_bl
   pxn_lp_split_now pxn_frame_ticks px_nam_lp_handed px_nam_lp_before pxn_lp_handed pxn_lp_before
   px_nam_lp_split_used px_nam_lp_force pxn_lp_split_used pxn_lp_force px_nam_lp_gave_up pxn_lp_gave_up
   ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run synth_hq_track syn_fuzz_clip cab_detail_run gate_run comp_run bq_chain"
+[ "$CHAN" = resonator-test ] && RAM_DSP="$RAM_DSP pxr_run pxr_pick"
+[ "$CHAN" = lowest-test ] && RAM_DSP="$RAM_DSP lowest_pitch_run pxl_run pxr_run pxr_pick lf_run lf_pick"
 # v40.2: the layer split's path (pxn_lp_*, lp_job, dsp_lp_run) in RAM; out of it, to make the room: the frame split's serving
 # (now the fallback when the layer split cannot run), the vector unit's paths (never chosen: slower) and the C versions
 # of the hand routines (used only if a hand one fails its start-up check: the network is then too slow anyway)

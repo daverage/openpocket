@@ -312,18 +312,26 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
     t->frame++;
 }
 
-/* one input sample (44.1 kHz). Returns 1 when a frame was completed (results in t). */
-static __attribute__((noinline)) int pxt_run(const px_engine *e, px_track *t, float input)   /* (in RAM on the pedal) */
+/* Shared half-band stages. Return 1 at the quarter-rate sample. */
+static inline int pxt_decimate(px_track *t, float input, float *output)
 {
     const unsigned pos = t->pos;
     t->input[pos] = input;
     t->pos = (pos + 1) & 31;
     if (pos & 1) return 0;
-    const unsigned p2 = t->pos2;                          /* 22.05 kHz */
+    const unsigned p2 = t->pos2;
     t->in2[p2] = erb_halfband(t->input, pos, erb_hb);
     t->pos2 = (p2 + 1) & 31;
     if (p2 & 1) return 0;
-    const float x = erb_halfband(t->in2, p2, erb_hb);     /* 11.025 kHz */
+    *output = erb_halfband(t->in2, p2, erb_hb);
+    return 1;
+}
+
+/* one input sample (44.1 kHz). Returns 1 when a frame was completed (results in t). */
+static __attribute__((noinline)) int pxt_run(const px_engine *e, px_track *t, float input)   /* (in RAM on the pedal) */
+{
+    float x;
+    if (!pxt_decimate(t, input, &x)) return 0;
     (void)e;
     if (t->d1.b0 == 0.0f) { t->d1 = pxt_dlp[0]; t->d2 = pxt_dlp[1]; }
     {   const float y = bq_run(&t->d2, bq_run(&t->d1, x));

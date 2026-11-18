@@ -139,6 +139,9 @@ static inline float erb_inverse_root(float power)
 /* the bank at 11.025 kHz: one sample in, the octaves out, mixed by their levels: up (+12), down (-12) and, v49, up2
  * (+24: CHURCH ORGAN HQ's 2', phase x4, from the bands below ERB_UP2_TOP, whose fourfold stays under the rate's limit) */
 #define ERB_UP2_TOP 1250.0f
+#ifdef PX_LOWEST_HOST
+static float erb_host_mask[PX_ERB_BANDS];
+#endif
 static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, float up, float down, float up2, float range)
 {
     (void)e;
@@ -174,6 +177,9 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
             const float squared = half_cosine_squared > 0.0f ? power * half_cosine_squared + 1e-30f : 1e-30f;
             float sample = squared * erb_inverse_root(squared);
             if (weight < 1.0f) sample *= weight;
+#ifdef PX_LOWEST_HOST
+            sample *= erb_host_mask[i];
+#endif
             lowered += (phase & 2) ? -sample : sample;
         }
     }
@@ -443,6 +449,9 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
            ap - am * c + tsa, 2 * (am - ap * c), ap - am * c - tsa);
 }
 #include "px_track.h"                                  /* v49: the note tracker (band bank, salience, note layer) */
+#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST)
+#include "px_resonator_test.h"
+#endif
 static float tan_pi(float fs, float f) { float w = PI_F * clampf_hz(fs, f) / fs; return sinf(w) / cosf(w); }
 static inline float op_run(px_op *o, float x)
 {
@@ -502,7 +511,11 @@ static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT}, {"POLY OCTAVE", 3, PN_POLY}, {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
-    {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 4, PN_POLY_HQ}};
+    {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 4, PN_POLY_HQ},
+#ifdef PX_LOWEST_TEST
+    {"LOWEST OCTAVE HQ", 3, PN_POLY},
+#endif
+};
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
 static const char *const PN_LWAH[] = {"RATE", "DEPTH", "RESO", "CENTER"};
@@ -1150,6 +1163,9 @@ static void rc_pitch(px_engine *e)
     const uint8_t *q = p->p[PX_B_PITCH];
     int t = p->type[PX_B_PITCH] % PX_PIT_COUNT;
     int hq = t == PX_PIT_POLYOCT_HQ;
+#ifdef PX_LOWEST_TEST
+    hq |= t == PX_PIT_LOWEST_HQ;
+#endif
     if (hq && !e->erb_pitch_active) {
         erb_prepare(e);
         memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
@@ -1167,7 +1183,10 @@ static void rc_pitch(px_engine *e)
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 2.5f; e->oct_s2 = f01(q[2]) * 2.5f; e->oct_up = f01(q[3]) * 2.0f;
         break;
     case PX_PIT_POLYOCT: case PX_PIT_POLYOCT_HQ:
-        e->ps_nv = t == PX_PIT_POLYOCT_HQ ? 0 : 2; e->ps_dry = f01(q[0]);
+#ifdef PX_LOWEST_TEST
+    case PX_PIT_LOWEST_HQ:
+#endif
+        e->ps_nv = hq ? 0 : 2; e->ps_dry = f01(q[0]);
         if (hq) e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);
         e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = f01(q[1]) * 1.2f;
         e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = f01(q[2]);
@@ -1761,6 +1780,24 @@ static void irfft128(float *x)
     fft64(x, 1.0f);                                    /* z = 64 x IFFT(Z): x[2n] = Re, x[2n+1] = Im */
 }
 /* the spectra of an IR (PX_IR_LEN taps), its level set as the modelled cabinets' (energy 1/2) */
+#ifdef PX_LOWEST_TEST
+#include "px_lowest_sub.h"
+static px_lowest_sub pxl_pitch;
+
+static void lowest_pitch_reset(px_engine *e)
+{
+    pxl_reset(&pxl_pitch, e->sr);
+    memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
+}
+
+static __attribute__((noinline)) float lowest_pitch_run(px_engine *e, float x)
+{
+    const float sub = pxl_run(&pxl_pitch, x);
+    const float up = erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], 0.0f, ERB_FULL);
+    return x * e->ps_dry + e->ps_lvl[0] * sub + up;
+}
+#endif
+
 static void ir_load_h(const float *h, float *b)       /* b: IR_F floats of scratch */
 {
     float en = 0.0f;
@@ -2169,6 +2206,9 @@ static void rc_syn(px_engine *e)
         if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
             pxt_reset(e, &pxa_trk, &pxa_lay);           /* v49 */
+#ifdef PX_RESONATOR_TEST
+            if (t == PX_SYN_BASS_HQ) pxr_reset(sr);
+#endif
         }
         e->syn_type = t; e->syn_kg = 0.0f; e->syn_key = 0; e->syn_ff = 1.0f; e->syn_ff2 = 1.0f; e->syn_sq = 0.0f;
         for (int i = 0; i < 4; i++) e->syn_lad[i] = 0.0f;
@@ -2375,6 +2415,10 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
     px_recalc(e);
+#ifdef PX_LOWEST_TEST
+    if (e->cur.on[PX_B_PITCH] && e->cur.type[PX_B_PITCH] == PX_PIT_LOWEST_HQ)
+        lowest_pitch_reset(e);
+#endif
     e->run = e->cur;                                   /* v38: nothing gliding, nothing fading */
     wl_clear(e);                                       /* v39: the lanes start empty (the output fades in) */
     e->gl_left = 0;
@@ -2484,10 +2528,16 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
             e->bf[b] = e->bfa[b] = 0.0f;
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
+#ifdef PX_LOWEST_TEST
+            if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
+#endif
             if (b == PX_B_SYN && syn_octave_hq(p->type[b]))
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
             if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ)) {
                 memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq); pxt_reset(e, &pxa_trk, &pxa_lay);
+#ifdef PX_RESONATOR_TEST
+                if (p->type[b] == PX_SYN_BASS_HQ) pxr_reset(e->sr);
+#endif
             }
             if (b == PX_B_SFX && p->type[b] == PX_SFX_SYNTH_HQ) {
                 memset(&e->sfx_track, 0, sizeof e->sfx_track); pxt_reset(e, &pxs_trk, &pxs_lay);
@@ -3270,7 +3320,11 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
         float h = e->syn_sq * 0.2f;
         float s;
         if (t == PX_SYN_BASS_HQ) {
-            pxt_layer_run(&pxa_lay, &pxa_trk, x, pxt_run(e, &pxa_trk, x));   /* v49: the shared tracker's note */
+#ifdef PX_RESONATOR_TEST
+            pxt_layer_run(&pxa_lay, &pxa_trk, x, pxr_run(&pxa_trk, x));
+#else
+            pxt_layer_run(&pxa_lay, &pxa_trk, x, pxt_run(e, &pxa_trk, x));
+#endif
             pxt_drive(&e->syn_track_hq, &pxa_lay, e->sr);
             /* v49: a sub floor: a sub that would sound under 35 Hz (a low E's two octaves down is 20.6 Hz: below what a
              * speaker gives and what the ear calls a note) plays an octave higher */
@@ -3528,6 +3582,13 @@ static __attribute__((noinline)) void syn_organ_run(px_engine *e, int type, floa
 /* PITCH's shifters: POLY OCT, WHAMMY, HARMONY, DETUNE */
 static __attribute__((noinline)) void pitch_run(px_engine *e, int type, float *xb, int n0, float strim)
 {
+#ifdef PX_LOWEST_TEST
+    if (type == PX_PIT_LOWEST_HQ) {
+        for (int k = 0; k < n0; ++k) xb[k] = lowest_pitch_run(e, xb[k]) * strim;
+        e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
+        return;
+    }
+#endif
     if (type == PX_PIT_POLYOCT_HQ) {
         for (int k = 0; k < n0; ++k) {
             const float x = xb[k];
@@ -4131,6 +4192,12 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     x = x * e->oct_dry + s1 * e->oct_s1 + s2 * e->oct_s2 + u * e->oct_up;
                 } else {
 #if !PX_RUNS                                           /* (with the runs: pitch_run) */
+#ifdef PX_LOWEST_TEST
+                    if (pit_t == PX_PIT_LOWEST_HQ) {
+                        x = lowest_pitch_run(e, x);
+                        break;
+                    }
+#endif
                     if (pit_t == PX_PIT_POLYOCT_HQ) {
                         x = x * e->ps_dry + erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], e->ps_lvl[0], e->erb_pitch_range);
                         break;
