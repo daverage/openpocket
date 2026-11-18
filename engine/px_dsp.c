@@ -218,6 +218,10 @@ static PX_HOT float erb_octaves2(const px_engine *e, px_erb_octave *state, float
 static inline float erb_octaves(const px_engine *e, px_erb_octave *state, float input, float up, float down, float range)
 { return erb_octaves2(e, state, input, up, down, 0.0f, range); }
 
+/* Match the HQ bank's voices to the delay-line Poly Octave at the same settings. */
+static float octave_down_level(float level, int hq) { return (level * 1.2f) * (hq ? 1.50f : 1.0f); }
+static float octave_up_level(float level, int hq) { return level * (hq ? 3.02f : 1.0f); }
+
 static void bq_reset(px_bq *b) { b->z1 = b->z2 = 0.0f; }
 static inline float bq_run(px_bq *b, float x)
 {
@@ -545,7 +549,7 @@ static const char *const PN_ACO[] = {"BODY", "BASS", "TREBLE", "ROOM"};
 static const char *const PN_SIT[] = {"KEY", "BUZZ", "SYMPATH", "DECAY"};
 static const char *const PN_BAR[] = {"TUNE", "TONE", "MIX"};
 static const char *const PN_BRASS[] = {"ATTACK", "RELEASE", "BRIGHT", "BITE", "DRY"};
-static const char *const PN_OCT_FUZZ[] = {"SUB", "OCT UP", "DRIVE", "TONE", "LEVEL"};
+static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
 static const char *const PN_TRP[] = {"OCTAVE", "TONE", "DYNAMICS", "RELEASE", "DRY"};       /* v48 (px_acoustic.h) */
 static const char *const PN_CEL[] = {"OCTAVE", "BOW", "VIBRATO", "RELEASE", "DRY"};
 static const tdef T_SYN[PX_SYN_COUNT] = {
@@ -1188,10 +1192,8 @@ static void rc_pitch(px_engine *e)
 #endif
         e->ps_nv = hq ? 0 : 2; e->ps_dry = f01(q[0]);
         if (hq) e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);
-        e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = f01(q[1]) * 1.2f;
-        e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = f01(q[2]);
-        if (hq) { e->ps_lvl[0] *= 1.50f; e->ps_lvl[1] *= 3.02f; }   /* v49: HQ's octaves at POLY OCTAVE's level (+3.5 dB down,
-                                                         +9.6 dB up: they were 3 and 10 dB under it, the dry guitar's level) */
+        e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = octave_down_level(f01(q[1]), hq);
+        e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = octave_up_level(f01(q[2]), hq);
         break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
@@ -1287,16 +1289,10 @@ static void rc_sfx(px_engine *e)
     e->sfx_track_active = t == PX_SFX_SYNTH_HQ;
 }
 
-static void rc_drive(px_engine *e)
+static void drive_setup(px_drive_state *state, float sr, int os, int t,
+                        const drv_v *d, const uint8_t *q)
 {
-    const px_preset_t *p = &e->cur;
-    float sr = e->sr, osr = sr * (float)(e->drv_os ? e->drv_os : PX_OVERSAMPLE);
-    int t = p->type[PX_B_DRIVE] % PX_DRV_COUNT;
-    const drv_v *d = &DV[t];
-#ifdef PX_FIT
-    if (px_fit_drv_on) { d = &px_fit_drv; t = -1; }     /* the fitter's candidate: no per-type special case */
-#endif
-    const uint8_t *q = p->p[PX_B_DRIVE];
+    const float osr = sr * (float)os;
     float dr = role_val(d, q, R_DRIVE, -1.0f);
     if (dr < 0.0f) dr = role_val(d, q, R_DIST, -1.0f);
     if (dr < 0.0f) dr = role_val(d, q, R_FUZZ, -1.0f);
@@ -1306,68 +1302,79 @@ static void rc_drive(px_engine *e)
     if (tone < 0.0f) tone = role_val(d, q, R_TREBLE, 0.5f);
     float level = role_val(d, q, R_LEVEL, 0.5f);
 
-    e->drv_gain = drive_gain(d, dr);
+    state->gain = drive_gain(d, dr);
 
     /* pre-clip, base rate */
     float hp = (float)d->hp;
-    bq_hp1(&e->drv_hp, sr, hp);
-    e->drv_pre = 0;
+    bq_hp1(&state->hp, sr, hp);
+    state->pre = 0;
     if (d->shelf) {                                    /* TS-style: lows bypass the clipping gain */
-        bq_hp1(&e->drv_shelf, sr, (float)d->shelf);
-        e->drv_shelf_lo = 1.0f / e->drv_gain;
-        e->drv_pre |= 1;
+        bq_hp1(&state->shelf, sr, (float)d->shelf);
+        state->shelf_lo = 1.0f / state->gain;
+        state->pre |= 1;
     }
-    if (d->lp) { bq_lowpass(&e->drv_lp, sr, (float)d->lp, 0.7f); e->drv_pre |= 2; }
+    if (d->lp) { bq_lowpass(&state->lp, sr, (float)d->lp, 0.7f); state->pre |= 2; }
     if (d->mid) {
         float f = (float)d->mid, db = (float)d->mid_db;
-        bq_peak(&e->drv_mid, sr, f, (float)d->mid_q10 * 0.1f, db);
-        e->drv_pre |= 4;
+        bq_peak(&state->mid, sr, f, (float)d->mid_q10 * 0.1f, db);
+        state->pre |= 4;
     }
 
     /* clipper */
-    e->drv_clip = d->clip;
-    e->drv_bias = (float)d->bias * 0.01f;
-    e->drv_gate = 0.0f;
-    e->drv_off = px_tanh(e->drv_bias);
-    e->drv_dcb = (d->clip == CL_ASYM || d->clip == CL_FUZZ || d->clip == CL_OCTA || d->clip == CL_FUZZ_FACE);
-    e->drv_dck = 2.0f * PI_F * 12.0f / osr;
+    state->clip = d->clip;
+    state->bias = (float)d->bias * 0.01f;
+    state->gate = 0.0f;
+    state->off = px_tanh(state->bias);
+    state->dcb = (d->clip == CL_ASYM || d->clip == CL_FUZZ || d->clip == CL_OCTA || d->clip == CL_FUZZ_FACE);
+    state->dck = 2.0f * PI_F * 12.0f / osr;
 
     /* post tone, oversampled */
-    e->drv_tm = d->tm; e->drv_np = 1;
+    state->tm = d->tm; state->np = 1;
     switch (d->tm) {
     case TM_MUFF:                                      /* LP / HP crossfade: the classic mid scoop */
-        bq_lowpass(&e->drv_t1, osr, (float)d->t0, 0.6f);
-        bq_highpass(&e->drv_t2, osr, (float)d->t1, 0.6f);
-        e->drv_mix = tone;
-        e->drv_np = 2;
+        bq_lowpass(&state->t1, osr, (float)d->t0, 0.6f);
+        bq_highpass(&state->t2, osr, (float)d->t1, 0.6f);
+        state->mix = tone;
+        state->np = 2;
         break;
     case TM_HM2:
-        bq_peak(&e->drv_t1, osr, (float)d->t0, 0.9f, role_val(d, q, R_LOW, 0.5f) * 15.0f);
-        bq_peak(&e->drv_t2, osr, (float)d->t1, 0.7f, role_val(d, q, R_HIGH, 0.5f) * 15.0f);
-        e->drv_np = 2;
+        bq_peak(&state->t1, osr, (float)d->t0, 0.9f, role_val(d, q, R_LOW, 0.5f) * 15.0f);
+        bq_peak(&state->t2, osr, (float)d->t1, 0.7f, role_val(d, q, R_HIGH, 0.5f) * 15.0f);
+        state->np = 2;
         break;
     case TM_MT2:
-        bq_peak(&e->drv_t1, osr, (float)d->t0, 0.8f, (role_val(d, q, R_LOW, 0.5f) - 0.5f) * 24.0f);
-        bq_highshelf(&e->drv_t2, osr, (float)d->t1, (role_val(d, q, R_HIGH, 0.5f) - 0.5f) * 24.0f);
-        e->drv_np = 2;
+        bq_peak(&state->t1, osr, (float)d->t0, 0.8f, (role_val(d, q, R_LOW, 0.5f) - 0.5f) * 24.0f);
+        bq_highshelf(&state->t2, osr, (float)d->t1, (role_val(d, q, R_HIGH, 0.5f) - 0.5f) * 24.0f);
+        state->np = 2;
         break;
     default:
-        bq_lowpass(&e->drv_t1, osr, (float)d->t0 * powf((float)d->t1 / (float)d->t0, tone), 0.7f);
+        bq_lowpass(&state->t1, osr, (float)d->t0 * powf((float)d->t1 / (float)d->t0, tone), 0.7f);
         break;
     }
     if (d->p2) {
-        if (d->p2db == 0) bq_lowpass(&e->drv_t3, osr, (float)d->p2, 0.7f);
-        else bq_peak(&e->drv_t3, osr, (float)d->p2, 0.8f, (float)d->p2db);
-        e->drv_np |= 4;
+        if (d->p2db == 0) bq_lowpass(&state->t3, osr, (float)d->p2, 0.7f);
+        else bq_peak(&state->t3, osr, (float)d->p2, 0.8f, (float)d->p2db);
+        state->np |= 4;
     }
 
     float bl = (float)d->blend * 0.01f;
     bl *= (1.0f - 0.8f * dr);                     /* Klon: clean path fades as gain rises */
-    e->drv_blend = bl;
+    state->blend = bl;
 #ifdef PX_FIT
-    if (px_fit_drv_on) { e->drv_level = px_fit_drv_trim * 2.0f * level; return; }
+    if (t < 0) { state->level = px_fit_drv_trim * 2.0f * level; return; }
 #endif
-    e->drv_level = DRV_TRIM[t] * 2.0f * level * powf(10.0f, DRV_DB[t] * 0.05f);   /* (v36 trim: before the amp) */
+    state->level = DRV_TRIM[t] * 2.0f * level * powf(10.0f, DRV_DB[t] * 0.05f);   /* (v36 trim: before the amp) */
+}
+
+static void rc_drive(px_engine *e)
+{
+    int t = e->cur.type[PX_B_DRIVE] % PX_DRV_COUNT;
+    const drv_v *d = &DV[t];
+#ifdef PX_FIT
+    if (px_fit_drv_on) { d = &px_fit_drv; t = -1; }
+#endif
+    drive_setup(&e->drive, e->sr, e->drv_os ? e->drv_os : PX_OVERSAMPLE, t, d,
+                e->cur.p[PX_B_DRIVE]);
 }
 
 static int px_may_load = 1;                            /* v38: 0 in px_engine_knobs (the audio side): no flash reads there */
@@ -2188,6 +2195,15 @@ static int syn_octave_hq(int t)
     return (t >= PX_SYN_STRINGS_HQ && t <= PX_SYN_CHURCH_HQ) || t == PX_SYN_OCT_FUZZ || t == PX_SYN_STRING_MACHINE;
 }
 
+static void syn_fuzz_reset(px_engine *e)
+{
+    memset(e->syn_fuzz_os, 0, sizeof e->syn_fuzz_os);
+    bq_reset(&e->syn_fuzz.hp);
+    bq_reset(&e->syn_fuzz.lp);
+    bq_reset(&e->syn_fuzz.t1);
+    e->syn_fuzz.dcs = e->syn_lp = 0.0f;
+}
+
 static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, float f);   /* v48: px_acoustic.h */
 static void rc_syn(px_engine *e)
 {
@@ -2198,11 +2214,7 @@ static void rc_syn(px_engine *e)
     float a = f01(q[0]), b = f01(q[1]), c = f01(q[2]), d = f01(q[3]), f = f01(q[4]);
     if (t != e->syn_type) {                            /* new instrument: start from a quiet state */
         if (syn_octave_hq(t)) memset(&e->erb_syn, 0, sizeof e->erb_syn);
-        if (t == PX_SYN_OCT_FUZZ) {
-            memset(&e->syn_fuzz_up, 0, sizeof e->syn_fuzz_up);
-            memset(&e->syn_fuzz_down, 0, sizeof e->syn_fuzz_down);
-            e->syn_lp = 0.0f;
-        }
+        if (t == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
         if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
             pxt_reset(e, &pxa_trk, &pxa_lay);           /* v49 */
@@ -2290,17 +2302,16 @@ static void rc_syn(px_engine *e)
     case PX_SYN_TRUMPET: case PX_SYN_CELLO: case PX_SYN_CELLO_SECTION:
         pxa_setup(e, t, a, b, c, d, f);
         break;
-    case PX_SYN_OCT_FUZZ:
-        e->syn_lvl[0] = b;
-        e->syn_lvl[1] = a;
-        /* Start above the Fuzz Face's clean-up range, since the SYN voice
-         * is a dedicated fuzz even when a preset's DRIVE was left at zero. */
-        e->syn_wave = drive_gain(&DV[PX_DRV_FUZZ_FACE], 0.30f + 0.70f * c);
-        bq_hp1(&e->syn_f[0], sr, 20.0f);
-        bq_hp1(&e->syn_f[1], sr, 16.0f);
-        e->syn_lpk = opk(sr, 700.0f + 6500.0f * d * d);
-        e->syn_out = 0.24f * db2lin(syn_fuzz_level_db(f));
+    case PX_SYN_OCT_FUZZ: {
+        const uint8_t fuzz[2] = {q[2], 50};           /* Fuzz Face at noon LEVEL */
+        drive_setup(&e->syn_fuzz, sr, e->drv_os, PX_DRV_FUZZ_FACE, &DV[PX_DRV_FUZZ_FACE], fuzz);
+        e->syn_lvl[0] = octave_up_level(b, 1);
+        e->syn_lvl[1] = octave_down_level(a, 1);
+        e->syn_fuzz_tone = d - 0.5f;
+        e->syn_lpk = onepole_k(sr, 1.0f / (2.0f * PI_F * 1500.0f));
+        e->syn_out = db2lin(syn_fuzz_level_db(f));
         break;
+    }
     case PX_SYN_MONO:                                  /* one note: tracker -> oscillator -> 24 dB ladder */
         bq_lowpass(&e->syn_f[0], sr, 110.0f, 0.54f); bq_lowpass(&e->syn_f[1], sr, 110.0f, 1.31f);
         bq_highpass(&e->syn_f[2], sr, 50.0f, 0.7f);   /* no DC / rumble in the tracker */
@@ -2436,7 +2447,8 @@ static const uint32_t GL_F[] = {
     GLF_(oct_dry), GLF_(oct_s1), GLF_(oct_s2), GLF_(oct_up), GLF_(ps_dry), GLF_(ps_lvl[0]), GLF_(ps_lvl[1]), GLF_(erb_pitch_range),
     GLF_(sfx_mix), GLF_(sfx_c), GLF_(sfx_d),
     GLF_(syn_dry), GLF_(syn_out), GLF_(syn_d8), GLF_(syn_plvl), GLF_(syn_lvl[0]), GLF_(syn_lvl[1]), GLF_(syn_lvl[2]),
-    GLF_(drv_gain), GLF_(drv_level), GLF_(drv_blend), GLF_(drv_mix), GLF_(drv_shelf_lo),
+    GLF_(syn_fuzz.gain), GLF_(syn_fuzz_tone),
+    GLF_(drive.gain), GLF_(drive.level), GLF_(drive.blend), GLF_(drive.mix), GLF_(drive.shelf_lo),
     GLF_(amp_g[0]), GLF_(amp_g[1]), GLF_(amp_g[2]), GLF_(amp_g[3]), GLF_(amp_out), GLF_(nam_in_g),
     GLF_(cab_g),
     GLF_(mod_mix), GLF_(mod_depth), GLF_(mod_fb), GLF_(mod_base), GLF_(mod_sweep), GLF_(mod_shape), GLF_(ph_lo),
@@ -2533,6 +2545,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
 #endif
             if (b == PX_B_SYN && syn_octave_hq(p->type[b]))
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
+            if (b == PX_B_SYN && p->type[b] == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
             if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ)) {
                 memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq); pxt_reset(e, &pxa_trk, &pxa_lay);
 #ifdef PX_RESONATOR_TEST
@@ -2576,12 +2589,12 @@ static inline float fuzz_face_clip(float input)
     return px_tanh(4.1f * first - 0.32f) + px_tanh(0.32f);
 }
 
-static inline float clip_run(const px_engine *e, float d)
+static inline float clip_run(const px_drive_state *state, float d)
 {
     float a, y;
-    switch (e->drv_clip) {
+    switch (state->clip) {
     case CL_SOFT: return px_tanh(d);
-    case CL_ASYM: return px_tanh(d + e->drv_bias) - e->drv_off;
+    case CL_ASYM: return px_tanh(d + state->bias) - state->off;
     case CL_HARD:
         a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
         return d < 0.0f ? -y : y;
@@ -2597,8 +2610,8 @@ static inline float clip_run(const px_engine *e, float d)
         a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
         return d < 0.0f ? -y : y;
     case CL_FUZZ:                                      /* starved transistor: asymmetric, optional gate */
-        if (e->drv_gate > 0.0f) { a = px_abs(d); if (a < e->drv_gate) d *= a / e->drv_gate; }
-        d += e->drv_bias;
+        if (state->gate > 0.0f) { a = px_abs(d); if (a < state->gate) d *= a / state->gate; }
+        d += state->bias;
         return d >= 0.0f ? px_tanh(d) : 0.7f * px_tanh(1.4f * d);
     case CL_OCTA:                                      /* full-wave rectifier: octave up, then fuzz */
         a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
@@ -2607,27 +2620,27 @@ static inline float clip_run(const px_engine *e, float d)
     default: return px_tanh(d * 0.4f) * 2.5f;          /* clean boost */
     }
 }
-static inline float drive_pre(px_engine *e, float x)   /* base rate */
+static inline float drive_pre(px_drive_state *state, float x)   /* base rate */
 {
-    x = bq_run(&e->drv_hp, x);
-    if (e->drv_pre & 2) x = bq_run(&e->drv_lp, x);
-    if (e->drv_pre & 4) x = bq_run(&e->drv_mid, x);
-    if (e->drv_pre & 1) x = x * e->drv_shelf_lo + bq_run(&e->drv_shelf, x);
+    x = bq_run(&state->hp, x);
+    if (state->pre & 2) x = bq_run(&state->lp, x);
+    if (state->pre & 4) x = bq_run(&state->mid, x);
+    if (state->pre & 1) x = x * state->shelf_lo + bq_run(&state->shelf, x);
     return x;
 }
-PX_INL static inline float drive_run(px_engine *e, float x)   /* oversampled */
+PX_INL static inline float drive_run(px_drive_state *state, float x, float dn)   /* oversampled */
 {
-    float d = clip_run(e, x * e->drv_gain) + e->dn;
-    if (e->drv_dcb) { e->drv_dcs += (d - e->drv_dcs) * e->drv_dck; d -= e->drv_dcs; }
-    if (e->drv_tm == TM_MUFF) {
-        float lo = bq_run(&e->drv_t1, d), hi = bq_run(&e->drv_t2, d);
-        d = lo + (hi - lo) * e->drv_mix;
+    float d = clip_run(state, x * state->gain) + dn;
+    if (state->dcb) { state->dcs += (d - state->dcs) * state->dck; d -= state->dcs; }
+    if (state->tm == TM_MUFF) {
+        float lo = bq_run(&state->t1, d), hi = bq_run(&state->t2, d);
+        d = lo + (hi - lo) * state->mix;
     } else {
-        d = bq_run(&e->drv_t1, d);
-        if (e->drv_np & 2) d = bq_run(&e->drv_t2, d);
+        d = bq_run(&state->t1, d);
+        if (state->np & 2) d = bq_run(&state->t2, d);
     }
-    if (e->drv_np & 4) d = bq_run(&e->drv_t3, d);
-    return d * e->drv_level + x * e->drv_blend;
+    if (state->np & 4) d = bq_run(&state->t3, d);
+    return d * state->level + x * state->blend;
 }
 /* ---- v38: oversampling by polyphase IIR half-band filters (as the stock firmware does: two all-pass branches, each
  * section y = c (x - y1) + x1, one multiply; the branches run at the lower rate). x4 = two x2 stages: stage 1 (44.1 <->
@@ -2637,28 +2650,6 @@ PX_INL static inline float drive_run(px_engine *e, float x)   /* oversampled */
  * came back down as aliasing. */
 static const float HB1[6] = {0.062889286f, 0.224015205f, 0.424695820f, 0.616864442f, 0.782113520f, 0.927573355f};
 static const float HB2[2] = {0.132097462f, 0.574998436f};
-/* Scalar form of the same stage-one half-band branches, with SYN-owned state. */
-static inline float hb1_sample(px_hb *state, float input, unsigned branch)
-{
-    const unsigned base = branch * 3;
-    for (unsigned i = 0; i < 3; ++i) {
-        const unsigned j = base + i;
-        const float output = (input - state->y[j]) * HB1[2 * i + branch] + state->x[j];
-        state->x[j] = input;
-        state->y[j] = output;
-        input = output;
-    }
-    return input;
-}
-
-static PX_HOT float syn_fuzz_clip(px_engine *e, float input)
-{
-    const float driven = bq_run(&e->syn_f[0], input) * e->syn_wave;
-    const float even = fuzz_face_clip(hb1_sample(&e->syn_fuzz_up, driven, 0));
-    const float odd = fuzz_face_clip(hb1_sample(&e->syn_fuzz_up, driven, 1));
-    const float filtered = 0.5f * (hb1_sample(&e->syn_fuzz_down, odd, 0) + hb1_sample(&e->syn_fuzz_down, even, 1));
-    return bq_run(&e->syn_f[1], filtered);
-}
 /* One branch at a time (each branch is a chain of its own: 3 sections in stage 1, 1 in stage 2), so that its state and
  * coefficients stay in registers through the loop (on the pedal the FPU works in the 16 general registers) */
 static void hb_br3(float *xs, float *ys, float c0, float c1, float c2, const float *in, float *out, int n)
@@ -2687,76 +2678,91 @@ static void hb_br1(float *xs, float *ys, float c0, const float *in, float *out, 
  * (state: s->x/y[0..2] the even branch, [3..5] the odd one); x2 down: in[2i + 1] through the even branch, in[2i] through
  * the odd one, out[i] = their mean. The stride-2 reads and writes go through px_os_d. */
 static float px_os_d[4 * PX_MAX_BLOCK] PX_POOL_TAIL(px_os_d);
-static void hb1_up(px_hb *s, const float *in, float *out, int n)
+static void hb1_up(px_hb *s, const float *in, float *out, int n, float *d)
 {
-    float *d = px_os_d;
     for (int i = 0; i < n; i++) d[2 * i] = in[i];
     hb_br3(s->x, s->y, HB1[0], HB1[2], HB1[4], d, out, n);
     hb_br3(s->x + 3, s->y + 3, HB1[1], HB1[3], HB1[5], d, out + 1, n);
 }
-static void hb1_down(px_hb *s, const float *in, float *out, int n)
+static void hb1_down(px_hb *s, const float *in, float *out, int n, float *d)
 {
-    float *d = px_os_d;
     hb_br3(s->x, s->y, HB1[0], HB1[2], HB1[4], in + 1, d, n);
     hb_br3(s->x + 3, s->y + 3, HB1[1], HB1[3], HB1[5], in, d + 1, n);
     for (int i = 0; i < n; i++) out[i] = 0.5f * (d[2 * i] + d[2 * i + 1]);
 }
-static void hb2_up(px_hb *s, const float *in, float *out, int n)
+static void hb2_up(px_hb *s, const float *in, float *out, int n, float *d)
 {
-    float *d = px_os_d;
     for (int i = 0; i < n; i++) d[2 * i] = in[i];
     hb_br1(s->x, s->y, HB2[0], d, out, n);
     hb_br1(s->x + 1, s->y + 1, HB2[1], d, out + 1, n);
 }
-static void hb2_down(px_hb *s, const float *in, float *out, int n)
+static void hb2_down(px_hb *s, const float *in, float *out, int n, float *d)
 {
-    float *d = px_os_d;
     hb_br1(s->x, s->y, HB2[0], in + 1, d, n);
     hb_br1(s->x + 1, s->y + 1, HB2[1], in, d + 1, n);
     for (int i = 0; i < n; i++) out[i] = 0.5f * (d[2 * i] + d[2 * i + 1]);
 }
 #undef HB_SEC
 static float px_os_m[2 * PX_MAX_BLOCK] PX_LO(px_os_m);                /* (stage 1 <-> 2) */
-static void os_up(px_hb *st, const float *in, float *out, int n, int os)   /* os 2 or 4: st[0] stage 1, st[1] stage 2 */
+static void os_up(px_hb *st, const float *in, float *out, int n, int os, float *middle, float *exchange)   /* os 2 or 4: st[0] stage 1, st[1] stage 2 */
 {
-    if (os == 2) { hb1_up(&st[0], in, out, n); return; }
-    hb1_up(&st[0], in, px_os_m, n);
-    hb2_up(&st[1], px_os_m, out, 2 * n);
+    if (os == 2) { hb1_up(&st[0], in, out, n, exchange); return; }
+    hb1_up(&st[0], in, middle, n, exchange);
+    hb2_up(&st[1], middle, out, 2 * n, exchange);
 }
-static void os_down(px_hb *st, const float *in, float *out, int n, int os)   /* st[2] stage 2, st[3] stage 1 */
+static void os_down(px_hb *st, const float *in, float *out, int n, int os, float *middle, float *exchange)   /* st[2] stage 2, st[3] stage 1 */
 {
-    if (os == 2) { hb1_down(&st[3], in, out, n); return; }
-    hb2_down(&st[2], in, px_os_m, 2 * n);
-    hb1_down(&st[3], px_os_m, out, n);
+    if (os == 2) { hb1_down(&st[3], in, out, n, exchange); return; }
+    hb2_down(&st[2], in, middle, 2 * n, exchange);
+    hb1_down(&st[3], middle, out, n, exchange);
 }
 
 /* drive_run over n oversampled samples in place, stage by stage (the same operations as drive_run sample by sample);
  * the anti-denormal offset follows the base-rate sample (os samples each) */
-static float px_os_t[PX_OVERSAMPLE * PX_MAX_BLOCK] PX_LO(px_os_t), px_os_h[PX_OVERSAMPLE * PX_MAX_BLOCK] PX_LO(px_os_h),
+static float px_os_t[PX_OVERSAMPLE * PX_MAX_BLOCK] PX_LO(px_os_t),
              px_os_u[PX_OVERSAMPLE * PX_MAX_BLOCK] PX_LO(px_os_u);
 /* v40.4: the oversampled sections' input at the base rate (the drive's, or a fitted amp's: one at a time), and the delay's
  * and the reverb's wet output when they run in the chain: not on px_engine_part's stack (the second core's is 2.8 KB) */
 static float px_os_p[PX_MAX_BLOCK] PX_LO(px_os_p), px_wb[2][PX_MAX_BLOCK] PX_LO(px_wb);
-static void drive_block(px_engine *e, float *u, int n, int os)   /* (static buffers: off the interrupt's stack) */
+static void drive_block(px_drive_state *state, float *u, int n, int os, float *t, float *h)   /* (static buffers: off the interrupt's stack) */
 {
-    float *t = px_os_t, *h = px_os_h;
     for (int i = 0; i < n; i++) {
         const float dn = ((i / os) & 1) ? 1e-15f : -1e-15f;
-        float d = clip_run(e, u[i] * e->drv_gain) + dn;
-        if (e->drv_dcb) { e->drv_dcs += (d - e->drv_dcs) * e->drv_dck; d -= e->drv_dcs; }
+        float d = clip_run(state, u[i] * state->gain) + dn;
+        if (state->dcb) { state->dcs += (d - state->dcs) * state->dck; d -= state->dcs; }
         t[i] = d;
     }
-    if (e->drv_tm == TM_MUFF) {
+    if (state->tm == TM_MUFF) {
         memcpy(h, t, (unsigned)n * sizeof(float));
-        bq_block(&e->drv_t1, t, n);
-        bq_block(&e->drv_t2, h, n);
-        for (int i = 0; i < n; i++) t[i] = t[i] + (h[i] - t[i]) * e->drv_mix;
-    } else if (e->drv_np & 2) {
-        bq_block2(&e->drv_t1, &e->drv_t2, t, n);
-    } else bq_block(&e->drv_t1, t, n);
-    if (e->drv_np & 4) bq_block(&e->drv_t3, t, n);
-    for (int i = 0; i < n; i++) u[i] = t[i] * e->drv_level + u[i] * e->drv_blend;
+        bq_block(&state->t1, t, n);
+        bq_block(&state->t2, h, n);
+        for (int i = 0; i < n; i++) t[i] = t[i] + (h[i] - t[i]) * state->mix;
+    } else if (state->np & 2) {
+        bq_block2(&state->t1, &state->t2, t, n);
+    } else bq_block(&state->t1, t, n);
+    if (state->np & 4) bq_block(&state->t3, t, n);
+    for (int i = 0; i < n; i++) u[i] = t[i] * state->level + u[i] * state->blend;
 }
+/* DRIVE and SYN can run on opposite sides of a NAM amp at the same time.
+ * Reuse each instance's oversampling exchange buffer as the tone blend scratch. */
+static struct {
+    float up[PX_OVERSAMPLE * PX_MAX_BLOCK], tone[PX_OVERSAMPLE * PX_MAX_BLOCK];
+    float middle[2 * PX_MAX_BLOCK], exchange[4 * PX_MAX_BLOCK];
+} px_syn_os;
+
+static __attribute__((noinline)) void drive_buffer(px_drive_state *state, px_hb *filters,
+                                                   float *samples, int n, int os, int synth)
+{
+    float *up = synth ? px_syn_os.up : px_os_u;
+    float *tone = synth ? px_syn_os.tone : px_os_t;
+    float *middle = synth ? px_syn_os.middle : px_os_m;
+    float *exchange = synth ? px_syn_os.exchange : px_os_d;
+    for (int i = 0; i < n; ++i) samples[i] = drive_pre(state, samples[i]);
+    os_up(filters, samples, up, n, os, middle, exchange);
+    drive_block(state, up, os * n, os, tone, exchange);
+    os_down(filters, up, samples, n, os, middle, exchange);
+}
+
 PX_INL static inline float amp_stage(px_engine *e, int i, float x, int upd)
 {
     x = op_run(&e->amp_hp[i], x);
@@ -3242,12 +3248,6 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
         y = 0.36f * held + 0.68f * body + edge * opening * e->syn_pwd * (0.35f + 0.65f * breath);
         e->syn_lp += e->syn_lpk * (y - e->syn_lp);
         return px_tanh(e->syn_lp * 1.3f) * e->syn_kg * e->syn_out + x * e->syn_dry + e->dn;
-    }
-    case PX_SYN_OCT_FUZZ: {
-        const float shifted = erb_octaves(e, &e->erb_syn, x, e->syn_lvl[0], e->syn_lvl[1], ERB_FULL);
-        const float fuzz = syn_fuzz_clip(e, x + shifted);
-        e->syn_lp += e->syn_lpk * (fuzz - e->syn_lp);
-        return e->syn_lp * e->syn_out + e->dn;
     }
     case PX_SYN_MONO: {
         float a = px_abs(x);
@@ -4048,27 +4048,27 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                                                             when the amp oversamples on its own; set C at x2 before NAM */
             if (drv_on) {
                 const int both = pair && amp_os;
-                const int os = (!both && e->drv_os == 2) ? 2 : PX_OVERSAMPLE, no = os * n;
+                const int os = !both && e->drv_os == 2 ? 2 : PX_OVERSAMPLE;
                 px_hb *set = os == 2 ? e->os_c : (pair || !amp_os) ? e->os_a : e->os_b;
-                float *ub = px_os_u, *const pre = px_os_p;
-                for (int k = 0; k < n; k++) {
-                    e->dn = (k & 1) ? 1e-15f : -1e-15f;
-                    float x = drive_pre(e, xb[k]);
-                    if (both) { x = bq_run(&e->amp_tight, x); x = bq_run(&e->amp_bright, x); x *= sag_pre; }
-                    pre[k] = x;
-                }
-                os_up(set, pre, ub, n, os);
-                if (both) {                              /* drive and preamp sample by sample (bias: once a base sample) */
-                    for (int j = 0; j < no; j++) {
+                if (both) {
+                    float *ub = px_os_u, *const pre = px_os_p;
+                    for (int k = 0; k < n; k++) {
+                        float x = drive_pre(&e->drive, xb[k]);
+                        x = bq_run(&e->amp_tight, x);
+                        x = bq_run(&e->amp_bright, x);
+                        pre[k] = x * sag_pre;
+                    }
+                    os_up(set, pre, ub, n, os, px_os_m, px_os_d);
+                    for (int j = 0; j < os * n; j++) {
                         e->dn = ((j >> 2) & 1) ? 1e-15f : -1e-15f;
-                        float u = drive_run(e, ub[j]);
+                        float u = drive_run(&e->drive, ub[j], e->dn);
                         for (int i = 0; i < e->amp_n; i++) u = amp_stage(e, i, u, (j & 3) == 0);
                         ub[j] = u;
                     }
-                } else drive_block(e, ub, no, os);
-                os_down(set, ub, xb, n, os);
-                for (int k = 0; k < n; k++) xb[k] *= strim;
-            } else for (int k = 0; k < n; k++) xb[k] *= strim;
+                    os_down(set, ub, xb, n, os, px_os_m, px_os_d);
+                } else drive_buffer(&e->drive, set, xb, n, os, 0);
+            }
+            for (int k = 0; k < n; k++) xb[k] *= strim;
             goto faded;
         }
         if (sblk == PX_B_DELAY || sblk == PX_B_REVERB) {   /* v38: over the block, each type's own loop */
@@ -4107,16 +4107,29 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 float x = bq_run(&e->amp_tight, xb[k]);
                 pre[k] = bq_run(&e->amp_bright, x) * sag_pre;
             }
-            os_up(e->os_a, pre, ub, n, PX_OVERSAMPLE);
+            os_up(e->os_a, pre, ub, n, PX_OVERSAMPLE, px_os_m, px_os_d);
             for (int j = 0; j < PX_OVERSAMPLE * n; j++) {
                 e->dn = ((j >> 2) & 1) ? 1e-15f : -1e-15f;
                 float u = ub[j];
                 for (int i = 0; i < e->amp_n; i++) u = amp_stage(e, i, u, (j & 3) == 0);
                 ub[j] = u;
             }
-            os_down(e->os_a, ub, xb, n, PX_OVERSAMPLE);
+            os_down(e->os_a, ub, xb, n, PX_OVERSAMPLE, px_os_m, px_os_d);
         }
         /* v40.4: the blocks that run over the block pass by pass (above); the others sample by sample, below */
+        if (sblk == PX_B_SYN && syn_t == PX_SYN_OCT_FUZZ) {
+            for (int k = 0; k < n; ++k) {
+                const float x = xb[k];
+                xb[k] = x + erb_octaves(e, &e->erb_syn, x, e->syn_lvl[0], e->syn_lvl[1], ERB_FULL);
+            }
+            drive_buffer(&e->syn_fuzz, e->syn_fuzz_os, xb, n, e->drv_os, 1);
+            for (int k = 0; k < n; ++k) {
+                const float x = xb[k];
+                e->syn_lp += e->syn_lpk * (x - e->syn_lp);
+                xb[k] = (x + e->syn_fuzz_tone * (x - e->syn_lp)) * e->syn_out * strim;
+            }
+            goto faded;
+        }
         if (sblk == PX_B_SYN && pxa_is(syn_t)) { pxa_run(e, syn_t, xb, n, strim); goto faded; }   /* v48 */
 #if PX_RUNS
         if (sblk == PX_B_SYN && (syn_t == PX_SYN_ORGAN || syn_t == PX_SYN_CHURCH ||

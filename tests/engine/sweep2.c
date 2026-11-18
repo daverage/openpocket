@@ -7,6 +7,58 @@
 static px_engine e;
 static long bad;
 
+static int poly_oct_fuzz_differs_from_drive(void)
+{
+    enum { N = PX_MAX_BLOCK * 32 };
+    static float input[N], reference[N];
+    float output[PX_MAX_BLOCK];
+    const int gains[] = {0, 25, 50, 75, 100};
+    const uint8_t octaves[][2] = {{0, 0}, {100, 0}, {0, 100}, {100, 100}, {28, 64}};
+    for (int i = 0; i < N; ++i) {
+        const float t = (float)i / 44100.0f;
+        input[i] = (sinf(518.0f * t) + 0.8f * sinf(772.0f * t) + 0.4f * sinf(1036.0f * t)) *
+                   (i % 613 < 450 ? 0.075f : 0.0f);
+    }
+    for (unsigned g = 0; g < sizeof gains / sizeof gains[0]; ++g) {
+        for (unsigned v = 0; v < sizeof octaves / sizeof octaves[0]; ++v) {
+            px_preset_t preset;
+            px_preset_factory(&preset, 0);
+            memset(preset.on, 0, sizeof preset.on);
+            px_order_default(preset.order);
+            preset.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+            preset.on[PX_B_PITCH] = v != 0;
+            preset.type[PX_B_PITCH] = PX_PIT_POLYOCT_HQ;
+            preset.p[PX_B_PITCH][0] = 100;
+            preset.p[PX_B_PITCH][1] = octaves[v][0];
+            preset.p[PX_B_PITCH][2] = octaves[v][1];
+            preset.p[PX_B_PITCH][3] = 0;
+            preset.on[PX_B_DRIVE] = 1;
+            preset.type[PX_B_DRIVE] = PX_DRV_FUZZ_FACE;
+            preset.p[PX_B_DRIVE][0] = gains[g];
+            preset.p[PX_B_DRIVE][1] = 50;
+            px_engine_init(&e, 44100.0f);
+            px_engine_set(&e, &preset);
+            for (int i = 0; i < N; i += PX_MAX_BLOCK)
+                px_engine_process(&e, input + i, reference + i, PX_MAX_BLOCK);
+
+            preset.on[PX_B_PITCH] = preset.on[PX_B_DRIVE] = 0;
+            preset.on[PX_B_SYN] = 1;
+            preset.type[PX_B_SYN] = PX_SYN_OCT_FUZZ;
+            preset.p[PX_B_SYN][0] = octaves[v][0];
+            preset.p[PX_B_SYN][1] = octaves[v][1];
+            preset.p[PX_B_SYN][2] = gains[g];
+            preset.p[PX_B_SYN][3] = preset.p[PX_B_SYN][4] = 50;
+            px_engine_init(&e, 44100.0f);
+            px_engine_set(&e, &preset);
+            for (int i = 0; i < N; i += PX_MAX_BLOCK) {
+                px_engine_process(&e, input + i, output, PX_MAX_BLOCK);
+                if (memcmp(output, reference + i, sizeof output)) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static int poly_oct_fuzz_missing_at_minimum_level(void)
 {
     const int sample_rate = 44100;
@@ -157,6 +209,7 @@ int main(void){
   if (mono_retrigger_broken()) { bad++; puts("PROBLEM MONO SYNTH played stale pitch or failed to acquire the new note"); }
   if (hq_octave_inaccurate(2.0f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the doubled chord frequencies"); }
   if (hq_octave_inaccurate(0.5f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the halved chord frequencies"); }
+  if (poly_oct_fuzz_differs_from_drive()) { bad++; puts("PROBLEM POLY OCT FUZZ differs from HQ octave into Fuzz Face"); }
   if (poly_oct_fuzz_missing_at_minimum_level()) { bad++; puts("PROBLEM POLY OCT FUZZ lost its distortion at minimum LEVEL"); }
   printf("%ld configurations tested, %ld problems\n", n, bad);
   return bad != 0;

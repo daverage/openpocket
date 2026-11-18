@@ -147,6 +147,12 @@ typedef struct { float b0, b1, b2, a1, a2, z1, z2; } px_bq;
 typedef struct { float b0, b1, a1, z; } px_op;      /* first-order section (RC) */
 typedef struct { float x[6], y[6]; } px_hb;           /* v38: a half-band filter's all-pass sections (x2 up or down) */
 
+typedef struct {
+    px_bq hp, shelf, lp, mid, t1, t2, t3;
+    float gain, level, blend, bias, off, gate, dcs, dck, shelf_lo, mix;
+    int   clip, tm, np, pre, dcb;
+} px_drive_state;
+
 /* v49: the HQ octave's analysis: 29 complex band-pass filters from 60 Hz to 2.05 kHz, each 37.5 Hz + 4 % of its
  * frequency from the next and 0.8 of that wide (32 Hz at the bottom, 95 Hz at the top), at a quarter of the rate
  * (11.025 kHz). Narrower than a guitar note's harmonic spacing up to where its partials matter, so a partial gets a
@@ -238,7 +244,9 @@ typedef struct {
     uint8_t ord[PX_NBLK];
     /* synth / instrument block (v29) */
     float syn_buf[PX_PS_N]; int syn_w;                 /* shifter source (organ, strings...); sitar: string combs */
-    px_hb syn_fuzz_up, syn_fuzz_down;
+    px_hb syn_fuzz_os[4];
+    px_drive_state syn_fuzz;
+    float syn_fuzz_tone;
     union { float syn_cb[PX_SYN_CB]; px_acoustic syn_ac; }; int syn_cw;   /* v48: syn_ac (px_acoustic.h) */
     float syn_ph[3], syn_off[3][2], syn_inc[3], syn_W[3], syn_lvl[3]; int syn_nv;
     float syn_dry, syn_out, syn_d8;                    /* dry guitar, effect level, organ 8' (the guitar's own pitch) */
@@ -254,10 +262,7 @@ typedef struct {
     float syn_pwm, syn_pw0, syn_pwd;
     /* sitar */
     int   syn_cl[6], syn_cp[6], syn_c0[6], syn_type; float syn_cs[6], syn_cfb, syn_cdamp, syn_buzz, syn_sym;
-    /* drive */
-    px_bq drv_hp, drv_shelf, drv_lp, drv_mid, drv_t1, drv_t2, drv_t3;
-    float drv_gain, drv_level, drv_blend, drv_bias, drv_off, drv_gate, drv_dcs, drv_dck, drv_shelf_lo, drv_mix;
-    int   drv_clip, drv_tm, drv_np, drv_pre, drv_dcb;
+    px_drive_state drive;
     /* amp */
     int   amp_n, amp_hard;
     float amp_g[4], amp_bias[4], amp_boff[4], amp_env[4], amp_envk, amp_bk;   /* env: bias shift (blocking), x depth */
