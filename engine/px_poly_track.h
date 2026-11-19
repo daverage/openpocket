@@ -554,7 +554,7 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
  * note within 120 cents of no held voice takes a free voice (lowest first) after PXP_S_CONFIRM reports running, once
  * that voice has faded (as before). No harmonic, level or eviction rules. Reports: 2.9 ms. */
 #ifndef PXP_SIMPLE
-#define PXP_SIMPLE 2                                   /* v70 default: 2, on the picker's notes; 1: on pxp_candidates; 0: the v66 allocator */
+#define PXP_SIMPLE 0                                   /* v72: 0 (v71 shipped 2 and failed on the pedal: octave flips, ghost notes, no chords); 2: on the picker's notes; 1: on pxp_candidates; 0: the v66 allocator */
 #endif
 #ifndef PXP_S_CONFIRM
 #define PXP_S_CONFIRM 5u                               /* 14.5 ms */

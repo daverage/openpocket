@@ -23,7 +23,7 @@
 #define PXT_PART    16                 /* partials considered per frame */
 #define PXT_NOTES   6                  /* notes found per frame */
 #ifndef PXT_FMIN
-#define PXT_FMIN    38.0f              /* fundamentals: v70, from below a bass's E1 (41 Hz; v49..v67: 60 Hz, B1, which
+#define PXT_FMIN    60.0f              /* v72: back to 60 Hz (38 Hz in v71 let guitar notes drop an octave); was, from below a bass's E1 (41 Hz; v49..v67: 60 Hz, B1, which
                                           played E1..A#1 an octave up: tools/research, docs/SYNTH-REBUILD.md) .. */
 #endif
 #define PXT_FMAX    1400.0f            /* .. F6 */
