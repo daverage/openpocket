@@ -284,3 +284,51 @@ the note step is now inlined into the RAM-resident voice loop.
 `node tools/poly_pedal_check.mjs BlackBox_958` passed on the BlackBox. Peak
 load was 18–20%, or 22–24% with Smart Gate, with no late blocks, no safety
 bypass and the second core active. The three saved presets kept their hash.
+
+## v59 harmonic-sum picker
+
+The shared `pxr_pick` keeps the six strongest local maxima above 15% of the
+peak energy. On the dev takes (GuitarSet comping 0–23), both notes of a dyad
+are local maxima of the bank in 70.7% of frames, but only 45.1% also clear
+that threshold. In 28.5% of frames the strongest band is not a played note.
+The allocator then dropped every candidate below 20% of the peak energy.
+
+v59 gives the poly tracker its own picker, `pxp_pick`. It considers local
+maxima down to 15% of the peak amplitude, about 2% of the energy. It ranks
+them by the band plus its 2nd–5th harmonic bands, each weighted half the
+previous. A second note needs 20% of the first note's sum. Bands already
+claimed as the first note's harmonics count at 35%. The allocator's start
+threshold falls to 1% of the peak energy. Confirmation and hold stay at
+three and four reports, so the start latency does not change.
+`pxr_advance` now updates the bank and `pxr_pick` still serves Lowest
+Octave HQ, which is unchanged.
+
+The parameters were swept on the dev takes and chosen on the held-out takes
+24–47. Neither set was used to choose the other's figures.
+
+| GuitarSet takes 24–47, voices | v57 | v59 |
+| --- | ---: | ---: |
+| Dyads, both pitches within 50 cents | 33.6% | **45.7%** |
+| Lowest pitch right | 66.7% | 72.7% |
+| Single-note frames with an extra voice | 37.1% | **36.0%** |
+| Second-note entries within 100 ms (median) | 109/270 (22.6 ms) | 125/270 (22.6 ms) |
+| Comping precision / recall | 76.1% / 51.6% | 81.6% / 54.5% |
+| −5 semitones: dyads / extra voices | 29.2% / 32.7% | 37.9% / 31.2% |
+
+On the synthetic fixtures, the fifth's low repick now keeps both notes 97.2%
+of the time, up from 0%. The octave's upper note enters at 69 ms instead of
+40 ms. The bend is unchanged. Semitone sustain is still 0%. At E2/F2 the
+bank's fixed 14 Hz bandwidth cannot separate the fundamentals or second
+harmonics. A conditional rule accepted a merged band when two or more of its
+harmonic bands were resolved peaks. It reached 38.6% semitone sustain but
+removed octaves entirely and lowered guitar dyads, so it was not kept. The
+recorded bass pairs drop from 0–20% to 0–6% both-note sustain. The GuitarSet
+bass measure rises from 51.3% to 56.9%.
+
+`tools/sim/poly_diag.py` breaks dyad accuracy down by interval, on the dev,
+held or remaining takes. `PXP_SET="RHO=0.3 ACQ=0.05 …"` overrides the picker
+and allocator constants in `tools/sim/pulse_poly_bench.c` for sweeps.
+
+BlackBox v59: peak 18–21%, or 23–24% with Smart Gate. There were no late
+blocks, no safety bypass and the second core stayed active. The saved
+presets kept their hash. The RAM code window has 392 bytes left.
