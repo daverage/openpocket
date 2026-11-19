@@ -65,6 +65,29 @@ try {
         const got = (await editor.state()).preset.type[syn];
         assert.equal(blocks[syn].types[got]?.name, "BASS SYNTH HQ");
         console.log(JSON.stringify({migrated: "BASS SYNTH (6) -> " + blocks[syn].types[got].name + " (" + got + ")"}));
+        // v64: PWM SYNTH HQ (17) -> PWM SYNTH; PITCH POLY OCTAVE (1) -> POLY OCTAVE HQ with RANGE 0
+        assert.ok(!blocks[syn].types[17]?.name && !blocks[1].types[1]?.name, "PWM SYNTH HQ and POLY OCTAVE hidden");
+        q.type[syn] = 17; q.type[1] = 1; q.on[1] = 1; q.p[1] = [40, 70, 30, 88, 50];
+        assert.equal(await editor.put(q), 0);
+        await pause(300);
+        const st = (await editor.state()).preset;
+        assert.equal(blocks[syn].types[st.type[syn]]?.name, "PWM SYNTH");
+        assert.equal(blocks[1].types[st.type[1]]?.name, "POLY OCTAVE HQ");
+        assert.deepEqual(st.p[1].slice(0, 4), [40, 70, 30, 0]);
+        console.log(JSON.stringify({migrated: ["PWM SYNTH HQ -> PWM SYNTH", "POLY OCTAVE -> POLY OCTAVE HQ, RANGE 0"]}));
+        const hq = blocks[1].types.findIndex(t => t?.name === "POLY OCTAVE HQ");
+        assert.deepEqual(blocks[1].types[hq].params.map(p => p.name), ["DRY", "OCT -1", "OCT +1", "RANGE", "OCT -2"]);
+        for (const knobs of [[50, 100, 0, 0, 0], [50, 0, 0, 0, 100], [50, 100, 100, 0, 100]]) {
+            const r = structuredClone(original.preset); r.on.fill(0); r.order = r.order.map((_, i) => i);
+            r.on[1] = 1; r.type[1] = hq; r.p[1] = knobs; r.p[0][2] = 50;
+            assert.equal(await editor.put(r), 0);
+            await pause(650);
+            const a = await ping(); let peak = a.peak, b = a, core = a.secondCore, safe = a.bypass;
+            for (let i = 0; i < 10; i++) { await pause(500); b = await ping(); peak = Math.max(peak, b.peak); core &&= b.secondCore; safe ||= b.bypass; }
+            const late = (b.xrun - a.xrun + 16384) % 16384;
+            console.log(JSON.stringify({name: "POLY OCTAVE HQ " + knobs.join(","), peak, pitch: b.prof?.[1], secondCore: core, safety: safe, late}));
+            assert.ok(core && !safe && late === 0);
+        }
     }
     const temporary = ({type, knobs}, gateOn) => {
         const q = structuredClone(original.preset);

@@ -168,7 +168,7 @@ static void st_get(uint32_t k, px_preset_t *p)
 {
     if (st_saved(k)) { memcpy(p, st_slot[k], sizeof *p); if (!px_order_valid(p->order)) px_order_default(p->order); }
     else px_preset_factory(p, (int)k);
-    p->type[PX_B_SYN] = (uint8_t)px_type_canonical(PX_B_SYN, p->type[PX_B_SYN]);
+    for (int b = 0; b < PX_NBLK; b++) px_block_canonical(b, &p->type[b], p->p[b]);   /* v64: every block's retired types */
 }
 
 /* audio off the flash: muted output, IRQ held, the second core between jobs */

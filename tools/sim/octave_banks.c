@@ -10,6 +10,7 @@
  * DOWN=1 compares phase halving for ENGINE NOW and COMPACT.
  * Scores: energy near shifted partials, level wobble on DI, and wet response to
  * controlled tone attacks. */
+#define ERB_HOST_EXPERIMENTS 1
 #include "../../engine/px_dsp.c"
 #include <stdio.h>
 #include <stdlib.h>
@@ -133,6 +134,22 @@ static float wobble(const float *x, const float *y, int n)
     }
     free(lx); free(ly); return cnt ? (float)sqrt(acc / cnt) : 0.0f;
 }
+/* v64: the pick click: the wet output's energy above 2.5 kHz in the 20 ms after each pick of the dry input, against
+ * its average above 2.5 kHz (dB; lower is cleaner) */
+static float click(const float *x, float *y, int n)
+{
+    static float hp[2]; double on = 0, all = 0; int non = 0, nall = 0, since = 1 << 30; float fast = 0, slow = 0, z = 0, z2 = 0;
+    (void)hp;
+    for (int i = 0; i < n; i++) {
+        const float a = fabsf(x[i]); fast += (a - fast) * 0.0224f; slow += (a - slow) * 0.00057f;
+        if (fast > 2.0f * slow && fast > 1e-3f && since > 4410) since = 0;
+        const float h = y[i] - 1.68f * z + 0.71f * z2; z2 = z; z = y[i];   /* (a crude high-pass, ~2.5 kHz) */
+        const double e = (double)h * h; all += e; nall++;
+        if (since < 882) { on += e; non++; }
+        since++;
+    }
+    return non && all > 0 ? (float)(10 * log10((on / non) / (all / nall) + 1e-20)) : 0.0f;
+}
 static float arrival(int which, float f)
 {
     const int n = 44100, s0 = 4410; float *x = malloc(4 * n), *y = malloc(4 * n);
@@ -169,6 +186,10 @@ int main(int argc, char **argv)
 {
     px_engine_init(&E, 44100.0f); erb_prepare(&E);
     if (getenv("DOWN")) ratio = 0.5f;
+    if (getenv("BETA")) erb_host_beta = atof(getenv("BETA"));           /* v64 experiments (engine/px_dsp.c) */
+    if (getenv("DUCK")) erb_host_duck_ms = atof(getenv("DUCK"));
+    if (getenv("DUCKR")) erb_host_duck_ratio = atof(getenv("DUCKR"));
+    if (getenv("DUCKD")) erb_host_duck_depth = atof(getenv("DUCKD"));
     const float s1 = getenv("S1") ? atof(getenv("S1")) : 37.5f, c1 = getenv("C1") ? atof(getenv("C1")) : 0.04f, w1 = getenv("W1") ? atof(getenv("W1")) : 0.8f;
     const float s2 = getenv("S2") ? atof(getenv("S2")) : 50.0f, c2 = getenv("C2") ? atof(getenv("C2")) : 0.03f, w2 = getenv("W2") ? atof(getenv("W2")) : 0.8f;
     make_v48(&BK[0]);
@@ -206,7 +227,9 @@ int main(int argc, char **argv)
         float *o = malloc(4 * m); const char *b = strrchr(argv[a], '/');
         printf("%-30.30s", b ? b + 1 : argv[a]);
         for (int q = 0; q < 4; q++) { if (ratio == 0.5f && (q == 1 || q == 2)) { printf(" %12s", "-"); continue; } render(q, r, o, m); printf(" %12.2f", wobble(r, o, m)); }
-        printf("   (added wobble dB)\n"); free(r); free(o);
+        printf("   (added wobble dB)");
+        if (getenv("CLICK")) { printf("  click"); for (int q = 0; q < 4; q++) { if (ratio == 0.5f && (q == 1 || q == 2)) continue; render(q, r, o, m); printf(" %5.2f", click(r, o, m)); } }
+        printf("\n"); free(r); free(o);
     }
     return 0;
 }

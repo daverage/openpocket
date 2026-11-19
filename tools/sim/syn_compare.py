@@ -16,14 +16,20 @@ import numpy as np
 from track_eval import ROOT, jams_notes
 from resonator_track_eval import read_di
 
+# (old, new, base ratio[, block, knobs]): knobs given here override the all-wet default
 PAIRS = [("ORGAN", "ORGAN HQ", 0.5), ("CHURCH ORGAN", "CHURCH ORGAN HQ", 0.5), ("STRINGS", "STRINGS HQ", 0.5),
-         ("CHOIR", "CHOIR HQ", 0.5), ("PWM SYNTH", "PWM SYNTH HQ", 1.0), ("BASS SYNTH", "BASS SYNTH HQ", 0.25)]
+         ("CHOIR", "CHOIR HQ", 0.5), ("PWM SYNTH", "PWM SYNTH HQ", 1.0), ("BASS SYNTH", "BASS SYNTH HQ", 0.25),
+         ("SQUARE SYNTH", "SQUARE SYNTH HQ", 1.0, "SFX", "50 50 0 100 50"),         # SWEEP RESO SUB MIX: no sub, all wet
+         ("POLY OCTAVE", "POLY OCTAVE HQ", 0.5, "PITCH", "0 100 0 0 0"),            # DRY 0, OCT -1 only (HQ RANGE 0: all)
+         ("POLY OCTAVE", "POLY OCTAVE HQ", 2.0, "PITCH", "0 0 100 0 0")]            # OCT +1 only
 BENCH = os.path.join(ROOT, 'build', 'ensemble_bench')
 
-def render(name, x):
+def render(name, x, blk='SYN', given=None):
     knobs = ['50'] * 5
     knobs[4] = '100' if name.startswith('PWM') else '0'      # all wet: PWM's MIX at 100, the others' DRY at 0
-    r = subprocess.run([BENCH, name, *knobs], input=x.astype('<f4').tobytes(), capture_output=True, check=True)
+    if given: knobs = given.split()
+    r = subprocess.run([BENCH, name, *knobs], input=x.astype('<f4').tobytes(), capture_output=True, check=True,
+                       env=dict(os.environ, BLK=blk))
     return np.frombuffer(r.stdout, dtype='<f4'), r
 
 def on_pitch(y, notes, base):
@@ -61,18 +67,50 @@ def on_chords(y, notes, base, win=4096):
         shares.append(X[band & near].sum() / tot)
     return np.array(shares)
 
+def levels(y, w=441):
+    m = len(y) // w
+    return 10 * np.log10((y[:m * w].reshape(m, w).astype(float) ** 2).mean(1) + 1e-20)
+
+def wobble(x, y):
+    """Added level wobble (dB), as tools/sim/octave_banks.c: the wet level's 10 ms deviations from its own 150 ms
+    trend, relative to the dry level's, where the input is within 30 dB of its peak."""
+    lx, ly = levels(x), levels(y); top = lx.max(); acc = []
+    for j in range(9, len(lx) - 9):
+        if lx[j] < top - 30 or ly[j] < -90: continue
+        avg = np.mean(ly[j - 7:j + 8] - lx[j - 8:j + 7])
+        acc.append((ly[j] - lx[j - 1] - avg) ** 2)
+    return float(np.sqrt(np.mean(acc))) if acc else 0.0
+
 p = argparse.ArgumentParser(); p.add_argument('--takes', type=int, default=20); p.add_argument('--comp', action='store_true')
+p.add_argument('--wobble', action='store_true', help='added level wobble on the bundled loops instead')
+p.add_argument('--bench', help='another ensemble_bench build (e.g. with -DPX_SUB2_TEST)')
+p.add_argument('--pair', help='OLD|NEW|BASE|BLK|KNOBS instead of the built-in pairs')
 a = p.parse_args()
+if a.bench: BENCH = a.bench
+if a.pair:
+    o, n, b, k, kn = a.pair.split('|'); PAIRS = [(o, n, float(b), k, kn)]
+if a.wobble:
+    loops = [read_di(os.path.join(ROOT, 'assets', 'loops', n + '.wav')) for n in ('chug', 'riff', 'chords', 'arpeggio', 'lead')]
+    print(f'{"type":18s} added wobble dB: chug riff chords arpeggio lead | mean')
+    for pair in PAIRS:
+        blk, given = (pair[3], pair[4]) if len(pair) > 3 else ('SYN', None)
+        for name in pair[:2]:
+            w = [wobble(x, render(name, x, blk, given)[0]) for x in loops]
+            print(f'{name:18s} ' + ' '.join(f'{v:5.2f}' for v in w) + f' | {np.mean(w):5.2f}')
+        print()
+    sys.exit(0)
 if a.comp: on_pitch = on_chords
 files = sorted(glob.glob(os.path.join(ROOT, 'build', 'guitarset', 'mono', '*_comp_mix.wav' if a.comp else '*_solo_mix.wav')))[:a.takes]
 items = [(read_di(w), jams_notes(os.path.join(ROOT, 'build', 'guitarset', 'annotation', os.path.basename(w).replace('_mix.wav', '.jams')))) for w in files]
 print(f'{"type":18s} {"on-pitch":>9s} {"p25":>6s} {"host s":>7s}')
-for old, new, base in PAIRS:
+for pair in PAIRS:
+    old, new, base = pair[:3]
+    blk, given = (pair[3], pair[4]) if len(pair) > 3 else ('SYN', None)
     for name in (old, new):
         shares = []; secs = 0.0
         for x, notes in items:
-            t0 = time.perf_counter(); y, _ = render(name, x); secs += time.perf_counter() - t0
+            t0 = time.perf_counter(); y, _ = render(name, x, blk, given); secs += time.perf_counter() - t0
             shares.append(on_pitch(y, notes, base))
         s = np.concatenate(shares)
-        print(f'{name:18s} {100*s.mean():8.1f}% {100*np.percentile(s,25):5.1f}% {secs:7.2f}')
+        print(f'{name + (" x" + str(base) if blk == "PITCH" else ""):18s} {100*s.mean():8.1f}% {100*np.percentile(s,25):5.1f}% {secs:7.2f}')
     print()

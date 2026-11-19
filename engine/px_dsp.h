@@ -103,6 +103,7 @@ const char *px_block_label(int blk);
 const char *px_block_name(int blk);
 int         px_ntypes(int blk);
 int         px_type_canonical(int blk, int type);
+void px_block_canonical(int blk, uint8_t *type, uint8_t *p);   /* v64: px_type_canonical, and the retired type's controls */
 const char *px_type_name(int blk, int type);
 int         px_nparams(int blk, int type);
 const char *px_param_name(int blk, int type, int k);
@@ -176,6 +177,10 @@ typedef struct {
     float input[32], up[32];                           /* 44.1 kHz in; 22.05 kHz out (its odd slots stay zero) */
     float in2[32], up2[32];                            /* v49: 22.05 kHz in; 11.025 kHz out (the voices, mixed) */
     uint8_t half_phase[PX_ERB_BANDS];
+#ifdef PX_SUB2_TEST
+    uint8_t quarter[PX_ERB_BANDS];                     /* v64: each band's wraps modulo 4 (two octaves down) */
+    float down2;                                       /* v64: the -24 voice's level (POLY OCTAVE HQ's OCT -2) */
+#endif
     unsigned pos, pos2;
     unsigned idle;                                     /* v49: samples with every voice at zero (the bank rests) */
 } px_erb_octave;

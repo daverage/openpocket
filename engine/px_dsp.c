@@ -47,6 +47,12 @@
 #define ERB_GAIN_UP   0.669f
 #define ERB_GAIN_DOWN 1.480f
 #endif
+#ifndef PX_SUB2_LEVEL
+#define PX_SUB2_LEVEL 1.79f                            /* v64: OCT -2 at OCT -1's wet level, same setting (loops) */
+#endif
+#ifndef ERB_GAIN_DOWN2
+#define ERB_GAIN_DOWN2 1.0f                            /* v64: the -24 voice (calibrated in rc_pitch's level) */
+#endif
 #ifndef ERB_GAIN_UP2
 #define ERB_GAIN_UP2  0.46f                            /* v49: the 2' at CHURCH ORGAN's level (its shifter's, -6.7 dB) */
 #endif
@@ -170,10 +176,19 @@ static inline float erb_inverse_root(float power)
 #ifdef PX_LOWEST_HOST
 static float erb_host_mask[ERB_O_BANDS];
 #endif
+#ifdef ERB_HOST_EXPERIMENTS
+/* v64 host experiments (tools/sim/octave_banks.c, docs/OCTAVE-LAYOUT-v62.md): reconstruction weighting by each
+ * band's dominance over its neighbours, (p_i / max(p_i-1, p_i, p_i+1))^beta from the previous sample's powers;
+ * and ducking the octave voices after a pick (erb_octaves2) */
+static float erb_host_beta, erb_host_pw[ERB_O_BANDS + 2], erb_host_duck_ms, erb_host_duck_ratio = 2.0f, erb_host_duck_depth;
+#endif
 static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, float up, float down, float up2, float range)
 {
     (void)e;
     float raised = 0.0f, lowered = 0.0f, raised2 = 0.0f;
+#ifdef PX_SUB2_TEST
+    float lowered2 = 0.0f;
+#endif
     for (int i = 0; i < ERB_O_BANDS; ++i) {
         const px_erb_band *b = &erb_oband[i];
         const float real = b->b0 * x + state->z1[i].r;
@@ -187,13 +202,42 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
          * square root's sign across each crossing of the negative real axis. */
         const float rr = real * real, ii = imag * imag, power = rr + ii + 1e-24f;
         const float inv = erb_inverse_root(power);
+#ifdef ERB_HOST_EXPERIMENTS
+        float cohere = 1.0f;
+        if (erb_host_beta > 0.0f) {
+            float m = erb_host_pw[i + 1];
+            if (erb_host_pw[i] > m) m = erb_host_pw[i];
+            if (erb_host_pw[i + 2] > m) m = erb_host_pw[i + 2];
+            cohere = powf(erb_host_pw[i + 1] / (m + 1e-30f), erb_host_beta);
+        }
+        erb_host_pw[i + 1] = power;
+        raised += cohere * (rr - ii) * inv;
+#else
         raised += (rr - ii) * inv;
+#endif
         if (up2 != 0.0f && erb_ofc[i] < ERB_UP2_TOP) {     /* v49: Re(z⁴) / |z|³, two octaves up */
             const float d = rr - ii;
             raised2 += (d * d - 4.0f * rr * ii) * inv * inv * inv;
         }
         const unsigned negative = imag < 0.0f;
         unsigned phase = state->half_phase[i];
+#ifdef PX_SUB2_TEST
+        /* v64: two octaves down, |z| cos((a + 2 pi k) / 4): k counts the crossings of the negative real axis modulo 4
+         * (tools/sim/sub2_proto.c); a band whose -24 would sound under 35 Hz fades out (a low E's 20.6 Hz) */
+        if (real < 0.0f && (phase & 1) != negative) state->quarter[i] = (uint8_t)((state->quarter[i] + (negative ? 1 : 3)) & 3);
+        if (state->down2 != 0.0f) {
+            const float floor2 = (0.25f * erb_ofc[i] - 30.0f) * 0.1f;
+            if (floor2 > 0.0f) {
+                const unsigned k = state->quarter[i];
+                const float hc = 0.5f + 0.5f * real * inv;
+                const float h = hc > 0.0f ? hc * erb_inverse_root(hc + 1e-30f) : 0.0f;
+                const float qc = 0.5f + 0.5f * ((k & 1) ? -h : h);
+                const float qa = qc > 0.0f ? qc * erb_inverse_root(qc + 1e-30f) : 0.0f;
+                const float sign = k == 0 ? 1.0f : k == 2 ? -1.0f : ((k == 1) == (negative != 0) ? 1.0f : -1.0f);
+                lowered2 += power * inv * sign * qa * (floor2 < 1.0f ? floor2 : 1.0f);
+            }
+        }
+#endif
         if (real < 0.0f && (phase & 1) != negative) phase ^= 2;
         state->half_phase[i] = (uint8_t)((phase & 2) | negative);
         /* Taper the octave-down band mix around the selected input pitch.
@@ -208,10 +252,18 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
 #ifdef PX_LOWEST_HOST
             sample *= erb_host_mask[i];
 #endif
+#ifdef ERB_HOST_EXPERIMENTS
+            sample *= cohere;
+#endif
             lowered += (phase & 2) ? -sample : sample;
         }
     }
+#ifdef PX_SUB2_TEST
+    return up * raised * ERB_GAIN_UP + down * lowered * ERB_GAIN_DOWN + up2 * raised2 * ERB_GAIN_UP2
+         + state->down2 * lowered2 * ERB_GAIN_DOWN2;
+#else
     return up * raised * ERB_GAIN_UP + down * lowered * ERB_GAIN_DOWN + up2 * raised2 * ERB_GAIN_UP2;
+#endif
 }
 
 /* one 44.1 kHz sample in, the octave voices (mixed by their levels) out: down to 11.025 kHz in two half-band stages,
@@ -222,7 +274,11 @@ static PX_HOT float erb_octaves2(const px_engine *e, px_erb_octave *state, float
     /* v49: with every voice at zero (STRINGS HQ with OCT at 0, say) the bank's output is silent: once its tail is out
      * the bank rests and its state is cleared. A voice turned up again starts from silence and builds up with the
      * bands (their own ~10-17 ms), so it fades in rather than stepping in on stale filter state. */
+#ifdef PX_SUB2_TEST
+    if (up == 0.0f && down == 0.0f && up2 == 0.0f && state->down2 == 0.0f) {
+#else
     if (up == 0.0f && down == 0.0f && up2 == 0.0f) {
+#endif
         if (state->idle >= ERB_IDLE) return 0.0f;
         if (++state->idle == ERB_IDLE) { memset(state, 0, sizeof *state); state->idle = ERB_IDLE; return 0.0f; }
     } else state->idle = 0;
@@ -240,6 +296,18 @@ static PX_HOT float erb_octaves2(const px_engine *e, px_erb_octave *state, float
     state->pos = (pos + 1) & 31;
     /* The upsampler's odd samples need only the centre tap. Its even samples
      * use the surrounding taps. The odd history slots stay zero. */
+#ifdef ERB_HOST_EXPERIMENTS
+    if (erb_host_duck_ms > 0.0f) {                     /* (host only: one octave state at a time) */
+        static float fast, slow, duck = 1.0f; static int since = 1 << 30;
+        const float a = input < 0.0f ? -input : input;
+        fast += (a - fast) * 0.0224f; slow += (a - slow) * 0.00057f;   /* 1 ms, 40 ms at 44.1 kHz */
+        if (fast > erb_host_duck_ratio * slow && fast > 1e-3f && since > 2646) { duck = erb_host_duck_depth; since = 0; }
+        since++;                                                       /* (one duck a pick: 60 ms apart) */
+        duck += (1.0f - duck) * (1.0f / (0.001f * erb_host_duck_ms * 44100.0f));
+        const float y = (pos & 1) ? state->up[(pos - 15) & 31] : 2.0f * erb_halfband(state->up, pos, erb_hb);
+        return y * duck;
+    }
+#endif
     if (pos & 1) return state->up[(pos - 15) & 31];
     return 2.0f * erb_halfband(state->up, pos, erb_hb);
 }
@@ -540,13 +608,23 @@ static const tdef T_COMP[PX_CMP_COUNT] = {
 
 static const char *const PN_OCT[] = {"DRY", "SUB -1", "SUB -2", "UP +1", "TONE"};
 static const char *const PN_POLY[] = {"DRY", "OCT -1", "OCT +1"};
-static const char *const PN_POLY_HQ[] = {"DRY", "OCT -1", "OCT +1", "RANGE"};
+static const char *const PN_POLY_HQ[] = {"DRY", "OCT -1", "OCT +1", "RANGE", "OCT -2"};   /* v64: OCT -2 (PX_SUB2_TEST) */
 static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
 static const tdef T_PITCH[PX_PIT_COUNT] = {
-    {"OCTAVER", 5, PN_OCT}, {"POLY OCTAVE", 3, PN_POLY}, {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
+    {"OCTAVER", 5, PN_OCT},
+#ifdef PX_CONSOLIDATE_TEST
+    {"", 3, PN_POLY},                                  /* v64: retired, plays POLY OCTAVE HQ (px_block_canonical) */
+#else
+    {"POLY OCTAVE", 3, PN_POLY},
+#endif
+    {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
+#ifdef PX_SUB2_TEST
+    {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 5, PN_POLY_HQ},
+#else
     {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 4, PN_POLY_HQ},
+#endif
 #ifdef PX_LOWEST_TEST
     {"LOWEST OCTAVE HQ", 3, PN_POLY},
 #endif
@@ -606,7 +684,13 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"12-STRING", 3, PN_12S},
     {"ACOUSTIC", 4, PN_ACO}, {"SITAR", 4, PN_SIT}, {"BARITONE", 3, PN_BAR}, {"POLY BRASS", 5, PN_BRASS},
     {"STRINGS HQ", 5, PN_STR}, {"CHOIR HQ", 5, PN_CHO}, {"ORGAN HQ", 5, PN_ORG}, {"CHURCH ORGAN HQ", 5, PN_CHU},
-    {"BASS SYNTH HQ", 5, PN_BSY}, {"PWM SYNTH HQ", 5, PN_PWM}, {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
+    {"BASS SYNTH HQ", 5, PN_BSY},
+#ifdef PX_CONSOLIDATE_TEST
+    {"", 5, PN_PWM},                                   /* v64: retired, plays PWM SYNTH (px_type_canonical) */
+#else
+    {"PWM SYNTH HQ", 5, PN_PWM},
+#endif
+    {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     {"TRUMPET", 5, PN_TRP}, {"", 5, PN_TRP}, {"BOWED CELLO", 5, PN_CEL}, {"CELLO ENSEMBLE", 5, PN_TRP},
     {"STRING MACHINE", 5, PN_STRING_MACHINE},
 #ifdef PX_PULSE_TEST
@@ -774,8 +858,24 @@ int px_type_canonical(int b, int t)
      * controls (OCT -1, OCT -2, CUTOFF, ENV, DRY). tools/sim/syn_compare.py: HQ is cleaner on GuitarSet solo notes
      * (40.2% of the energy on the notes' sub-octave harmonics, against 36.5%) and chords (30.1%, against 26.5%) */
     if (b == PX_B_SYN && t == PX_SYN_BASS) return PX_SYN_BASS_HQ;
+    /* v64: PWM SYNTH HQ's tracked pulse misses notes the comparator original plays (solo 49.2% on pitch, against
+     * 54.7%; chords 34.1%, against 43.6%; the same wobble): its presets play PWM SYNTH, same controls */
+    if (b == PX_B_SYN && t == PX_SYN_PWM_HQ) return PX_SYN_PWM;
+    /* v64: the delay-line POLY OCTAVE retires to POLY OCTAVE HQ: cleaner down (chords 32.1%, against 29.5%) and up
+     * (77.5%, against 62.2%), less added wobble (2.61 / 2.11 dB, against 3.60 / 2.42) */
+    if (b == PX_B_PITCH && t == PX_PIT_POLYOCT) return PX_PIT_POLYOCT_HQ;
 #endif
     return b == PX_B_SYN && t == PX_SYN_TRUMPET_MODEL ? PX_SYN_TRUMPET : t;
+}
+void px_block_canonical(int b, uint8_t *type, uint8_t *p)
+{
+    const int t = px_type_canonical(b, *type);
+#ifdef PX_CONSOLIDATE_TEST
+    if (b == PX_B_PITCH && *type == PX_PIT_POLYOCT && t == PX_PIT_POLYOCT_HQ) p[3] = 0;   /* RANGE: every band */
+#else
+    (void)p;
+#endif
+    *type = (uint8_t)t;
 }
 static const tdef *tdef_of(int b, int t)
 {
@@ -1249,7 +1349,8 @@ static void rc_pitch(px_engine *e)
     const px_preset_t *p = &e->cur;
     float sr = e->sr;
     const uint8_t *q = p->p[PX_B_PITCH];
-    int t = p->type[PX_B_PITCH] % PX_PIT_COUNT;
+    const int raw = p->type[PX_B_PITCH] % PX_PIT_COUNT;
+    int t = px_type_canonical(PX_B_PITCH, raw);
     int hq = t == PX_PIT_POLYOCT_HQ;
 #ifdef PX_LOWEST_TEST
     hq |= t == PX_PIT_LOWEST_HQ;
@@ -1275,9 +1376,12 @@ static void rc_pitch(px_engine *e)
     case PX_PIT_LOWEST_HQ:
 #endif
         e->ps_nv = hq ? 0 : 2; e->ps_dry = f01(q[0]);
-        if (hq) e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);
+        if (hq) e->erb_pitch_range = erb_range_band(raw != t || q[3] > 100 ? (raw != t ? 0 : 100) : q[3]);
         e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = octave_down_level(f01(q[1]), hq);
         e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = octave_up_level(f01(q[2]), hq);
+#ifdef PX_SUB2_TEST
+        e->erb_pitch.down2 = t == PX_PIT_POLYOCT_HQ && raw == t ? octave_down_level(f01(q[4]), 1) * PX_SUB2_LEVEL : 0.0f;
+#endif
         break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
@@ -4125,7 +4229,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     const px_preset_t *p = &e->run;                    /* v38: with the blocks still fading out */
     const float sr = e->sr;
     const int cmp_t = p->type[PX_B_COMP] % PX_CMP_COUNT;
-    const int pit_t = p->type[PX_B_PITCH] % PX_PIT_COUNT;
+    const int pit_t = px_type_canonical(PX_B_PITCH, p->type[PX_B_PITCH] % PX_PIT_COUNT);
     const int sfx_t = p->type[PX_B_SFX] % PX_SFX_COUNT;
     const int mod_t = p->type[PX_B_MOD] % PX_MOD_COUNT;
     const int dly_t = p->type[PX_B_DELAY] % PX_DLY_COUNT;
