@@ -635,4 +635,27 @@ half-ghost limit for this benchmark is 17.575%.
 - The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
   LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
   register correction reduced the span of their balance from 3.97 dB to 1.63 dB.
-  The darkest settings still needed a separate low-register trim.
+  The separate dark-tone trim brought the span to 1.91, 1.59, 1.63, 1.42 and
+  1.42 dB at TONE 0, 25, 50, 75 and 100 respectively. Pedal listening and CPU
+  verification are pending.
+
+## Parallel HQ and space-saver work
+
+The first `syn_compare.py --match` run saved dry inputs and paired wet audition
+WAVs under `build/phase2b/hq-reference`. The sustained-note results confirm
+the HQ voicing differences, including median level changes of +4.19 dB for
+SQUARE, +6.95 dB for BASS and +8.72 dB for PWM at the bench settings. This
+run covers eight synthetic notes and is a baseline. Real-note A/B,
+attack/release comparisons and sound adjustments remain.
+
+`syn_compare.py --octave-voices up|down` now isolates the requested voice in the
+ensemble bench. In the first 12 GuitarSet comping takes with the v66 octave bank,
+isolated +1 on-pitch energy improved from 62.1% to 70.9% for ORGAN, 61.5% to 69.0%
+for CHURCH ORGAN, 56.3% to 65.7% for STRINGS, and 52.8% to 61.9% for CHOIR.
+Isolated −1 improved by 1.7 to 2.7 points for the three types that have it.
+Mean added wobble also fell in each measured comparison. Wet arrival and
+pick-click comparisons are still needed before a retirement decision.
+
+The [space-saver spec](spacesaver.md#phase-2b-update) now reflects the v66
+catalogue and memory map, the HQ retirement gates and the NAM-pool borrowing
+conditions. A product split remains contingent on a measured DSP benefit.

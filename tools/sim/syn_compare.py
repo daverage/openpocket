@@ -10,11 +10,14 @@ expected base (the guitar's pitch times the type's lowest voice: 1/2 for the org
 SYNTH, 1 for PWM). --comp: the comping takes instead, 93 ms windows where the same two or more notes sound
 throughout, the harmonics of any of them. Higher is cleaner: less energy at pitches the player did not play. Also the host render time.
 Knobs at noon, all wet (DRY 0; PWM's MIX 100).
+`--match` compares paired wet renders on sustained synthetic singles and saves
+the dry input and both outputs for listening.
 """
 import argparse, glob, os, subprocess, sys, time
 import numpy as np
 from track_eval import ROOT, jams_notes
 from resonator_track_eval import read_di
+from lowest_octave_eval import write_wav
 
 # (old, new, base ratio[, block, knobs]): knobs given here override the all-wet default
 PAIRS = [("ORGAN", "ORGAN HQ", 0.5), ("CHURCH ORGAN", "CHURCH ORGAN HQ", 0.5), ("STRINGS", "STRINGS HQ", 0.5),
@@ -24,12 +27,14 @@ PAIRS = [("ORGAN", "ORGAN HQ", 0.5), ("CHURCH ORGAN", "CHURCH ORGAN HQ", 0.5), (
          ("POLY OCTAVE", "POLY OCTAVE HQ", 2.0, "PITCH", "0 0 100 0 0")]            # OCT +1 only
 BENCH = os.path.join(ROOT, 'build', 'ensemble_bench')
 
-def render(name, x, blk='SYN', given=None):
+def render(name, x, blk='SYN', given=None, octave=None):
     knobs = ['50'] * 5
     knobs[4] = '100' if name.startswith('PWM') else '0'      # all wet: PWM's MIX at 100, the others' DRY at 0
     if given: knobs = given.split()
-    r = subprocess.run([BENCH, name, *knobs], input=x.astype('<f4').tobytes(), capture_output=True, check=True,
-                       env=dict(os.environ, BLK=blk))
+    env = dict(os.environ, BLK=blk)
+    if octave:
+        env['OCTAVE_VOICE'] = octave
+    r = subprocess.run([BENCH, name, *knobs], input=x.astype('<f4').tobytes(), capture_output=True, check=True, env=env)
     return np.frombuffer(r.stdout, dtype='<f4'), r
 
 def on_pitch(y, notes, base):
@@ -81,21 +86,88 @@ def wobble(x, y):
         acc.append((ly[j] - lx[j - 1] - avg) ** 2)
     return float(np.sqrt(np.mean(acc))) if acc else 0.0
 
+
+def match_sound(outdir):
+    from pathlib import Path
+
+    out = Path(outdir)
+    out.mkdir(parents=True, exist_ok=True)
+    rate = 44100
+    t = np.arange(rate * 2) / rate
+    window = (t >= 0.45) & (t < 1.25)
+    midi = [40, 45, 50, 55, 60, 65, 69, 72]
+    notes = []
+    for m in midi:
+        f0 = 440 * 2 ** ((m - 69) / 12)
+        env = np.clip(np.minimum((t - 0.1) / 0.01, (1.45 - t) / 0.02), 0, 1)
+        x = 0.16 * env * sum(amplitude * np.sin(2 * np.pi * f0 * h * t)
+                             for h, amplitude in enumerate((1, 0.36, 0.18, 0.09, 0.05), 1))
+        notes.append(x)
+    write_wav(out / 'input.wav', np.concatenate(notes))
+
+    def features(y):
+        seg = y[window]
+        energy = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))) ** 2
+        f = np.fft.rfftfreq(len(seg), 1 / rate)
+        total = energy.sum()
+        return np.array([
+            10 * np.log10(np.mean(seg ** 2) + 1e-20),
+            np.sum(f * energy) / max(total, 1e-20),
+            10 * np.log10(max(energy[f < 200].sum() / max(total, 1e-20), 1e-6)),
+            10 * np.log10(max(energy[f > 3000].sum() / max(total, 1e-20), 1e-6)),
+        ])
+
+    for old, new, ratio, *settings in PAIRS:
+        block, knobs = settings if settings else ('SYN', None)
+        original = [render(old, x, block, knobs)[0] for x in notes]
+        hq = [render(new, x, block, knobs)[0] for x in notes]
+        for name, audio in [(old, original), (new, hq)]:
+            stem = f'{name.lower().replace(" ", "-")}-{ratio:g}'
+            write_wav(out / f'{stem}.wav', np.concatenate(audio))
+        expected = np.stack([features(y) for y in original])
+        delta = np.stack([features(y) for y in hq]) - expected
+        delta[:, 1] *= 100 / np.maximum(expected[:, 1], 1)
+        # Report the pitch filter separately. Compare tone on steady notes with
+        # at least half their measured energy on the expected harmonics.
+        pitch_ok = np.array([
+            all(np.max(on_pitch(y, [(0.1, 1.45, m)], ratio), initial=0) >= 0.5 for y in (left, right))
+            for m, left, right in zip(midi, original, hq)
+        ])
+        rms_ok = np.abs(delta[:, 0]) <= 0.5
+        shape_ok = (np.abs(delta[:, 1:]) <= [5, 1, 1]).all(axis=1)
+        median = ' '.join(f'{x:+.2f}' for x in np.median(delta[pitch_ok], axis=0)) if pitch_ok.any() else '—'
+        print(f'{old:18s} -> {new:18s} {ratio:g}×  {sum(rms_ok & shape_ok & pitch_ok)}/{pitch_ok.sum()} within limits; '
+              f'{len(midi) - pitch_ok.sum()} excluded by pitch filter; '
+              f'median differences (dB, %, dB, dB) {median}')
+
 p = argparse.ArgumentParser(); p.add_argument('--takes', type=int, default=20); p.add_argument('--comp', action='store_true')
 p.add_argument('--wobble', action='store_true', help='added level wobble on the bundled loops instead')
 p.add_argument('--bench', help='another ensemble_bench build (e.g. with -DPX_SUB2_TEST)')
 p.add_argument('--pair', help='OLD|NEW|BASE|BLK|KNOBS instead of the built-in pairs')
+p.add_argument('--match', metavar='OUTDIR', help='compare wet sound on paired synthetic notes and save audition WAVs')
+p.add_argument('--octave-voices', choices=['up', 'down'], help='score only the specified organ, strings or choir octave')
 a = p.parse_args()
 if a.bench: BENCH = a.bench
 if a.pair:
     o, n, b, k, kn = a.pair.split('|'); PAIRS = [(o, n, float(b), k, kn)]
+if a.match:
+    match_sound(a.match)
+    sys.exit(0)
+if a.octave_voices:
+    names = {'ORGAN', 'CHURCH ORGAN', 'CHOIR'}
+    if a.octave_voices == 'up':
+        names.add('STRINGS')
+    ratio = 2.0 if a.octave_voices == 'up' else 0.5
+    PAIRS = [(pair[0], pair[1], ratio) for pair in PAIRS if pair[0] in names]
+    if not PAIRS:
+        p.error('selected pair has no comparable isolated octave voice')
 if a.wobble:
     loops = [read_di(os.path.join(ROOT, 'assets', 'loops', n + '.wav')) for n in ('chug', 'riff', 'chords', 'arpeggio', 'lead')]
     print(f'{"type":18s} added wobble dB: chug riff chords arpeggio lead | mean')
     for pair in PAIRS:
         blk, given = (pair[3], pair[4]) if len(pair) > 3 else ('SYN', None)
         for name in pair[:2]:
-            w = [wobble(x, render(name, x, blk, given)[0]) for x in loops]
+            w = [wobble(x, render(name, x, blk, given, a.octave_voices)[0]) for x in loops]
             print(f'{name:18s} ' + ' '.join(f'{v:5.2f}' for v in w) + f' | {np.mean(w):5.2f}')
         print()
     sys.exit(0)
@@ -109,7 +181,7 @@ for pair in PAIRS:
     for name in (old, new):
         shares = []; secs = 0.0
         for x, notes in items:
-            t0 = time.perf_counter(); y, _ = render(name, x, blk, given); secs += time.perf_counter() - t0
+            t0 = time.perf_counter(); y, _ = render(name, x, blk, given, a.octave_voices); secs += time.perf_counter() - t0
             shares.append(on_pitch(y, notes, base))
         s = np.concatenate(shares)
         print(f'{name + (" x" + str(base) if blk == "PITCH" else ""):18s} {100*s.mean():8.1f}% {100*np.percentile(s,25):5.1f}% {secs:7.2f}')

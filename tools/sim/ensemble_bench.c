@@ -2,6 +2,7 @@
  * v61: render a SYN type of the poly-test build (the ensembles) from mono 44.1 kHz float32 on stdin to stdout.
  * Usage: ensemble_bench TYPE_NAME [five knobs]       e.g. ensemble_bench "STRING ENSEMBLE" 50 50 100 50 0
  * BLK=PITCH or BLK=SFX renders that block's type instead of SYN's (v63: catalogue comparisons).
+ * OCTAVE_VOICE=up or down isolates that voice in an organ, strings or choir.
  * Prints the output RMS and peak to stderr.
  *   cc -O2 -Iengine -Ifirmware tools/sim/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
  */
@@ -33,6 +34,22 @@ int main(int argc, char **argv)
     preset.type[blk] = (uint8_t)type;
     for (int k = 0; k < PX_NPAR; ++k) preset.p[blk][k] = argc == 7 ? (uint8_t)atoi(argv[2 + k]) : 50;
     px_engine_set(&engine, &preset);
+    const char *octave = getenv("OCTAVE_VOICE");
+    if (octave) {
+        const int up = !strcmp(octave, "up");
+        if (!up && strcmp(octave, "down")) return 2;
+        const int organ = type == PX_SYN_ORGAN || type == PX_SYN_ORGAN_HQ ||
+                          type == PX_SYN_CHURCH || type == PX_SYN_CHURCH_HQ;
+        const int choir = type == PX_SYN_CHOIR || type == PX_SYN_CHOIR_HQ;
+        const int strings = type == PX_SYN_STRINGS || type == PX_SYN_STRINGS_HQ;
+        if (blk != PX_B_SYN || (!organ && !choir && (!strings || !up))) return 2;
+        engine.syn_d8 = 0.0f;
+        engine.syn_dry = 0.0f;
+        engine.syn_plvl = 0.0f;
+        engine.syn_lvl[2] = 0.0f;
+        const int voice = organ ? up : !up;
+        engine.syn_lvl[1 - voice] = 0.0f;
+    }
     float in[PX_MAX_BLOCK], out[PX_MAX_BLOCK];
     double sum = 0.0, peak = 0.0;
     size_t total = 0, n;
