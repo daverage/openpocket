@@ -560,6 +560,12 @@ each target memory section before estimating the benefit of a split.
   note): the most promising latency idea. Prototype it on the host after stage 3,
   when latency becomes the owner's main complaint again. It needs about 2 KB of RAM
   and about 1 KB of RAM code, which is the split or borrow question.
+- **ARCADE POLY register split:** after Phase 2b, let the player choose one Arcade
+  tone for the low register and another for the high register. Start with a split
+  at G3 so open low E, A and D use the low tone and open G, B and high E use the
+  high tone in standard tuning. Fretted notes follow their detected pitch. Keep
+  the tone selected at note-on for its bends and release, and audition dyads with
+  one note on each side of the split.
 
 ---
 
@@ -639,6 +645,14 @@ half-ghost limit for this benchmark is 17.575%.
   per minute. Solo reach within 150 ms was 95.6% against v66's 95.8%, so the
   candidate is still for host testing. Shortening first voice confirmation
   increased false starts on the development set.
+- Delaying the low-note slew limit until the pitch has settled preserved the
+  improvement on both sustains in the low-E take. With the higher acquisition floor applied
+  only above the note already held, the candidate recovered all 2,669 baseline
+  solo entries and all 129 second-note entries. Solo median/p90 were
+  11.8/45.2 ms and second-note median/p90 improved from 25.3/65.6 to 25.3/62.4 ms
+  with a 6% upper-voice floor and a 58% held-voice threshold. Extra comping
+  voices rose to 29.2% versus 28.9% on v66. The host gate remains open. A
+  stronger octave-to-root power check slowed some genuine octave pairs.
 - The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
   LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
   register correction reduced the span of their balance from 3.97 dB to 1.63 dB.

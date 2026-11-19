@@ -48,5 +48,6 @@ for w in files:
             prev[k - 1] = g
 lat.sort()
 n = len(lat) + miss
-print(f'notes {n}: reached within 150 ms {100*len(lat)/n:.1f}%, latency median {median(lat):.1f} ms, p90 {lat[int(.9*len(lat))]:.1f} ms; '
+print(f'notes {n}: reached within 150 ms {len(lat)}/{n} ({100*len(lat)/n:.1f}%), '
+      f'latency median {median(lat):.1f} ms, p90 {lat[int(.9*len(lat))]:.1f} ms; '
       f'voice starts {starts}, false {false_starts} ({100*false_starts/max(1,starts):.1f}%, {false_starts/minutes:.0f}/min)')

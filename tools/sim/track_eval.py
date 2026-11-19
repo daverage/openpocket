@@ -166,10 +166,10 @@ def report_detector(name, dyads, chords, entries):
     print(f"{name}: {both}/{n} dyads both right ({100 * both / max(1, n):.1f}%), "
           f"lowest {100 * low / max(1, n):.1f}%; "
           f"extra candidates on singles {100 * extra / max(1, single):.1f}% of {single} frames")
-    detected = [value for value in entries if value is not None]
+    detected = sorted(value for value in entries if value is not None)
     if detected:
         print(f"second-note entries: {len(detected)}/{len(entries)} found within 100 ms, "
-              f"median {median(detected):.1f} ms among hits")
+              f"median {median(detected):.1f} ms among hits, p90 {detected[int(0.9 * len(detected))]:.1f} ms")
     else:
         print(f"second-note entries: 0/{len(entries)} found within 100 ms")
     print("Comping " + ", ".join(f"{k} {100 * sum(c[k] for c in chords) / len(chords):.1f}%"
