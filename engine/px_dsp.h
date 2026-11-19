@@ -53,9 +53,10 @@ enum { PX_SYN_X_ORGAN, PX_SYN_X_CHURCH, PX_SYN_X_STRINGS, PX_SYN_X_CHOIR, PX_SYN
        PX_SYN_X_TRUMPET, PX_SYN_X_CELLO, PX_SYN_X_CELLO_SECTION, PX_SYN_X_STRING_MACHINE,
        PX_SYN_X_PULSE_POLY, PX_SYN_X_SAW_POLY, PX_SYN_X_ARCADE_POLY, PX_SYN_X_FM_POLY,
        PX_SYN_X_STRING_ENS, PX_SYN_X_BRASS_ENS, PX_SYN_X_STRING_DUO,
+       PX_SYN_ANALOG,                                  /* Synth2: Felucca ANALOG, one note followed from the guitar (engine/px_synth_adapter.h) */
        PX_SYN_COUNT };
 /* does this SYNTH type run? (1: a live type; 0: a tombstone, or an id beyond the catalogue: both are bypassed) */
-static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ; }
+static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ || t == PX_SYN_ANALOG; }
 int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI skips it, the engine bypasses it) */
 int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
 int         px_live_type(int blk, int i);              /* the i-th live type's id (0..px_nlive-1) */

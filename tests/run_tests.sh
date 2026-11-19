@@ -39,6 +39,10 @@ $CC -O2 -Iengine -Ifirmware tests/engine/change_test.c firmware/px_math.c -lm -o
 $CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/wet_test && build/wet_test | tail -1
 # Synth2: the SYNTH block's ids (tombstones bypassed, POLY OCT FUZZ running)
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/syn_ids_test.c firmware/px_math.c -lm -o build/syn_ids && build/syn_ids
+# Synth2: Felucca ANALOG through the adapter (patches, pitch, retrigger, release, bounds, call-size independence)
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/synth_test.c firmware/px_math.c -lm -o build/synth_test && build/synth_test | tail -1
+# Felucca's own golden renders for the vendored engines
+CC="$CC" sh third_party/felucca-engines/tests/felucca_ref.sh
 # Synth2: the mono tracker's interface (engine/px_mono.h)
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/mono_test.c firmware/px_math.c -lm -o build/mono_test && build/mono_test | tail -1
 # Synth2: the protected effects against the v73 baseline (needs that commit in the clone's history)

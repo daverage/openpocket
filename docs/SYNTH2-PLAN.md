@@ -69,3 +69,12 @@ Checks run: `tests/protected.sh 0635880` (POLY OCTAVE HQ and POLY OCT FUZZ, 936 
 `tests/engine/syn_ids_test.c` (all 256 ids), `make test` (exit 0; page tests skipped: no Playwright), `make wasm`, `make package-synth2` (PocketX_901).
 Changed on purpose: the factory SYNTH default type (ORGAN, off, is now POLY OCT FUZZ, off), `px_render`'s synth argument is now a type id, MIDI model slices
 count live types only, `tests/test_audio.mjs` used id 18 for "fuzz" (it was CELLO; fixed to 16).
+
+## Stage 2 result: one mono tracker (host tested)
+
+Kept the existing tracker; Cycfi Q BACF fails the predeclared replacement rule on every set (docs/SYNTH2-TRACKER.md). The tracker has two ranges (guitar 60 Hz, bass 38 Hz) and the interface `engine/px_mono.h`. No pedal validation.
+
+## Stage 3 result: Felucca ANALOG (host tested, target compiled; not on a pedal)
+
+See docs/SYNTH2-ANALOG.md. Upstream pinned (`d0260074`), vendored under `third_party/felucca-engines/` with its licence and golden renders; adapter `engine/px_synth_adapter.h`, patches `engine/px_synth_patches.h`.
+openpocket.bin 198 748 -> 211 072 B, RAM-code window free 32 840 -> 26 200 B, low RAM 8 592 -> 12 036 B. Pedal CPU not measured.

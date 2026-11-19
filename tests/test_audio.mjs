@@ -20,7 +20,8 @@ const check = (what, fn) => { fn(); console.log(`${what.padEnd(76)} ok`); };
 
 check("the committed engine is built from these sources (else: node tools/op.mjs wasm)", () => {
   const headers = readdirSync(join(ROOT, "engine")).filter((f) => f.endsWith(".h")).sort().map((f) => `engine/${f}`);
-  const sources = ["engine/px_wasm.c", "engine/px_dsp.c", "firmware/px_math.c", ...headers];   // (every engine header: px_dsp.c includes them)
+  const fe = ["third_party/felucca-engines/fe_tables.h", ...readdirSync(join(ROOT, "third_party/felucca-engines/src")).sort().map((f) => `third_party/felucca-engines/src/${f}`)];
+  const sources = ["engine/px_wasm.c", "engine/px_dsp.c", "firmware/px_math.c", ...headers, ...fe];   // (every engine header: px_dsp.c includes them; and the Felucca sources it includes)
   assert.equal(sha256(...sources.map(read)), read("tools/sim/px_engine.wasm.sources").toString().trim());
 });
 

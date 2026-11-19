@@ -52,7 +52,7 @@ FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
 # OpenPocket Synth (v70): one engine recipe. The v66 poly-test flags are part of the engine source now (engine/).
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPX_LEAN=1 -DPX_RUNS=0"   # the test image's flash is full (engine/px_acoustic.h; v40.4: px_dsp.c PX_RUNS)
-INC="-I$HERE/inc -I$HERE/../engine"
+INC="-I$HERE/inc -I$HERE/../engine -I$HERE/../third_party/felucca-engines"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
     -I"$BSP/chip" -I"$BSP/boards/fm1" -include "$O/channel.h" -c "$HERE/openpocket.c" -o "$O/openpocket.o"
 $CC $FP -O2 -ffunction-sections -fno-builtin $DSPDEF $INC -c "$HERE/../engine/px_dsp.c" -o "$O/px_dsp.o"
@@ -79,7 +79,8 @@ $CC -Os -c -x ir "$HERE/sdk/iis.bc" -o "$O/iis.o"
 # linker puts them in the RAM code window (firmware/app.ld). --plain: px_dsp.o's hand-written routines (NAM, filters).
 RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_block rv_front ps_align
   bq_block bq_block2 drive_buffer ps_voice_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run
-  gate_run comp_run bq_chain lowest_pitch_run pxl_run pxr_advance lf_run lf_pick"
+  gate_run comp_run bq_chain lowest_pitch_run pxl_run pxr_advance lf_run lf_pick
+  px_synth_run px_s2_block analog_render analog_render_f analog_render_x"
 RAM_FW="a_enc a_dec a_block a_send a_collect a_commit dsp_block dsp_out dsp_load dsp_job
   fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire b_ticks memcpy memset"
 python3 "$HERE/../tools/ramcode.py" "$O/px_dsp.o" --plain $RAM_DSP
