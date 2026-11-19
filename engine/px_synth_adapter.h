@@ -2,7 +2,7 @@
  * (third_party/felucca-engines, MIT; docs/SYNTH2-PLAN.md). Included once, at the end of px_dsp.c: one translation unit with the engine,
  * so the pedal, the host tests, `make render` and the WebAssembly simulator run the same code.
  *
- * What it is: one monophonic voice. Each input sample goes through the tracker; every 32 samples (Felucca's block, CTL) the adapter turns
+ * What it is: one monophonic voice, played by ANALOG or LOFI (the SYNTH types ANALOG and ARCADE). Each input sample goes through the tracker; every 32 samples (Felucca's block, CTL) the adapter turns
  * what the tracker said (pitch, onset, retrigger, release, pick strength, loudness) into Felucca's voice and its per-block modulation, renders
  * the block, and the output is returned one block later (a fixed 32 samples, 0.73 ms, so any call size works and the result does not depend
  * on it). Pitch is continuous: bends, slides and vibrato move the oscillator (1/16 semitone plus Felucca's fine residual), never a
@@ -23,12 +23,15 @@ typedef struct track { int16_t p[P_COUNT]; voice_t v[NVOICE]; } track_t;
 static track_t trk[NPART];
 #include "../third_party/felucca-engines/src/dsp.c"
 #include "../third_party/felucca-engines/src/eng_analog.c"
+#include "../third_party/felucca-engines/src/eng_lofi.c"
 #include "px_synth_patches.h"
 
 #define PX_S2_OUT 0.30f                                /* float output per Felucca full scale at LEVEL noon, trim 1.0 (set on the host against the loops' level) */
 
 typedef struct {
     px_mono mono;                                      /* the tracker (px_mono.h) */
+    int type;                                          /* PX_SYN_ANALOG or PX_SYN_ARCADE */
+    float dry;                                         /* ARCADE's MIX: the clean guitar's share of the output */
     const engine_t *eng;
     const px_patch *patch;
     float cut_off, res_off, time_mul, level;           /* macros: cutoff and resonance offsets, envelope time multiplier, output gain */
@@ -45,46 +48,60 @@ static px_s2 px_s2_st PX_LO(px_s2_st);
 
 static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000.0f / (FS * (ms < 0.5f ? 0.5f : ms))); }   /* a one-pole per block */
 
-/* the macros and the patch from the block's five settings (all of them are the preset's: nothing else shapes the sound) */
-static void px_s2_set(px_s2 *s, const uint8_t *q)
+/* the patch and the macros from the block's five settings (all of them are the preset's: nothing else shapes the sound).
+ * ANALOG: PATCH, CUTOFF, RESONANCE, ENVELOPE, LEVEL. ARCADE: PATCH, CHARACTER (the DUTY: pulse width / wave table), SWEEP (the pitch sweep down),
+ * DECAY (a stepped patch's staircase, else the envelope's decay and release times), MIX (guitar against synth). 50 = the patch as written. */
+static inline int px_s2_clamp127(float v) { const int i = (int)(v + (v < 0.0f ? -0.5f : 0.5f)); return i < 0 ? 0 : i > 127 ? 127 : i; }
+static void px_s2_set(px_s2 *s, int type, const uint8_t *q)
 {
-    const px_patch *pa = &PX_ANALOG_PATCHES[px_patch_slot(q[0])];
-    const float cut = f01(q[1]), res = f01(q[2]), env = f01(q[3]), lvl = f01(q[4]);
-    s->patch = pa;
-    s->cut_off = (cut - 0.5f) * 127.0f;                /* CUTOFF: +-63 Felucca steps around the patch's */
-    s->res_off = (res - 0.5f) * 127.0f;                /* RESONANCE */
-    s->time_mul = powf(2.0f, (env - 0.5f) * 4.0f);     /* ENVELOPE: attack and release x 1/4 .. x4 around the patch's (50 = as written) */
-    const float t = s->time_mul;
-    const float atk_ms = 1.0f + (pa->env[0] / 127.0f) * (pa->env[0] / 127.0f) * 1500.0f;
-    const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
-    const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
-    s->att_k = px_s2_ms_k(atk_ms * t); s->dec_k = px_s2_ms_k(dec_ms); s->rel_k = px_s2_ms_k(rel_ms * t);
-    s->sus = pa->env[2] / 127.0f;
-    s->fenv_amp = (float)pa->fenv;
-    s->level = (lvl < 0.5f ? 4.0f * lvl * lvl : db2lin((lvl - 0.5f) * 12.0f)) * (pa->trim / 64.0f);
+    const int arc = type == PX_SYN_ARCADE;
+    const px_patch *pa = &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
+    const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
+    s->type = type; s->patch = pa; s->eng = arc ? &ENG_LOFI : &ENG_ANALOG;
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
-    int c = pa->e[4] + (int)(s->cut_off + (s->cut_off < 0 ? -0.5f : 0.5f)), r = pa->e[5] + (int)(s->res_off + (s->res_off < 0 ? -0.5f : 0.5f));
-    t0->p[P_E4] = (int16_t)(c < 0 ? 0 : c > 127 ? 127 : c);
-    t0->p[P_E5] = (int16_t)(r < 0 ? 0 : r > 127 ? 127 : r);
+    float tm = 1.0f, tdec = 1.0f;
+    if (!arc) {
+        t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (m1 - 0.5f) * 127.0f);     /* CUTOFF: +-63 Felucca steps around the patch's */
+        t0->p[P_E5] = (int16_t)px_s2_clamp127((float)pa->e[5] + (m2 - 0.5f) * 127.0f);     /* RESONANCE */
+        tm = powf(2.0f, (m3 - 0.5f) * 4.0f);                                                /* ENVELOPE: attack and release x 1/4 .. x4 */
+        s->level = (m4 < 0.5f ? 4.0f * m4 * m4 : db2lin((m4 - 0.5f) * 12.0f)) * (pa->trim / 64.0f);
+        s->dry = 0.0f;
+    } else {
+        t0->p[P_E2] = (int16_t)px_s2_clamp127((float)pa->e[2] + (m1 - 0.5f) * 127.0f);     /* CHARACTER */
+        t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (m2 - 0.5f) * 127.0f);     /* SWEEP */
+        if (pa->e[0] == 4) {                                                                /* a stepped patch: DECAY moves its staircase (CRSH / 4 = 1..16 one shot, 17..31 looping) */
+            int b = pa->e[3] >> 2;
+            if (b > 0) { b += (int)((m3 - 0.5f) * 16.0f + (m3 < 0.5f ? -0.5f : 0.5f)); const int lo = pa->e[3] >> 2 >= 17 ? 17 : 1, hi = pa->e[3] >> 2 >= 17 ? 31 : 16; b = b < lo ? lo : b > hi ? hi : b; }
+            t0->p[P_E3] = (int16_t)(b << 2);
+        } else tdec = powf(2.0f, (m3 - 0.5f) * 4.0f);                                      /* else the envelope's decay and release */
+        tm = tdec;
+        s->level = pa->trim / 64.0f * (m4 * 2.0f < 1.0f ? m4 * 2.0f : 1.0f);              /* MIX: 0 guitar only .. 50 both .. 100 synth only */
+        s->dry = (1.0f - m4) * 2.0f < 1.0f ? (1.0f - m4) * 2.0f : 1.0f;
+    }
+    const float atk_ms = 1.0f + (pa->env[0] / 127.0f) * (pa->env[0] / 127.0f) * 1500.0f;
+    const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
+    const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
+    s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * tm);
+    s->sus = pa->env[2] / 127.0f;
+    s->fenv_amp = (float)pa->fenv;
 }
-static void px_s2_reset(px_engine *e, const uint8_t *q)
+static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
 {
     px_s2 *s = &px_s2_st;
     memset(s, 0, sizeof *s);
     memset(trk, 0, sizeof trk);
-    s->eng = &ENG_ANALOG;
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
-    px_s2_set(s, q);
+    px_s2_set(s, type, q);
 }
 /* semitones (MIDI, 69 = 440 Hz) -> Felucca's pitch16 (1/16 semitone) and the residual in its fine units (1/4096 of the increment) */
-static inline void px_s2_pitch(float semis, int32_t *pitch16, int32_t *fine)
+static inline void px_s2_pitch(float semis, int32_t *pitch16, int32_t *fine, int round_to_step)
 {
-    float x = semis * 16.0f; if (x < 0.0f) x = 0.0f; if (x > 2046.9f) x = 2046.9f;
+    float x = semis * 16.0f + (round_to_step ? 0.5f : 0.0f);   /* (LOFI plays pitch16 only: round to its 1/16 semitone, ANALOG takes the residual in `fine`) */ if (x < 0.0f) x = 0.0f; if (x > 2046.9f) x = 2046.9f;
     const int p = (int)x;
     *pitch16 = p;
-    *fine = (int32_t)((x - (float)p) * 14.8f + 0.5f);   /* 2^(1/192) - 1 = 0.36 % = 14.8 / 4096 */
+    *fine = round_to_step ? 0 : (int32_t)((x - (float)p) * 14.8f + 0.5f);   /* 2^(1/192) - 1 = 0.36 % = 14.8 / 4096 */
 }
 /* one control block: the events, the voice, the envelope, the render. Writes ring[CTL]. */
 static __attribute__((noinline)) void px_s2_block(px_s2 *s)
@@ -103,7 +120,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
         v->note = (uint8_t)((int)(s->pitch_cur + 0.5f) & 127); v->vel = 100; v->gate = 1; v->active = 1; v->stage = 1; v->age++;
         if (!sounding) s->env = 0.0f;                                                  /* a voice still sounding keeps its level: the attack starts from it, no click */
         s->stage = 1;
-        px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine); v->pitch_cur = v->pitch16;
+        px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->type == PX_SYN_ARCADE); v->pitch_cur = v->pitch16;
         if (!sounding) v->env = v->env_out = 0;
         s->eng->note_on(t, v);
         if (sounding) {                                                                 /* Felucca's retrigger rule: keep the phases and the filter */
@@ -122,11 +139,20 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     case 3: s->env -= s->env * s->rel_k; if (s->env < 0.001f) { s->env = 0.0f; s->stage = 0; v->stage = 0; v->active = 0; } break;
     default: break;
     }
+    /* Felucca's amplitude hook (LOFI's stepped envelope, CHIP = STEP): it reads and writes the voice's ADSR (Q24) and returns the amplitude */
+    float shape = s->env;
+    if (s->eng->amp) {
+        v->env = (int32_t)(s->env * 16777216.0f);
+        const int32_t a = s->eng->amp(t, v, (int32_t)(s->env * 32767.0f));
+        s->env = (float)v->env * (1.0f / 16777216.0f);
+        shape = (float)a * (1.0f / 32767.0f);
+        if (!v->active) { s->env = 0.0f; s->stage = 0; s->last_amp = 0.0f; return; }
+    }
     const float vg = 0.35f + 0.65f * s->vel;                                           /* pick strength */
-    const float amp = s->env * vg * (0.6f + 0.4f * s->expr_r);                         /* and the string's own decay */
+    const float amp = shape * vg * (0.6f + 0.4f * s->expr_r);                          /* and the string's own decay */
     vmod_t m;
     memset(&m, 0, sizeof m);
-    px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine); v->pitch_cur = v->pitch16;
+    px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->type == PX_SYN_ARCADE); v->pitch_cur = v->pitch16;
     const uint32_t base = pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047));
     m.pitch16 = v->pitch16; m.fine = v->fine; m.inc = base + (uint32_t)((int32_t)(base >> 12) * v->fine);
     m.amp0 = (int32_t)(s->last_amp * 32767.0f); m.amp1 = (int32_t)(amp * 32767.0f); s->last_amp = amp;
@@ -151,7 +177,7 @@ PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n
         if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; }
         if (o.release) s->pend_off = 1;
         s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f;
-        out[k] = s->ring[s->rpos];
+        out[k] = s->ring[s->rpos] + in[k] * s->dry;
         s->rpos++;
         if (++s->cnt == CTL) {
             px_s2_block(s);                                                              /* writes ring[] for the next 32 samples */

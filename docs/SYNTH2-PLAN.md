@@ -78,3 +78,7 @@ Kept the existing tracker; Cycfi Q BACF fails the predeclared replacement rule o
 
 See docs/SYNTH2-ANALOG.md. Upstream pinned (`d0260074`), vendored under `third_party/felucca-engines/` with its licence and golden renders; adapter `engine/px_synth_adapter.h`, patches `engine/px_synth_patches.h`.
 openpocket.bin 198 748 -> 211 072 B, RAM-code window free 32 840 -> 26 200 B, low RAM 8 592 -> 12 036 B. Pedal CPU not measured.
+
+## Stage 4 result: Felucca LOFI as ARCADE (host tested, target compiled; not on a pedal)
+
+See docs/SYNTH2-ARCADE.md. Same adapter and tracker. openpocket.bin 211 072 -> 214 368 B; RAM-code window free 26 200 -> 25 040 B; low RAM 12 036 -> 12 044 B. Upstream golden renders (ANALOG and LOFI, 58) identical.

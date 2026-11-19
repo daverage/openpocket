@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* OpenPocket: a copy of upstream tests/fe_host.c reduced to the engines vendored here (ANALOG; WHEEL and LOFI state, hashes of the other engines, dropped).
+/* OpenPocket: a copy of upstream tests/fe_host.c reduced to the engines vendored here (ANALOG, LOFI; the other engines' includes, table rows and
+ * WHEEL's state dropped; the render, the phrase and the hashing are upstream's).
  * Felucca-Engines: a standalone host. Renders every preset of the six engines through a fixed phrase on a
  * minimal track / voice / envelope and prints one line per render: an FNV-1a 64 hash of the output and its
  * peak. tests/run.sh compares the lines with tests/golden.txt: a change of any engine's sound fails.
@@ -30,9 +31,10 @@ static track_t trk[NPART];
 
 #include "../src/dsp.c"
 #include "../src/eng_analog.c"
+#include "../src/eng_lofi.c"
 
 static const struct { const char *id; const engine_t *e; } ENGS[] = {
-    {"analog", &ENG_ANALOG},
+    {"analog", &ENG_ANALOG}, {"lofi", &ENG_LOFI},
 };
 
 /* ------------------------------------------------- a minimal voice host --- */
@@ -206,6 +208,20 @@ int main(void)
                 pr.e[0] = (int8_t)v;
                 r = render(e, &pr, (uint32_t)v % NPART, 0);
                 printf("%s/e0=%d %016llx %d\n", ENGS[n].id, v, (unsigned long long)r.h, r.peak);
+            }
+        }
+        {
+            const engine_t *e = &ENG_LOFI;
+            preset_t pr;
+            int32_t v;
+            memset(&pr, 0, sizeof pr);
+            for (j = 0; j < 8u; j++)
+                pr.e[j] = (int8_t)e->edit[j].def;
+            for (v = e->edit[1].min; v <= e->edit[1].max; v++) {
+                result_t r;
+                pr.e[1] = (int8_t)v;
+                r = render(e, &pr, 0, 0);
+                printf("lofi/wave=%d %016llx %d\n", v, (unsigned long long)r.h, r.peak);
             }
         }
     }

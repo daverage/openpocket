@@ -39,5 +39,8 @@ int main(int argc, char **argv)
     p.type[PX_B_SYN] = PX_SYN_ANALOG;
     static const uint8_t pat[10] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90}; static const char *nm[10] = {"CLASSIC", "FATSAW", "PULSE", "PWM", "SQ BASS", "SUB", "MOOG", "ACID", "SWEEP", "SYNC"};
     for (int i = 0; i < 10; i++) { char b[40]; snprintf(b, sizeof b, "ANALOG %s", nm[i]); p.p[PX_B_SYN][0] = pat[i]; for (int k = 1; k < 5; k++) p.p[PX_B_SYN][k] = 50; bench(b, &p, x, n); }
+    p.type[PX_B_SYN] = PX_SYN_ARCADE;
+    static const char *an[10] = {"ARCADE", "CHIP", "8BIT BS", "WAVE", "STEP", "ARP", "ZAP", "PLUCK", "NOISE", "MIN ARP"};
+    for (int i = 0; i < 10; i++) { char b[40]; snprintf(b, sizeof b, "ARCADE %s", an[i]); p.p[PX_B_SYN][0] = pat[i]; for (int k = 1; k < 5; k++) p.p[PX_B_SYN][k] = 100; bench(b, &p, x, n); }
     return 0;
 }

@@ -80,7 +80,7 @@ $CC -Os -c -x ir "$HERE/sdk/iis.bc" -o "$O/iis.o"
 RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_block rv_front ps_align
   bq_block bq_block2 drive_buffer ps_voice_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run
   gate_run comp_run bq_chain lowest_pitch_run pxl_run pxr_advance lf_run lf_pick
-  px_synth_run px_s2_block analog_render analog_render_f analog_render_x"
+  px_synth_run px_s2_block analog_render analog_render_f analog_render_x lofi_render lofi_amp"
 RAM_FW="a_enc a_dec a_block a_send a_collect a_commit dsp_block dsp_out dsp_load dsp_job
   fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire b_ticks memcpy memset"
 python3 "$HERE/../tools/ramcode.py" "$O/px_dsp.o" --plain $RAM_DSP

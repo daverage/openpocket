@@ -74,10 +74,12 @@ The shared clipping model uses a fixed amount of work per sample in both blocks.
 ### SYN — Synth2
 Played with a normal guitar: no special pickup, no MIDI.
 
-Synth2 (docs/SYNTH2-PLAN.md) rebuilt this block. The only type that runs today is POLY OCT FUZZ; the monophonic ANALOG and ARCADE types arrive in later Synth2 builds.
+Synth2 (docs/SYNTH2-PLAN.md) rebuilt this block: POLY OCT FUZZ for chords, and two monophonic synths (ANALOG and ARCADE) that follow the one note you play, with Felucca's synthesis engines (docs/SYNTH2-ANALOG.md, docs/SYNTH2-ARCADE.md). They are one-note, not polyphonic: play single notes.
 
 | Family | Type | Settings | How it works |
 |---|---|---|---|
+| Mono synth (one note) | ANALOG | PATCH, CUTOFF, RESONANCE, ENVELOPE, LEVEL | PATCH picks one of 10 sounds (CLASSIC, FATSAW, PULSE, PWM, SQ BASS, SUB, MOOG, ACID, SWEEP, SYNC; the bass patches play an octave down); the other four move the patch's filter and envelope around where it was written (50) |
+| Mono synth (one note) | ARCADE | PATCH, CHARACTER, SWEEP, DECAY, MIX | chip sounds: PATCH picks ARCADE, CHIP, 8BIT BS, WAVE, STEP, ARP, ZAP, PLUCK, NOISE or MIN ARP; CHARACTER the pulse width or wave table, SWEEP the pitch sweep down, DECAY the stepped decay, MIX guitar against synth (50 both, 100 synth only) |
 | Octave fuzz (chords OK) | POLY OCT FUZZ | DOWN, UP, FUZZ, TONE, LEVEL | mixes dry guitar and both HQ octave voices before the complete Drive Fuzz Face. With both octaves at zero and TONE and LEVEL at noon, it matches Drive Fuzz Face at the same FUZZ and noon LEVEL. TONE adjusts treble around a flat noon setting. LEVEL (0–100, v66) sets the fuzz output: 0 is silent, noon is 0 dB, 100 is +6 dB. |
 
 **Retired types.** The 27 other SYNTH types of v29–v73 (organs, strings, choirs, MONO / PWM / BASS synths, 12-STRING, ACOUSTIC, SITAR, BARITONE, brass, trumpet, cello, STRING MACHINE, the Poly and Duo voices, the ensembles) are gone. Their numbers are never reused: a preset saved with one of them loads with the SYNTH block bypassed, keeps its stored type and its five settings untouched (until you pick another type and save), and shows RETIRED TYPE on the pedal and in the editor. The pedal and the editor skip retired types when you step through the list; MIDI model slices count only the live types.

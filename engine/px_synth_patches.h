@@ -1,4 +1,4 @@
-/* OpenPocket Synth2: the ANALOG type's patches. A patch is a fixed table entry: Felucca's ANALOG parameters (E0..E7), its amplitude
+/* OpenPocket Synth2: the ANALOG and ARCADE types' patches. A patch is a fixed table entry: Felucca's ANALOG parameters (E0..E7), its amplitude
  * envelope and filter-envelope amount, a transposition and a level trim. The block's PATCH setting (0..100) selects one in fixed bands of 10
  * (slot = value / 10, 100 = slot 9), so a patch keeps its band whatever is added later; a slot with no patch plays the last one defined.
  * The other settings are macros around the patch's own values (px_synth_adapter.h), 50 = the patch as written.
@@ -8,7 +8,7 @@
 #include <stdint.h>
 typedef struct {
     const char *name;            /* at most 7 characters (the screen's value text) */
-    int8_t e[8];                 /* Felucca ANALOG: WAVE, DTN, MIX, NOIS, CUT, RES, DRV, KTR (engine/../third_party eng_analog.c) */
+    int8_t e[8];                 /* Felucca ANALOG: WAVE, DTN, MIX, NOIS, CUT, RES, DRV, KTR; LOFI: CHIP, WAVE, DUTY, CRSH, SWP, VIB, ARP, TONE (third_party/felucca-engines) */
     uint8_t env[4];              /* ATK DEC SUS REL, 0..127 */
     int8_t fenv;                 /* envelope -> filter cutoff, -64..63 */
     int8_t semis;                /* transposition from the guitar's note */
@@ -28,6 +28,21 @@ static const px_patch PX_ANALOG_PATCHES[PX_PATCH_SLOTS] = {
     {"ACID",    {0,  0,  0, 0, 50,100, 25, 64}, {0, 55,  20, 30},  48, -12, 54,  0},   /* Felucca's ACID: saw, full resonance, a fast sweep */
     {"SWEEP",   {0, 14, 64, 0, 30, 50, 10, 64}, {50, 90, 100, 70}, 60,   0, 60,  0},   /* slow filter-sweep lead */
     {"SYNC",    {5, 30, 64, 0, 70, 25, 10, 64}, {3, 70, 100, 50},  25,   0, 56, 40},   /* hard-synced saw */
+};
+/* ARCADE: Felucca LOFI. CHIP 0 4BIT 1 4B/2 2 8BIT 3 1BIT 4 STEP (the stepped chip envelope: CRSH is then its DCY); WAVE 0 PLS 1 TRI 2 SAW 3 NOIS 4 WRAM (DUTY / 8 = the wave table);
+ * ARP 0 OFF 1 OCT 2 MAJ 3 MIN. fenv is unused (LOFI's TONE is its filter). */
+static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
+    /* name       CHIP WAVE DUTY CRSH SWP VIB ARP TONE    ATK DEC SUS REL  fenv semis trim pwm */
+    {"ARCADE",  {0, 0, 32,  0,  0, 20, 0, 127}, {0, 60,  90, 30},  0,   0, 64, 0},   /* 4-bit pulse lead with a little vibrato (Felucca's PULSE LD) */
+    {"CHIP",    {0, 0, 64,  0,  0,  0, 0, 127}, {0, 60, 100, 25},  0,   0, 64, 0},   /* chiptune pulse, 37.5 % */
+    {"8BIT BS", {2, 1,  0,  0,  0,  0, 0, 110}, {0, 50,  70, 20},  0, -12, 92, 0},   /* 8-bit triangle bass, an octave down */
+    {"WAVE",    {0, 4, 92,  0,  0, 18, 0, 110}, {0, 70,  90, 30},  0,   0, 96, 0},   /* wave-RAM lead ("ah", Felucca's WAVE LEAD) */
+    {"STEP",    {4, 0, 40, 34,  0, 16, 0, 127}, {0, 64, 127, 55},  0,   0, 76, 0},   /* stepped-envelope lead, a 0.5 s staircase decay */
+    {"ARP",     {2, 0, 96,  0,  0,  0, 2, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit major arpeggio on every note */
+    {"ZAP",     {0, 0, 64,  0, 60,  0, 0, 127}, {0, 40,   0, 20},  0,   0, 80, 0},   /* retro game: the pitch sweeps down on every pick */
+    {"PLUCK",   {4, 0, 64, 12,  0,  0, 0, 127}, {0, 64, 127, 30},  0,   0, 76, 0},   /* digital pluck: stepped one-shot decay */
+    {"NOISE",   {0, 3,  0, 40,  0,  0, 0, 100}, {0, 45,   0, 25},  0,   0, 84, 0},   /* crushed noise hit, rate follows the note */
+    {"MIN ARP", {2, 0, 64,  0,  0,  0, 3, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit minor arpeggio */
 };
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }
 #endif

@@ -428,8 +428,8 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
 #include "px_mono.h"                                   /* Synth2: the one mono tracker's interface (pitch, onset, release) */
 #include "px_synth_patches.h"                          /* Synth2: ANALOG's patch table */
 static void px_synth_run(px_engine *e, const float *in, float *out, int n);   /* px_synth_adapter.h, included at the end */
-static void px_s2_reset(px_engine *e, const uint8_t *q);
-static void px_s2_set_q(const uint8_t *q);
+static void px_s2_reset(px_engine *e, int type, const uint8_t *q);
+static void px_s2_set_q(int type, const uint8_t *q);
 #include "px_resonator_test.h"
 static float tan_pi(float fs, float f) { float w = PI_F * clampf_hz(fs, f) / fs; return sinf(w) / cosf(w); }
 static void bq_hp1(px_bq *b, float fs, float f)          /* first order (RC coupling, like the real circuits) */
@@ -493,13 +493,14 @@ static const tdef T_SFX[PX_SFX_COUNT] = {
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
 static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
 static const char *const PN_ANALOG[] = {"PATCH", "CUTOFF", "RESONANCE", "ENVELOPE", "LEVEL"};
+static const char *const PN_ARCADE[] = {"PATCH", "CHARACTER", "SWEEP", "DECAY", "MIX"};
 #define SYN_TOMB {"", 0, 0}
 static const tdef T_SYN[PX_SYN_COUNT] = {
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
-    {"ANALOG", 5, PN_ANALOG},
+    {"ANALOG", 5, PN_ANALOG}, {"ARCADE", 5, PN_ARCADE},
 };
 int px_type_retired(int b, int t) { return b == PX_B_SYN && !px_syn_runs(t); }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
@@ -707,6 +708,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_SYN:
         if (t == PX_SYN_ANALOG && k == 0) { put_str(buf, PX_ANALOG_PATCHES[px_patch_slot(v)].name); return 1; }
+        if (t == PX_SYN_ARCADE && k == 0) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
         break;
     case PX_B_DELAY:
         if (k == 0) { put_int(buf, (int)(dly_ms(t, v) + 0.5f), 0); int i = 0; while (buf[i]) i++;
@@ -1289,11 +1291,11 @@ static void rc_syn(px_engine *e)
     float a = f01(q[0]), b = f01(q[1]), d = f01(q[3]), f = f01(q[4]);
     if (t != e->syn_type) {                            /* new instrument: start from a quiet state */
         if (t == PX_SYN_OCT_FUZZ) { memset(&e->erb_syn, 0, sizeof e->erb_syn); syn_fuzz_reset(e); }
-        if (t == PX_SYN_ANALOG) px_s2_reset(e, q);
+        if (px_syn_mono(t)) px_s2_reset(e, t, q);
         e->syn_type = t;
-    } else if (t == PX_SYN_ANALOG) px_s2_set_q(q);
+    } else if (px_syn_mono(t)) px_s2_set_q(t, q);
     if (!px_syn_runs(t)) return;                       /* a tombstone: nothing to set up, the block is bypassed */
-    if (t == PX_SYN_ANALOG) return;                    /* its state is the adapter's (px_synth_adapter.h) */
+    if (px_syn_mono(t)) return;                        /* its state is the adapter's (px_synth_adapter.h) */
     e->syn_lvl[0] = e->syn_lvl[1] = e->syn_lvl[2] = 0.0f; e->syn_out = 1.0f;
     e->syn_lpk = opk(sr, 3000.0f);
     erb_prepare(e);
@@ -1440,7 +1442,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
                 syn_fuzz_reset(e);
             }
-            if (b == PX_B_SYN && p->type[b] == PX_SYN_ANALOG) px_s2_reset(e, p->p[b]);
+            if (b == PX_B_SYN && px_syn_mono(p->type[b])) px_s2_reset(e, p->type[b], p->p[b]);
             if (b == PX_B_SFX && p->type[b] == PX_SFX_SYNTH_HQ) {
                 memset(&e->sfx_track, 0, sizeof e->sfx_track); pxt_reset(e, &pxs_trk, &pxs_lay);
             }
@@ -2305,7 +2307,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     /* Synth2: the mono synth follows the clean guitar, before the gate, the octave and every other effect (docs/SYNTH2-PLAN.md): its
      * output waits here and replaces the signal where the SYNTH block stands in the order */
     float sy[PX_MAX_BLOCK];
-    const int syn2 = p->on[PX_B_SYN] && syn_t == PX_SYN_ANALOG;
+    const int syn2 = p->on[PX_B_SYN] && px_syn_mono(syn_t);
     if (syn2) px_synth_run(e, xb, sy, n);
     for (int s = 0; s < ns; s++) {
         const int sblk = st[s];
@@ -2346,7 +2348,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             goto faded;
         }
         /* v40.4: the blocks that run over the block pass by pass (above); the others sample by sample, below */
-        if (sblk == PX_B_SYN && syn_t == PX_SYN_ANALOG) {
+        if (sblk == PX_B_SYN && px_syn_mono(syn_t)) {
             for (int k = 0; k < n; ++k) xb[k] = sy[k] * strim;
             goto faded;
         }
@@ -2640,5 +2642,5 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     }
 }
 void px_engine_process(px_engine *e, const float *in, float *out, int n) { px_engine_part(e, in, out, n, PX_PART_ALL); }
-#include "px_synth_adapter.h"                           /* Synth2: Felucca ANALOG through the mono tracker (last: its names are Felucca's) */
-static void px_s2_set_q(const uint8_t *q) { px_s2_set(&px_s2_st, q); }
+#include "px_synth_adapter.h"                           /* Synth2: Felucca ANALOG and LOFI through the mono tracker (last: its names are Felucca's) */
+static void px_s2_set_q(int type, const uint8_t *q) { px_s2_set(&px_s2_st, type, q); }
