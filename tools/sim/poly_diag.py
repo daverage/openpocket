@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 from track_eval import jams_notes, dyad_score
 from resonator_track_eval import read_di
+from owner_di import LOW_E, SCALE
 
 p = argparse.ArgumentParser()
 p.add_argument('exe'); p.add_argument('--set', default='dev'); p.add_argument('--transpose', type=int, default=0)
@@ -45,18 +46,6 @@ def voices(rows):
 def score_owner(directory):
     import soundfile as sf
 
-    # pYIN on the DI established the scale labels. Use fixed note interiors for
-    # comparisons so a tracker cannot score on a different selection of frames.
-    scale = [
-        (1.70, 1.99, 45), (2.00, 2.31, 48), (2.31, 2.60, 50),
-        (2.64, 2.89, 52), (2.93, 3.17, 55), (3.22, 3.45, 57),
-        (3.47, 3.71, 60), (3.75, 3.99, 62), (4.00, 4.25, 64),
-        (4.26, 4.49, 67), (4.50, 4.72, 69), (4.74, 4.97, 72),
-        (4.98, 5.20, 69), (5.20, 5.42, 67), (5.44, 5.66, 64),
-        (5.69, 5.89, 62), (5.90, 6.12, 60), (6.14, 6.34, 57),
-        (6.37, 6.62, 55), (6.65, 6.87, 52), (6.89, 7.10, 50),
-        (7.11, 7.31, 48), (7.34, 7.70, 45),
-    ]
     harmonics = 12 * np.log2(np.arange(2, 7))
 
     def render(name):
@@ -110,7 +99,7 @@ def score_owner(directory):
         return ghost_pct
 
     time, pitch, count = render('scale + duo + power chords di.wav')
-    ghost_pct = singles('scale 1.70–7.70 s', time, pitch, count, scale)
+    ghost_pct = singles('scale 1.70–7.70 s', time, pitch, count, SCALE)
     # The chord interiors below were checked against their DI partials. Leave
     # ambiguous changes and muted gaps out of the per-chord denominators.
     for label, start, stop, root, fifth in [
@@ -126,10 +115,10 @@ def score_owner(directory):
         print(f'  {label} {start:.2f}–{stop:.2f} s: root {100 * lo.mean():.2f}%, {match}')
 
     time, pitch, count = render('low e open di.wav')
-    for start, stop in [(2.60, 12.50), (13.47, 24.40)]:
-        singles(f'E2 {start:.2f}–{stop:.2f} s', time, pitch, count, [(start, stop, 40)])
+    for start, stop, note in LOW_E:
+        singles(f'E2 {start:.2f}–{stop:.2f} s', time, pitch, count, [(start, stop, note)])
         in_note = (time >= start) & (time < stop)
-        correct = in_note & np.any(np.abs(pitch - 40) <= 0.6, axis=1)
+        correct = in_note & np.any(np.abs(pitch - note) <= 0.6, axis=1)
         if correct.any():
             sounding = time[in_note & (count > 0)]
             print(f'    first correct {time[correct][0]:.3f} s, '

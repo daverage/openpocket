@@ -657,6 +657,10 @@ half-ghost limit for this benchmark is 17.575%.
   with a 6% upper-voice floor and a 58% held-voice threshold. Extra comping
   voices rose to 29.2% versus 28.9% on v66. The host gate remains open. A
   stronger octave-to-root power check slowed some genuine octave pairs.
+  On the owner DI, the frozen candidate reached 16.08% scale ghosts
+  and 21.40% / 9.80% on the two low-E sustains. Both v66 and the frozen
+  candidate had zero frames with both notes correct in the four fixed
+  duo and power-chord interiors.
 - The comping trace breakdown attributes the remaining increase mainly to
   upper octaves that remain held during annotated single notes. Dropping them
   on loss of static evidence reduced their duration and increased false starts.
@@ -668,6 +672,28 @@ half-ghost limit for this benchmark is 17.575%.
   solos versus 1703/1726, and found 96/322 dyad entries versus 95/322. Extra
   comping voices rounded to 22.6% on both. This audit leaves the original
   Stage 1 acceptance gate open.
+- A four-report average of even-minus-odd partial power in dB, motivated by
+  Zhou et al., passed 33.24% of genuine upper-octave entry frames on GuitarSet
+  takes 24–47, up from 19.55% for the static check. The rate on difficult
+  single-note frames fell from 2.57% to 1.64%. The audit on takes 144–167
+  found 35.25% vs 19.78% for upper entry and 0.45% vs 1.30% for single
+  notes. On the scale DI, single-note admissions fell from 0.12% to 0%;
+  on the low-E DI they rose from 0.04% to 0.34%. The benchmark uses the
+  annotated root and measures candidate evidence. The voice bench measures
+  the ghosts that actually sound.
+- In the allocator, replacing the static check with that average reduced
+  simultaneous synthetic octave recall from 58.1% to 15.0%. Using the average
+  only to add a confirmation report on weak upper-octave candidates retained
+  58.1% recall and brought scale ghosts to 11.52% and comping extras to 28.7%.
+  It reached 2,668 solo entries and 128 second-note entries, one below v66
+  in each case, and second-note p90 reached 67.8 ms versus 65.6 ms on v66.
+  The upstream pitch trace already showed the played octave in both lost
+  cases. In `01_BN1-129-Eb_comp` at 21.879 s, E♭4 sounded after 34.9 ms
+  with the frozen candidate. In `01_Jazz3-137-Eb_solo` at 7.864 s, E♭5
+  sounded after 97.8 ms. The added report left both silent throughout
+  their scoring windows. These two cases provide direct checks for any
+  subsequent change to octave confirmation.
+  [Method and reproduction](NOTE-TRACKING-RESEARCH.md#octave-evidence-results)
 - The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
   LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
   register correction reduced the span of their balance from 3.97 dB to 1.63 dB.

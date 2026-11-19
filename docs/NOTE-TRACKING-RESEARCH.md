@@ -15,7 +15,7 @@ allocator's rules for choosing and releasing voices are OpenPocket's own.
 |---|---|---|
 | Polyphonic candidate detection | The pinned GPLv3 Rust guitar detector, built directly from upstream for the host, beat the older ERB tracker on both-note recall (42.1% vs 20.1%) on the same 128-sample scoring grid. It can miss adjacent semitones and true octave pairs. These were raw candidate scores against the older tracker. | Keep the current C resonator front end and rerun the upstream detector as a reference on identical present-day fixtures. Compare raw candidates and sounding voices separately. [Resonator benchmark](POLY-TRACKER-RESONATOR-BENCH.md) |
 | Shared harmonics | A bounded joint fit and past-only Essentia MultiPitchKlapuri both lost to the older ERB baseline. The v67 static even/odd partial check restores synthetic octaves and can also admit sustained false octaves. | Try time-varying harmonic evidence on the current front end. Consider a new joint fit only when it can use new evidence, such as learned pickup templates or distinct attacks. [Joint and Essentia benchmark](POLY-TRACKER-JOINT-BENCH.md) · [Phase 2b results](phase2b.md#stage-1-progress) |
-| Mono guitar and bass | Cycfi Q BACF is a tested, MIT-licensed mono detector tuned using separate guitar-string signals. Our YIN-style period check already uses similar evidence. The existing bass benchmark has real isolated samples and constructed mutes and dyads. | Run Q BACF as a host A/B on genuinely single notes first. Use the local native-pitch bass samples, low-B coverage and full played bass DI when available. Whole-chord periodicity can suggest an unplayed low note, especially with a fifth. [Q pitch documentation](https://cycfi.github.io/q/q/v1.5/reference/pitch.html) · [Q source and licence](https://github.com/cycfi/q) · [Recorded bass bench](BASS-DI-BENCH.md) |
+| Mono guitar and bass | Cycfi Q BACF is an MIT-licensed mono detector tuned using separate guitar-string signals. OpenPocket's v49 host bench used Q's own conditioning and measured 68.5% notes right on GuitarSet and 57–60% on the owner's low-string riffs. The v49 tracker measured 74.6% and 84.4% respectively. | Keep Q as a host reference. A bass A/B needs native-pitch single notes, low-B coverage and full played bass DI when available. Whole-chord periodicity can suggest an unplayed low note, especially with a fifth. [Q pitch documentation](https://cycfi.github.io/q/q/v1.5/reference/pitch.html) · [v49 test results](NOTE-TRACKING.md#the-hq-synths-a-lighter-tracker-and-the-2-stop) · [Recorded bass bench](BASS-DI-BENCH.md) |
 | Other polyphonic guitar implementations | Schramm et al. trained spectral dictionaries for each guitar and measured roughly 45 ms input-to-synth delay on Raspberry Pi 3 at a 512-sample hop. Guitarists still heard octave errors and low-note harmonics triggering extra voices. Basic Pitch and FretNet provide working host references with pitch contours. | Use a reference to examine labels and ambiguous failures. The paper and host implementations leave AC791N timing and RAM to be measured. [Schramm et al., NIME 2018, §§3.1–3.3](https://nime.org/proceedings/2018/nime2018_paper0027.pdf) · [Basic Pitch code](https://github.com/spotify/basic-pitch) · [FretNet code](https://github.com/cwitkowitz/guitar-transcription-continuous) |
 
 Zhou et al. evaluated resonator-based pitch estimation on mixtures of recorded
@@ -27,7 +27,7 @@ to a single guitar pickup is a hypothesis to measure. It directly addresses
 the false octave that returns when the allocator sees high even partials.
 [Zhou et al., 2009 full paper](https://www.research-collection.ethz.ch/bitstreams/32aa5768-22e5-47f4-9d8a-60343651d0d3/download)
 
-### Next Stage 1 comparison
+### Stage 1 comparison protocol
 
 1. Freeze the v66 reference and current v67 candidate. Collect causal
    per-report even and odd harmonic envelopes from the existing resonator
@@ -46,6 +46,30 @@ the false octave that returns when the allocator sees high even partials.
    recording session when expanding the audit. Measure audible latency and peak
    block load on the pedal before promotion. [Guitar-TECHS dataset](https://zenodo.org/records/14963133) ·
    [Phase 2b gates](phase2b.md#stage-1-v67-remove-overtone-ghosts-from-both-trackers)
+
+### Octave evidence results
+
+`tools/sim/octave_evidence.py` feeds the original audio to the host Poly
+resonator dump. It compares the Stage 1 candidate's static check with several
+causal features, including an average of the last four reports (11.6 ms).
+It calibrates the thresholds to the static check's single-note admission rate
+on GuitarSet takes 0–23. It reads the same fixed owner DI note ranges as
+`poly_diag.py`.
+
+```sh
+cc -O2 -Iengine -Ifirmware tools/sim/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+python3 tools/sim/octave_evidence.py build/pulse_poly_bench --offset 24 --owner-di 'My Audio'
+python3 tools/sim/octave_evidence.py build/pulse_poly_bench --offset 144
+```
+
+The four-report average measures the balance between odd and even groups.
+The separate rise feature compares that average with the preceding twelve
+reports. The rise feature alone admitted 13.13% of the upper-entry frames
+and 3.57% of the simultaneous frames on the original holdout. Averaging
+therefore helped more than detecting a recent rise in this test. The
+classifier assumes an annotated root and a measurable second harmonic.
+See the voice-level results and remaining regressions in the plan.
+[Phase 2b results](phase2b.md#stage-1-progress)
 
 The other research notes cover different parts of the audio path. The
 ERB-PS2 octave shifter transforms the mixed guitar waveform and can work
