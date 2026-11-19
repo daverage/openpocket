@@ -88,7 +88,7 @@ int main(int argc, char **argv)
             fprintf(trace, "%.8f,%d", (double)offset / engine.sr, pxa_trk.nnotes);
             for (int i = 0; i < PXT_NOTES; ++i)
                 fprintf(trace, ",%.5f", i < pxa_trk.nnotes ? pxa_trk.notes[i] : 0.0f);
-            const px_poly_voice *a = &pulse_poly.voice[0], *b = &pulse_poly.voice[1];
+            const pxp_note *a = &pxp.note[0], *b = &pxp.note[1];
             fprintf(trace, ",%.5f,%.5f,%.6f,%.6f,%u,%u,%u,%u\n",
                     a->frequency, b->frequency, a->gain, b->gain, a->held, b->held, a->repick, b->repick);
         }
