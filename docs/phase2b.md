@@ -178,6 +178,10 @@ Prototype within the current memory budget and record the target map deltas.
   frames.
 - Score the poly eviction, mono jump protection and fade lock separately before
   scoring the combined build. Report dyad and root recall by interval and register.
+- Compare a causal even/odd partial-envelope check on the current resonator
+  data before tuning more fixed harmonic thresholds. The
+  [tracking research update](NOTE-TRACKING-RESEARCH.md#phase-2b-evidence-and-next-benchmark)
+  records the published method, upstream references and earlier tests.
 - **Acceptance:**
   - overtone-ghost time at least halved against the measured v66 overtone-only baseline
   - extra voices lower
@@ -653,6 +657,17 @@ half-ghost limit for this benchmark is 17.575%.
   with a 6% upper-voice floor and a 58% held-voice threshold. Extra comping
   voices rose to 29.2% versus 28.9% on v66. The host gate remains open. A
   stronger octave-to-root power check slowed some genuine octave pairs.
+- The comping trace breakdown attributes the remaining increase mainly to
+  upper octaves that remain held during annotated single notes. Dropping them
+  on loss of static evidence reduced their duration and increased false starts.
+  An extra report of confirmation reduced extras to 28.7%, missed one baseline
+  second note and raised second-note p90 from 65.6 to 67.8 ms. Compare temporal
+  evidence from both partial groups before further threshold sweeps.
+- A separate GuitarSet slice (takes 144–167 for each input set) compared the
+  locked 6% upper-floor candidate with v66. The candidate reached 1702/1726
+  solos versus 1703/1726, and found 96/322 dyad entries versus 95/322. Extra
+  comping voices rounded to 22.6% on both. This audit leaves the original
+  Stage 1 acceptance gate open.
 - The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
   LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
   register correction reduced the span of their balance from 3.97 dB to 1.63 dB.

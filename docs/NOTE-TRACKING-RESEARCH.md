@@ -1,5 +1,71 @@
 # Low-cost guitar note tracking
 
+## Phase 2b evidence and next benchmark
+
+The v49 notes below are an earlier design snapshot. In v66 the poly synths use
+a quarter-rate resonator bank, harmonic candidate ranking and a two-voice
+allocator. The mono layer still uses ERB partials, Klapuri-style salience and a
+normalised waveform-period check. These are established DSP methods. The note
+allocator's rules for choosing and releasing voices are OpenPocket's own.
+[Poly tracker](../engine/px_poly_track.h) · [Mono tracker](../engine/px_track.h) ·
+[Klapuri 2006](https://archives.ismir.net/ismir2006/paper/000125.pdf) ·
+[YIN](https://doi.org/10.1121/1.1458024)
+
+| Problem | What we have tested | Decision |
+|---|---|---|
+| Polyphonic candidate detection | The pinned GPLv3 Rust guitar detector, built directly from upstream for the host, beat the older ERB tracker on both-note recall (42.1% vs 20.1%) on the same 128-sample scoring grid. It can miss adjacent semitones and true octave pairs. These were raw candidate scores against the older tracker. | Keep the current C resonator front end and rerun the upstream detector as a reference on identical present-day fixtures. Compare raw candidates and sounding voices separately. [Resonator benchmark](POLY-TRACKER-RESONATOR-BENCH.md) |
+| Shared harmonics | A bounded joint fit and past-only Essentia MultiPitchKlapuri both lost to the older ERB baseline. The v67 static even/odd partial check restores synthetic octaves and can also admit sustained false octaves. | Try time-varying harmonic evidence on the current front end. Consider a new joint fit only when it can use new evidence, such as learned pickup templates or distinct attacks. [Joint and Essentia benchmark](POLY-TRACKER-JOINT-BENCH.md) · [Phase 2b results](phase2b.md#stage-1-progress) |
+| Mono guitar and bass | Cycfi Q BACF is a tested, MIT-licensed mono detector tuned using separate guitar-string signals. Our YIN-style period check already uses similar evidence. The existing bass benchmark has real isolated samples and constructed mutes and dyads. | Run Q BACF as a host A/B on genuinely single notes first. Use the local native-pitch bass samples, low-B coverage and full played bass DI when available. Whole-chord periodicity can suggest an unplayed low note, especially with a fifth. [Q pitch documentation](https://cycfi.github.io/q/q/v1.5/reference/pitch.html) · [Q source and licence](https://github.com/cycfi/q) · [Recorded bass bench](BASS-DI-BENCH.md) |
+| Other polyphonic guitar implementations | Schramm et al. trained spectral dictionaries for each guitar and measured roughly 45 ms input-to-synth delay on Raspberry Pi 3 at a 512-sample hop. Guitarists still heard octave errors and low-note harmonics triggering extra voices. Basic Pitch and FretNet provide working host references with pitch contours. | Use a reference to examine labels and ambiguous failures. The paper and host implementations leave AC791N timing and RAM to be measured. [Schramm et al., NIME 2018, §§3.1–3.3](https://nime.org/proceedings/2018/nime2018_paper0027.pdf) · [Basic Pitch code](https://github.com/spotify/basic-pitch) · [FretNet code](https://github.com/cwitkowitz/guitar-transcription-continuous) |
+
+Zhou et al. evaluated resonator-based pitch estimation on mixtures of recorded
+instruments, including guitar. Their static harmonic checks still left octave
+errors. In §5 and Figure 8 they show that the even partials of a lower pitch
+can follow a different time course from its odd partials when a second note an
+octave above enters. Their example is a piano and violin mixture. Its transfer
+to a single guitar pickup is a hypothesis to measure. It directly addresses
+the false octave that returns when the allocator sees high even partials.
+[Zhou et al., 2009 full paper](https://www.research-collection.ethz.ch/bitstreams/32aa5768-22e5-47f4-9d8a-60343651d0d3/download)
+
+### Next Stage 1 comparison
+
+1. Freeze the v66 reference and current v67 candidate. Collect causal
+   per-report even and odd harmonic envelopes from the existing resonator
+   trace. Test whether the even group has an independent attack, changes
+   amplitude independently, or persists when the lower note is muted. Compare
+   against synthetic and recorded cases where simultaneous notes and single
+   string overtones resemble each other. Read the published time-envelope
+   comparison before picking a compact statistic.
+2. Measure the separation on development audio first. Use annotations to tell
+   genuine octave pairs from overtones and separately log attacks, sustained
+   frames and independent mutes. Port a small comparison to the allocator only
+   if it produces better decisions at the report cadence without extra lookahead.
+3. Rerun both owner DIs, the original GuitarSet holdout and a separate audit
+   range. Report voice entry counts, median and tail arrival, false starts and
+   time spent on a ghost. Use electric Guitar-TECHS DI on a separate player or
+   recording session when expanding the audit. Measure audible latency and peak
+   block load on the pedal before promotion. [Guitar-TECHS dataset](https://zenodo.org/records/14963133) ·
+   [Phase 2b gates](phase2b.md#stage-1-v67-remove-overtone-ghosts-from-both-trackers)
+
+The other research notes cover different parts of the audio path. The
+ERB-PS2 octave shifter transforms the mixed guitar waveform and can work
+without individual note events. Smart Gate detects signal versus noise and is
+worth testing on soft picks and bass tails. The STK and Plaits references
+address how a voice sounds after a note has been identified. Keep the HQ
+sound-matching work on the isolated voices and matched-level listening A/Bs.
+[Octave DSP](POLYPHONIC-PITCH-RESEARCH.md) · [Smart Gate](SMART-GATE-RESEARCH.md) ·
+[Synthesis engines](SYNTH-ENGINES-RESEARCH.md) · [Voicing and listening](SYNTH-VOICING-RESEARCH.md)
+
+CC0 is unnecessary for firmware code. OpenPocket's engine is GPL-3.0-only.
+MIT and Apache-2.0 code and compatible GPLv3 code can be reused under their
+applicable terms. Record source revisions, retain notices and check files,
+model weights and samples separately. An unlicensed repository or a paper
+alone does not grant permission to copy implementation code. Keep AGPL
+Essentia as a standalone comparison unless its combined-distribution terms
+are deliberately adopted. [OpenPocket licence](../README.md#licence) ·
+[GNU licence compatibility](https://www.gnu.org/licenses/license-compatibility.html) ·
+[Apache compatibility](https://www.apache.org/licenses/GPL-compatibility.html)
+
 Try a **C port of Cycfi Q's bitstream autocorrelation (BACF) detector** as the cheap mono tracker for synth and instrument voices. Run it at a decimated rate, and use its edge-based period prediction for attacks. Keep the **v49 harmonic-salience tracker** for chords, but feed it from a **multirate ERB bank** that does less work per sample. For octave down, track only the bass note with the cheap mono tracker on a low-passed copy of the input, and let the salience notes veto it. For picks, keep the **log-band spectral flux** that v49 already computes, add SuperFlux's maximum filter across bands, and add a 128-sample-hop band-energy flux for modes that do not run the ERB bank.
 
 None of the published trackers gets a low E (82.4 Hz, 12.1 ms period) right in much less than one to two periods, and none of them is cheap and polyphonic at the same time. Neural transcribers such as Basic Pitch and CREPE are far too heavy for the pedal. They are still useful on the host for labelling test recordings.

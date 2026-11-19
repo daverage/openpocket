@@ -22,6 +22,8 @@ from bass_di_eval import load_note, fixture
 parser=argparse.ArgumentParser()
 parser.add_argument('exe')
 parser.add_argument('--guitar',action='store_true')
+parser.add_argument('--offset',type=int,default=24,help='first GuitarSet comping take')
+parser.add_argument('--takes',type=int,default=24,help='number of GuitarSet comping takes')
 parser.add_argument('--transpose',type=int,default=0)
 parser.add_argument('--out',default='build/poly-score')
 parser.add_argument('--bass-di',default='/tmp/op-bass-di/native')
@@ -46,7 +48,11 @@ def reference(rows):
     return out
 if args.guitar:
     di=Path("build/guitarset")
-    files=sorted((di/'mono').glob("*_comp_mix.wav"))[24:48]
+    if args.offset < 0 or args.takes < 1:
+        parser.error('expected a non-negative offset and a positive take count')
+    files=sorted((di/'mono').glob("*_comp_mix.wav"))[args.offset:args.offset + args.takes]
+    if not files:
+        parser.error('no GuitarSet comping takes at the requested offset')
     raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]
     for path in files:
         x=read_di(path)

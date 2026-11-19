@@ -15,9 +15,15 @@ from track_eval import ROOT, jams_notes, cents
 from resonator_track_eval import read_di
 
 p = argparse.ArgumentParser(); p.add_argument('exe'); p.add_argument('--set', default='dev'); p.add_argument('--takes', type=int, default=24)
+p.add_argument('--offset', type=int, help='override the first GuitarSet take for a separate audit')
 a = p.parse_args()
 files = sorted(glob.glob(os.path.join(ROOT, 'build', 'guitarset', 'mono', '*_solo_mix.wav')))
-files = files[:a.takes] if a.set == 'dev' else files[24:24 + a.takes]
+offset = a.offset if a.offset is not None else 0 if a.set == 'dev' else 24
+if offset < 0 or a.takes < 1:
+    p.error('expected a non-negative offset and a positive take count')
+files = files[offset:offset + a.takes]
+if not files:
+    p.error('no GuitarSet solo takes at the requested offset')
 lat, miss, false_starts, starts, minutes = [], 0, 0, 0, 0.0
 for w in files:
     x = read_di(w)
