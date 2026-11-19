@@ -294,6 +294,18 @@ renderer release is therefore part of the audible Duo problem. These
 were layered recordings with known mute timing. Played strings and
 on-pedal output still need the listening gate.
 
+
+A host-only 25 ms individual release cap shortened the two problematic
+320 ms tails. Applying it whenever a partner was held reduced first-hit
+entries from 125 to 118. Applying it only when the partner still had a
+matching candidate at the instant the first voice released reached
+123/270, with median 31.4 ms versus 28.2 ms on v67. It cut the two mute
+tails from 100% to 28.2% and 22.7%, kept scale ghosts at 12.52%, and
+reduced extra comping voices from 54.5% to 45.4%. The new both-voices-held
+diagnostic reached 80/270 versus 78/270 on v67. That diagnostic complements
+the audible score. The slower first-hit median and missing lower-first
+octave keep both release variants host-only.
+
 ---
 
 ## Stage 3: check the octave on the waveform

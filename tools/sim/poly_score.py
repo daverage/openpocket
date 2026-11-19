@@ -43,10 +43,11 @@ def render(x):
         with trace.open() as f:
             rows=[{k:float(v) for k,v in line.items()} for line in csv.DictReader(f)]
     return y,rows
-def reference(rows):
+def reference(rows, *, held=False):
     out=[]
     for r in rows:
-        p=[r[f'v{k}'] for k in (1,2) if r[f'gain{k}']>.065 and r[f'v{k}']>0]
+        p = [r[f'v{k}'] for k in (1, 2)
+             if r[f'gain{k}'] > .065 and r[f'v{k}'] > 0 and (not held or r[f'held{k}'])]
         p.sort()
         out.append(dict(t=r['t'],nn=len(p),**{f'n{i+1}':x for i,x in enumerate(p)}))
     return out
@@ -59,7 +60,7 @@ if args.guitar:
     files=sorted((di/'mono').glob("*_comp_mix.wav"))[args.offset:args.offset + args.takes]
     if not files:
         parser.error('no GuitarSet comping takes at the requested offset')
-    raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]; sustained_entries=[]
+    raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]; sustained_entries=[]; held_entries=[]
     for path in files:
         x=read_di(path)
         notes=jams_notes(di/'annotation'/(path.stem.removesuffix('_mix')+'.jams'))
@@ -73,6 +74,7 @@ if args.guitar:
         raw_p.append(poly_score(rows,notes)); voice_p.append(poly_score(active,notes))
         entries_raw+=dyad_entry_delays(rows,notes); entries_voice+=dyad_entry_delays(active,notes)
         sustained_entries += dyad_entry_delays(active, notes, reports=5)
+        held_entries += dyad_entry_delays(reference(rows, held=True), notes)
     report_detector(f'Raw resonator, guitar {args.transpose:+d} semitones',raw,raw_p,entries_raw)
     voice_name = 'String Duo' if args.type == 'duo' else args.type.capitalize()
     report_detector(f'{voice_name} voices, guitar {args.transpose:+d} semitones',voices,voice_p,entries_voice)
@@ -83,6 +85,8 @@ if args.guitar:
         timing = f', median {median(sustained_hits):.1f} ms, p90 {p90:.1f} ms'
     print(f'second-note entries sustained for five reports: '
           f'{len(sustained_hits)}/{len(sustained_entries)} within 100 ms{timing}')
+    print(f'second-note entries with both voices held: '
+          f'{sum(delay is not None for delay in held_entries)}/{len(held_entries)} within 100 ms')
 else:
     t=np.arange(int(1.8*RATE))/RATE
     def pluck(f, start, stop, level, shape=(1,.27,.16)):
