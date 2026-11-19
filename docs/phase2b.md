@@ -693,6 +693,25 @@ half-ghost limit for this benchmark is 17.575%.
   sounded after 97.8 ms. The added report left both silent throughout
   their scoring windows. These two cases provide direct checks for any
   subsequent change to octave confirmation.
+- The synthetic E2/E3 check now covers 21 combinations of relative pick level
+  and upper-note offset (0, ±20, ±80 and ±120 ms). Within 150 ms, v66 found
+  both voices in 13 cases and the frozen candidate in 17. All four remaining
+  misses have the upper string at half the lower string's amplitude and
+  arriving at the same time or later. When the softer upper string starts
+  first, the frozen build briefly reaches both pitches but keeps both for
+  less than 1% of the overlap in each case.
+- A host trial used harmonic history only after both voices had held for
+  100 ms. Four weak reports attenuated the upper voice by 20 dB while
+  preserving its pitch and allocator state. It kept all 2,669 solo entries,
+  129 comping entries and the frozen candidate's 21-case octave results.
+  Scale ghosts were 13.67% and low-E ghosts 21.40% / 2.63%. Comping extra
+  voices still measured 29.0% versus 28.9% on v66, and false starts increased
+  to 121/min. Adding hysteresis brought comping extras to 28.9% but lost one
+  comping entry and cut simultaneous octave overlap from 58.1% to 35.9%.
+  Protecting pairs that had shown the static octave evidence recovered that
+  overlap, but still lost the comping entry and reached 29.1% extras.
+  The weak-upper misses and the reappearance of attenuated ghosts remain
+  separate checks for the next allocator trial.
 - A host comparison with Cycfi Q's BACF detector covered both owner DIs and
   32 native-pitch bass plucks. With its low bound set to 27 Hz for bass, Q
   detected all eight B0, E1 and A1 plucks at each pitch where v66 MONO SYNTH

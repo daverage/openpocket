@@ -98,20 +98,23 @@ else:
     for tag,lo,hi in cases:
         x=synthetic(lo,hi)
         values(tag,x,lo,hi)
-    # Use a slightly detuned upper string and test close offsets in both
-    # directions as well as exact co-attacks. Judge both notes while both ring.
-    for high_delay in [0, .02, -.02, .08, -.08]:
-        lo_start = .12 + max(0, -high_delay)
-        hi_start = .12 + max(0, high_delay)
-        x = (pluck(hz(40), lo_start, .8, .15)
-             + pluck(hz(52) * 1.005, hi_start, .8, .13, (1, .37, .22, .09)))
-        _, rows = render(x)
-        t_rows = np.array([row['t'] for row in rows])
-        overlap = (t_rows >= max(lo_start, hi_start)) & (t_rows < .8)
-        both = active(rows, 40) & active(rows, 52) & overlap
-        entry = round((t_rows[both][0] - max(lo_start, hi_start)) * 1000, 1) if both.any() else None
-        print(f'octave upper offset {high_delay * 1000:+.0f} ms: both {100 * both.sum() / overlap.sum():.1f}%, '
-              f'entry {entry} ms', flush=True)
+    # Try unequal picks and both sides of the 100 ms eviction window.
+    # Slight detuning gives the upper string an independent phase trajectory.
+    for upper_level in [.075, .13, .24]:
+        for offset_ms in [0, 20, -20, 80, -80, 120, -120]:
+            offset = offset_ms / 1000
+            lo_start = .12 + max(0, -offset)
+            hi_start = .12 + max(0, offset)
+            x = (pluck(hz(40), lo_start, .8, .15)
+                 + pluck(hz(52) * 1.005, hi_start, .8, upper_level, (1, .37, .22, .09)))
+            _, rows = render(x)
+            times = np.array([row['t'] for row in rows])
+            together = max(lo_start, hi_start)
+            overlap = (times >= together) & (times < .8)
+            both = active(rows, 40) & active(rows, 52) & overlap
+            entry = round((times[both][0] - together) * 1000, 1) if both.any() else None
+            print(f'octave upper level {upper_level:g}, offset {offset_ms:+d} ms: '
+                  f'both {100 * both.sum() / overlap.sum():.1f}%, entry {entry} ms', flush=True)
     for inst, dyn in ([('babyblue','f'),('darkblack','mf')] if Path(args.bass_di).is_dir() else []):
         for m,files in [(23, ('b1','e2')),(28,('e2','a2'))]:
             samples=[load_note(f"{args.bass_di}/{inst}_{p}_{dyn}_rr4.wav") for p in files]
