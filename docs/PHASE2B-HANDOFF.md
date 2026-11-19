@@ -15,8 +15,11 @@ recipe as a reference, and treat pedal listening, load, and latency as
 pending. Ask before flashing. Use the supplied scale and low-E recordings
 in `My Audio/` for all tracker checks.
 
-Read "Reproduction and entry inspection" under the STRING DUO comparison
-in Phase 2b first. Benches must use the full v67 `DSPDEF` from
+Start with "Evaluation standard" near the top of Phase 2b: re-split
+GuitarSet by player, add standard metrics, paired significance and
+fixture perturbation before judging any allocator change. Then read
+"Reproduction and entry inspection" under the STRING DUO comparison
+in Phase 2b. Benches must use the full v67 `DSPDEF` from
 `firmware/build.sh` with `PXP_SET='ACQB=0.06 SECOND=0.58'`. Pass the flag
 list through bash. zsh does not split an unquoted `$F`. Working files are in
 `build/phase2b/duo-release/` (ignored):

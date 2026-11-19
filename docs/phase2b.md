@@ -52,6 +52,43 @@ candidate. Use GuitarSet development takes for tuning, and keep the held-out dat
 frozen for reporting. The existing wet recordings are listening references. For
 pedal output latency, capture DI and wet together in one stereo take.
 
+## Evaluation standard (review of 2026-11-19)
+
+The Phase 2b tracker decisions so far rest on differences smaller than
+the benchmarks can resolve, and on data that was not held out. Fix the
+measurement before adding or removing more allocator rules.
+
+- **Split GuitarSet by player.** Sorted comping takes 0–23 are all
+  player 00. The "held-out" takes 24–47 contain six takes from player 00
+  and 18 from player 01. About 400 runs under `build/phase2b/` have
+  scored them. Treat players 00–01 as development data. Freeze players
+  02–05 (132 comping takes, plus their solos) as the test set and score
+  each finished candidate once. GuitarSet is an acoustic guitar with a
+  hexaphonic pickup. Its mono mix is not an electric DI.
+  [Xi et al., ISMIR 2018](https://ismir2018.ismir.net/doc/pdfs/188_Paper.pdf)
+- **Add matched electric-guitar data.** EGDB has 240 clean electric-guitar
+  DI clips with per-string annotations from a hexaphonic pickup. Check its
+  licence before downloading it. Keep the owner DIs, and add a labelled
+  owner take set covering each interval class, repicks, mutes, bends,
+  low E/A and bass.
+  [Chen et al., ICASSP 2022](https://arxiv.org/abs/2202.09907)
+- **Report standard metrics next to the diagnostics.** For poly voices,
+  report mir_eval note onset F-measure (50 ms, ±50 cents), F-measure with
+  offsets (20% or 50 ms), and frame multipitch precision/recall. For mono
+  leads, report raw pitch accuracy, voicing false alarm and octave-error
+  rate. Ghosts, mute tails and held-voice entries stay as diagnostics.
+  [mir_eval transcription](https://mir-eval.readthedocs.io/stable/api/transcription.html)
+- **Test significance on paired results.** On the 270 holdout entries, a
+  change is only distinguishable from chance with a two-sided exact
+  McNemar test when at least six discordant entries all move one way.
+  The latched cap versus v67 was 4 against 2 (p = 0.69). The two-cue
+  octave trial was 7 against 3 (p = 0.34). Report bootstrap intervals over
+  takes for rates, and call a smaller change no change.
+- **Perturb every constructed fixture.** A 1 ms shift in clip start
+  changed the lower-first octave from no entry to an entry. Report
+  recorded pairs and synthetic cases across start offsets and ±6 dB gain
+  as distributions.
+
 ---
 
 ## 0. Where things stand
