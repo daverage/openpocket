@@ -843,7 +843,9 @@ reference. The pedal's real-time load, audible latency and owner verdict
 are pending. Channel-equivalent host checks across both owner DIs and two
 bundled loops gave bit-identical v66/v67 output for POLY OCTAVE HQ,
 POLY OCT FUZZ and CHURCH ORGAN HQ. The general sweep's existing
-minimum-level octave-fuzz flag also reproduced on v66.
+minimum-level octave-fuzz flag also reproduced on v66. `make test` exited
+successfully with the existing engine sweep and long-run flags. The optional
+NumPy NAM comparison, factory rollback, and Playwright checks were skipped.
 [Architecture review and feature removals](TRACKING-ARCHITECTURE-REVIEW.md)
 
 ## Parallel HQ and space-saver work
