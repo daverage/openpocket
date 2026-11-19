@@ -1,10 +1,11 @@
 /* OpenPocket, SPDX-License-Identifier: GPL-3.0-or-later.
  * Render the poly synths from mono 44.1 kHz float32 on stdin.
- * Usage: pulse_poly_bench [trace.csv|-] [pulse|saw|arcade|fm [five knobs]]
+ * Usage: pulse_poly_bench [trace.csv|-] [pulse|saw|arcade|fm|duo [five knobs]]
  *        pulse_poly_bench --fm-oscillator HZ RATIO capped|uncapped
  */
 #define PX_PULSE_TEST 1
 #define PX_POLY_TEST 1
+#define PX_ENSEMBLE_TEST 1
 #define PXP_TUNE 1
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,12 +46,16 @@ int main(int argc, char **argv)
     if (argc > 3 && argc != 8) return 2;
     int type = PX_SYN_PULSE_POLY;
     if (argc >= 3) {
-        static const char *const names[] = {"pulse", "saw", "arcade", "fm"};
+        static const struct { const char *name; int type; } voices[] = {
+            {"pulse", PX_SYN_PULSE_POLY}, {"saw", PX_SYN_SAW_POLY},
+            {"arcade", PX_SYN_ARCADE_POLY}, {"fm", PX_SYN_FM_POLY},
+            {"duo", PX_SYN_STRING_DUO},
+        };
         unsigned i;
-        for (i = 0; i < sizeof names / sizeof names[0]; ++i)
-            if (!strcmp(argv[2], names[i])) break;
-        if (i == sizeof names / sizeof names[0]) return 2;
-        type += (int)i;
+        for (i = 0; i < sizeof voices / sizeof voices[0]; ++i)
+            if (!strcmp(argv[2], voices[i].name)) break;
+        if (i == sizeof voices / sizeof voices[0]) return 2;
+        type = voices[i].type;
     }
 
     /* PXP_SET="name=value ..." overrides the picker's tuning (engine/px_poly_track.h). */

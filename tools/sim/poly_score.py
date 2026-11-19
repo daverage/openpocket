@@ -19,7 +19,7 @@ import numpy as np
 from track_eval import jams_notes, dyad_score, poly_score, dyad_entry_delays, report_detector
 from lowest_octave_eval import RATE, write_wav
 from resonator_track_eval import read_di
-from bass_di_eval import load_note, fixture
+from bass_di_eval import load_note, fixture, place
 parser=argparse.ArgumentParser()
 parser.add_argument('exe')
 parser.add_argument('--guitar',action='store_true')
@@ -28,7 +28,10 @@ parser.add_argument('--takes',type=int,default=24,help='number of GuitarSet comp
 parser.add_argument('--transpose',type=int,default=0)
 parser.add_argument('--out',default='build/poly-score')
 parser.add_argument('--bass-di',default='/tmp/op-bass-di/native')
-parser.add_argument('--type',default='pulse')
+parser.add_argument('--guitar-pair', action='append', nargs=4, default=[],
+                    metavar=('FIRST_MIDI', 'FIRST_WAV', 'SECOND_MIDI', 'SECOND_WAV'),
+                    help='add both mute orders using two isolated recorded guitar plucks')
+parser.add_argument('--type', choices=('pulse', 'saw', 'arcade', 'fm', 'duo'), default='pulse')
 args=parser.parse_args()
 root=Path(args.out); root.mkdir(parents=True,exist_ok=True)
 def render(x):
@@ -48,6 +51,8 @@ def reference(rows):
         out.append(dict(t=r['t'],nn=len(p),**{f'n{i+1}':x for i,x in enumerate(p)}))
     return out
 if args.guitar:
+    if args.guitar_pair:
+        parser.error('--guitar-pair is part of the fixture run; omit --guitar')
     di=Path("build/guitarset")
     if args.offset < 0 or args.takes < 1:
         parser.error('expected a non-negative offset and a positive take count')
@@ -69,7 +74,8 @@ if args.guitar:
         entries_raw+=dyad_entry_delays(rows,notes); entries_voice+=dyad_entry_delays(active,notes)
         sustained_entries += dyad_entry_delays(active, notes, reports=5)
     report_detector(f'Raw resonator, guitar {args.transpose:+d} semitones',raw,raw_p,entries_raw)
-    report_detector(f'Pulse voices, guitar {args.transpose:+d} semitones',voices,voice_p,entries_voice)
+    voice_name = 'String Duo' if args.type == 'duo' else args.type.capitalize()
+    report_detector(f'{voice_name} voices, guitar {args.transpose:+d} semitones',voices,voice_p,entries_voice)
     sustained_hits = sorted(delay for delay in sustained_entries if delay is not None)
     timing = ''
     if sustained_hits:
@@ -90,9 +96,10 @@ else:
     def hz(m): return 440*2**((m-69)/12)
     def synthetic(low,high):
         return pluck(hz(low),.1,.75,.15)+pluck(hz(high),.34,1.51,.13)+pluck(hz(low),.90,1.29,.11)
-    def active(rows, m):
+    def active(rows, m, *, held=False):
         f=hz(m)
-        return np.array([any(r[f'gain{k}']>.065 and f*.97153<r[f'v{k}']<f*1.0293 for k in [1,2]) for r in rows])
+        return np.array([any(r[f'gain{k}'] > .065 and f*.97153 < r[f'v{k}'] < f*1.0293
+                             and (not held or r[f'held{k}']) for k in (1, 2)) for r in rows])
     def values(name,x,lo,hi):
         y,rows=render(x)
         times=np.array([r['t'] for r in rows])
@@ -129,7 +136,36 @@ else:
             samples=[load_note(f"{args.bass_di}/{inst}_{p}_{dyn}_rr4.wav") for p in files]
             x=fixture(*samples,.16)
             y=values(f"{inst}-{m}",x,m,m+5)
-            write_wav(root/f'{inst}-{m}-pulse.wav',y)
+            write_wav(root/f'{inst}-{m}-{args.type}.wav',y)
+    for index, (first_midi, first_wav, second_midi, second_wav) in enumerate(args.guitar_pair, 1):
+        try:
+            m1, m2 = float(first_midi), float(second_midi)
+        except ValueError:
+            parser.error('--guitar-pair expects numeric MIDI pitches')
+        if not (0 <= m1 <= 127 and 0 <= m2 <= 127 and abs(m1 - m2) >= 1):
+            parser.error('--guitar-pair expects MIDI pitches 0–127 separated by at least one semitone')
+        first = m1, load_note(first_wav)
+        second = m2, load_note(second_wav)
+        for (m1, n1), (m2, n2) in [(first, second), (second, first)]:
+            x = np.zeros_like(t)
+            place(x, n1, .12, .66, .20)
+            place(x, n2, .30, .98, .16)
+            y, rows = render(x)
+            times = np.array([row['t'] for row in rows])
+            first_on, second_on = active(rows, m1), active(rows, m2)
+            first_held = active(rows, m1, held=True)
+            together = (times >= .30) & (times < .66)
+            tail = (times >= .66) & (times < .98)
+            paired = together & first_on & second_on
+            settled = np.flatnonzero(np.convolve(paired.astype(int), np.ones(5, dtype=int), mode='valid') == 5)
+            entry = round(1000 * (times[settled[0]] - .30), 1) if settled.size else None
+            ring = (times >= .71) & tail
+            print(f'recorded pair {index}, MIDI {m1:g} then {m2:g}: entry {entry} ms, '
+                  f'overlap {100 * paired[together].mean():.1f}%, '
+                  f'muted pitch {100 * first_on[tail].mean():.1f}% of tail, '
+                  f'held {100 * first_held[tail].mean():.1f}%, '
+                  f'remaining pitch {100 * second_on[ring].mean():.1f}% after 50 ms')
+            write_wav(root / f'guitar-pair-{index}-{m1:g}-then-{m2:g}-{args.type}.wav', y)
     expected, x=bend()
     y,rows=render(x)
     times=np.array([r['t'] for r in rows])
@@ -138,7 +174,7 @@ else:
     pitch=np.array([[r[f'v{k}'] if r[f'gain{k}']>.065 else 1 for k in [1,2]] for r in rows])
     error=abs(1200*np.log2(pitch/wanted[:,None])).min(axis=1)
     print("bend",round(100*np.mean(error[region]<50),1),"within 50 cents; median/p95",np.round(np.percentile(error[region],[50,95]),1))
-    write_wav(root/'bend-pulse.wav',y)
+    write_wav(root/f'bend-{args.type}.wav',y)
     # A phase-continuous single string changes pitch without a fresh pick.
     # Keep the same envelope across the hammer-on and pull-off.
     legato_hz = np.select([t < .48, t < .85], [hz(40), hz(43)], default=hz(40))
@@ -155,7 +191,7 @@ else:
         delay = round(1000 * (times[hits][0] - start), 1) if hits.any() else None
         print(f'legato {label}: entry {delay} ms, correct {100 * hits[region].mean():.1f}%, '
               f'two voices {100 * both[region].mean():.1f}%', flush=True)
-    write_wav(root/'legato-pulse.wav',y)
+    write_wav(root/f'legato-{args.type}.wav',y)
     demo=read_di('assets/loops/arpeggio.wav')*.22
     y,_=render(demo)
-    write_wav(root/'guitar-pulse.wav',y)
+    write_wav(root/f'guitar-{args.type}.wav',y)

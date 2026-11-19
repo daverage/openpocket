@@ -19,11 +19,15 @@ p.add_argument('exe'); p.add_argument('--set', default='dev'); p.add_argument('-
 p.add_argument('--owner-di', metavar='DIR', type=Path, help='score the two Phase 2b owner recordings')
 p.add_argument('--max-ghost-percent', type=float, help='fail if the owner scale exceeds this overtone-ghost rate')
 p.add_argument('--mono', action='store_true', help='use mono_bench for the owner DI recordings')
+p.add_argument('--type', choices=('pulse', 'saw', 'arcade', 'fm', 'duo'),
+               help='render the chosen poly voice with pulse_poly_bench')
 a = p.parse_args()
 if a.mono and not a.owner_di:
     p.error('--mono requires --owner-di')
 if a.max_ghost_percent is not None and (not a.owner_di or a.mono):
     p.error('--max-ghost-percent requires the poly owner DI score')
+if a.mono and a.type:
+    p.error('--type applies to the poly bench')
 di = Path('build/guitarset')
 files = sorted((di / 'mono').glob('*_comp_mix.wav'))
 files = files[:24] if a.set == 'dev' else files[24:48] if a.set == 'held' else files[48:]
@@ -31,7 +35,10 @@ files = files[:24] if a.set == 'dev' else files[24:48] if a.set == 'held' else f
 def run(x):
     with tempfile.TemporaryDirectory() as t:
         tr = Path(t) / 'trace.csv'
-        subprocess.run([a.exe, str(tr)], input=np.asarray(x, dtype='<f4').tobytes(), capture_output=True, check=True)
+        command = [a.exe, str(tr)]
+        if a.type:
+            command.append(a.type)
+        subprocess.run(command, input=np.asarray(x, dtype='<f4').tobytes(), capture_output=True, check=True)
         with tr.open() as f:
             return [{k: float(v) for k, v in r.items()} for r in csv.DictReader(f)]
 

@@ -141,3 +141,23 @@ GuitarSet takes 24–47, and the synthetic octave matrix.
 All four alternatives retained 102/270 sustained entries on this slice. The
 audible quality A/B and independent recordings still determine whether
 the smaller policy earns its place.
+
+### Eviction and release follow-up
+
+Removing eviction raised scale ghosts from 16.08% to 32.79% in Pulse,
+despite preserving the original comping entry counts. Using the ordinary
+envelope after eviction kept Pulse scale ghosts at 16.82%. It also
+recovered the fresh slice to 106 second-note entries, matching v66.
+That result did not carry over to STRING DUO. Duo scale ghosts rose from
+12.52% to 21.48% when the fast eviction release was removed.
+
+Removing the second, nearly redundant frequency-tolerance check at
+eviction preserved Pulse holdout entry counts but brought neighbour
+slips on the second low-E sustain back to 3.05%. The two tolerances
+therefore interact with which voice survives a low-register transition.
+The fast release and the eviction tolerance stay in the v67 comparison.
+The independent-mute bench now marks whether a wrong pitch is still
+held or is continuing in the release envelope. That distinction gives
+the next allocator design separate tests for deciding what to play
+and deciding how it stops.
+[STRING DUO entry and release comparison](phase2b.md#string-duo-entry-and-release-comparison)

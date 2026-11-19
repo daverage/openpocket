@@ -261,6 +261,39 @@ second note becomes a second instrument playing.
   the voicing. The parked lowest-of-chord effect serves a different job.
 - Redesign only if the owner still hears wrong second notes in "auto".
 
+### STRING DUO entry and release comparison
+
+The host Poly bench now renders STRING DUO with `--type duo` in
+`poly_score.py` and `poly_diag.py`. The Pulse results cannot stand in for
+Duo because the effects use different gain envelopes. The v66 and v67
+Duo holdout reached 123 and 125 second-note entries out of 270, with
+median/p90 of 27.1/62.7 ms and 28.2/62.1 ms. The five-report counts
+rose from 115 to 119. Scale ghosts on the owner DI fell from 36.67%
+to 12.52%. On the first and second low-E sustains they went from
+29.20% / 11.92% to 24.36% / 11.92%.
+
+Use repeated `--guitar-pair MIDI WAV MIDI WAV` options with
+`poly_score.py` to assemble independently muted dyads from isolated
+recorded notes. The two orderings place the notes at 120 and 300 ms,
+mute the first at 660 ms, and let the second finish at 980 ms. The
+report gives sustained paired entry, the share of the mute tail with
+the old pitch still sounding and still held, and the other pitch after
+50 ms. It saves wet WAVs for listening. The three checked pairs were
+51.09/63.22, 69.25/66.05 and 46.12/51.09. The new source plucks were
+63.22 at 17.622 s in `03_SS3-84-Bb` and 46.12 at 3.871 s in
+`02_SS2-88-F`. The other plucks were also used in the mono interference
+bench.
+
+The lower-first recorded octave never reached sustained entry in either
+build. The reverse octave sounded both at 45.4 ms on v66 and 51.2 ms on
+v67. After the mute, the surviving pitch was present for 89.2% of the
+post-50 ms tail in one direction and 100% in the other. On two non-octave
+orders, v67 still sounded the muted pitch for the full 320 ms tail while
+the allocator held it for only 7.3% or 12.7% of that interval. The
+renderer release is therefore part of the audible Duo problem. These
+were layered recordings with known mute timing. Played strings and
+on-pedal output still need the listening gate.
+
 ---
 
 ## Stage 3: check the octave on the waveform
