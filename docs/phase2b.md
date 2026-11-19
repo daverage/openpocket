@@ -763,8 +763,51 @@ The first `syn_compare.py --match` run saved dry inputs and paired wet audition
 WAVs under `build/phase2b/hq-reference`. The sustained-note results confirm
 the HQ voicing differences, including median level changes of +4.19 dB for
 SQUARE, +6.95 dB for BASS and +8.72 dB for PWM at the bench settings. This
-run covers eight synthetic notes and is a baseline. Real-note A/B,
-attack/release comparisons and sound adjustments remain.
+run covers eight synthetic notes. The updated bench also renders mixed
+output at DRY or MIX 50, keeps the dry DI, and writes note locations and
+per-note scores alongside the aligned audition WAVs.
+
+```sh
+cc -O2 -Iengine -Ifirmware tools/sim/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
+python3 tools/sim/syn_compare.py --match build/phase2b/hq-real-reference --match-real --takes 48
+python3 tools/sim/syn_compare.py --match build/phase2b/hq-shared-trim --match-real --takes 48 --share-trim
+```
+
+Both runs selected 30 clean notes from 48 evenly spaced GuitarSet solo
+takes. Each clip includes 60 ms of pre-roll, at least 380 ms of playing and
+180 ms of unmodified tail. The sound comparison measures the middle half
+of each note and screens for energy on the expected harmonic grid.
+That screen can also pass octave errors. The wet attack uses the dry
+energy onset and half the settled wet RMS. The release uses the last report
+above −20 dB relative to the wet level just before the annotated note end.
+The report gives paired counts because some attacks begin in the pre-roll
+and some releases exceed the available tail.
+
+At the standard trims, zero of the 30 played notes met all four limits
+for any Stage 4 pair, wet or mixed. Most of the level difference came
+from the block trim table. The original types have measured trims and
+the HQ types use unity gain. A bench-only test applied each original's
+trim to HQ, including its dry contribution.
+
+| Pair | Median wet level difference before / with shared trim | Notes within all limits wet / mixed with shared trim |
+|---|---:|---:|
+| ORGAN | +10.72 / −2.70 dB | 0 / 0 of 30 |
+| CHURCH ORGAN | +9.05 / −3.13 dB | 0 / 0 of 30 |
+| STRINGS | +12.96 / −0.45 dB | 1 / 7 of 30 |
+| CHOIR | +5.41 / −0.40 dB | 0 / 4 of 30 |
+| PWM SYNTH | +8.54 / −0.18 dB | 2 / 0 of 30 |
+| BASS SYNTH | +6.97 / +0.01 dB | 27 / 27 of 30 |
+| SQUARE SYNTH | +4.20 / +0.00 dB | 1 / 0 of 30 |
+
+For BASS, cutting just the HQ wet level left zero mixed notes within all
+limits. Sharing the original's whole-block trim restored 27/30 in both
+mixes. Two low-note misses came from HQ's 35 Hz floor, which raises its
+lowest generated octave. With the floor disabled in a host prototype,
+29/30 played and 8/8 synthetic notes met the sustained limits, wet and
+mixed. A release difference remained on the synthetic notes (median
+16.7 ms original, 143.9 ms HQ). BASS voicing and the sub-floor choice still
+need the listening gate. No production trim or octave-floor changes were
+made for this comparison.
 
 `syn_compare.py --octave-voices up|down` now isolates the requested voice in the
 ensemble bench. In the first 12 GuitarSet comping takes with the v66 octave bank,

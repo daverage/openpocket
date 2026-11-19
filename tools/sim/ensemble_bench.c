@@ -3,6 +3,7 @@
  * Usage: ensemble_bench TYPE_NAME [five knobs]       e.g. ensemble_bench "STRING ENSEMBLE" 50 50 100 50 0
  * BLK=PITCH or BLK=SFX renders that block's type instead of SYN's (v63: catalogue comparisons).
  * OCTAVE_VOICE=up or down isolates that voice in an organ, strings or choir.
+ * TRIM_FROM=TYPE_NAME uses another type's calibrated block trim for A/B.
  * Prints the output RMS and peak to stderr.
  *   cc -O2 -Iengine -Ifirmware tools/sim/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
  */
@@ -18,11 +19,17 @@
 int main(int argc, char **argv)
 {
     if (argc != 2 && argc != 7) return 2;
-    int type = -1, blk = PX_B_SYN;
+    int type = -1, trim_type = -1, blk = PX_B_SYN;
+    const char *trim_from = getenv("TRIM_FROM");
     if (getenv("BLK") && !strcmp(getenv("BLK"), "PITCH")) blk = PX_B_PITCH;
     else if (getenv("BLK") && !strcmp(getenv("BLK"), "SFX")) blk = PX_B_SFX;
-    for (int t = 0; t < px_ntypes(blk); ++t) if (!strcmp(px_type_name(blk, t), argv[1])) type = t;
+    for (int t = 0; t < px_ntypes(blk); ++t) {
+        const char *name = px_type_name(blk, t);
+        if (!strcmp(name, argv[1])) type = t;
+        if (trim_from && !strcmp(name, trim_from)) trim_type = t;
+    }
     if (type < 0) { fprintf(stderr, "no type %s\n", argv[1]); return 2; }
+    if (trim_from && trim_type < 0) { fprintf(stderr, "no trim type %s\n", trim_from); return 2; }
     static px_engine engine;
     px_preset_t preset;
     px_engine_init(&engine, 44100.0f);
@@ -34,6 +41,10 @@ int main(int argc, char **argv)
     preset.type[blk] = (uint8_t)type;
     for (int k = 0; k < PX_NPAR; ++k) preset.p[blk][k] = argc == 7 ? (uint8_t)atoi(argv[2 + k]) : 50;
     px_engine_set(&engine, &preset);
+    if (trim_type >= 0) {
+        const float *trim_db = blk == PX_B_PITCH ? PIT_DB : blk == PX_B_SFX ? SFX_DB : SYN_DB;
+        engine.btr[blk] = powf(10.0f, trim_db[trim_type] * 0.05f);
+    }
     const char *octave = getenv("OCTAVE_VOICE");
     if (octave) {
         const int up = !strcmp(octave, "up");

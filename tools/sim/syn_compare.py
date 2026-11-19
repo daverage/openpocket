@@ -10,10 +10,12 @@ expected base (the guitar's pitch times the type's lowest voice: 1/2 for the org
 SYNTH, 1 for PWM). --comp: the comping takes instead, 93 ms windows where the same two or more notes sound
 throughout, the harmonics of any of them. Higher is cleaner: less energy at pitches the player did not play. Also the host render time.
 Knobs at noon, all wet (DRY 0; PWM's MIX 100).
-`--match` compares paired wet renders on sustained synthetic singles and saves
-the dry input and both outputs for listening.
+`--match` compares paired wet and mixed renders on sustained synthetic singles.
+Add `--match-real` to use isolated notes from evenly spaced GuitarSet solo takes
+and retain the played attacks and releases.
 """
 import argparse, glob, os, subprocess, sys, time
+from pathlib import Path
 import numpy as np
 from track_eval import ROOT, jams_notes
 from resonator_track_eval import read_di
@@ -27,13 +29,15 @@ PAIRS = [("ORGAN", "ORGAN HQ", 0.5), ("CHURCH ORGAN", "CHURCH ORGAN HQ", 0.5), (
          ("POLY OCTAVE", "POLY OCTAVE HQ", 2.0, "PITCH", "0 0 100 0 0")]            # OCT +1 only
 BENCH = os.path.join(ROOT, 'build', 'ensemble_bench')
 
-def render(name, x, blk='SYN', given=None, octave=None):
+def render(name, x, blk='SYN', given=None, octave=None, trim_from=None):
     knobs = ['50'] * 5
     knobs[4] = '100' if name.startswith('PWM') else '0'      # all wet: PWM's MIX at 100, the others' DRY at 0
     if given: knobs = given.split()
     env = dict(os.environ, BLK=blk)
     if octave:
         env['OCTAVE_VOICE'] = octave
+    if trim_from:
+        env['TRIM_FROM'] = trim_from
     r = subprocess.run([BENCH, name, *knobs], input=x.astype('<f4').tobytes(), capture_output=True, check=True, env=env)
     return np.frombuffer(r.stdout, dtype='<f4'), r
 
@@ -87,26 +91,94 @@ def wobble(x, y):
     return float(np.sqrt(np.mean(acc))) if acc else 0.0
 
 
-def match_sound(outdir):
-    from pathlib import Path
+def real_match_notes(takes):
+    dataset = Path(ROOT) / 'build' / 'guitarset'
+    files = sorted((dataset / 'mono').glob('*_solo_mix.wav'))
+    if not files:
+        raise ValueError('no GuitarSet solo WAVs in build/guitarset/mono')
+    before, after = 2646, 7938   # 60 ms of pre-roll and 180 ms of natural tail
+    for index in np.linspace(0, len(files) - 1, min(takes, len(files)), dtype=int):
+        path = files[index]
+        notes = jams_notes(dataset / 'annotation' / (path.stem.removesuffix('_mix') + '.jams'))
+        audio = read_di(path)
+        for i, (start, stop, midi) in enumerate(notes):
+            first, last = round(start * 44100), round(stop * 44100)
+            if stop - start < .38 or first < before or last + after > len(audio):
+                continue
+            if any(a < stop + .18 and b > start - .06
+                   for j, (a, b, _) in enumerate(notes) if i != j):
+                continue
+            yield audio[first - before:last + after], .06, .06 + (last - first) / 44100, midi, path.stem, start
+
+
+def rms_trace(y):
+    """Return timestamps and powers for a causal 10 ms RMS window."""
+    rate = 44100
+    win = 441
+    energy = np.r_[0, np.cumsum(y.astype(float) ** 2)]
+    end = np.arange(win, len(y) + 1, 44)
+    return end / rate, (energy[end] - energy[end - win]) / win
+
+
+def dry_attack(x, start):
+    t, power = rms_trace(x)
+    near = (t >= start - .05) & (t < start + .065)
+    levels = power[near]
+    if not levels.size or levels.max() < 1e-8:
+        return np.nan
+    hits = t[near][levels >= .025 * levels.max()]
+    return hits[0] if hits[0] > t[near][0] else np.nan
+
+
+def attack_release(y, start, stop, dry_on):
+    # Measure entry relative to the note's own settled level and release
+    # relative to its pre-off level.
+    t, power = rms_trace(y)
+    settled = (t >= start + .25 * (stop - start)) & (t < start + .60 * (stop - start))
+    steady = np.median(power[settled])
+    start_search = dry_on - .01
+    on = t[(t >= start_search) & (t < stop) & (power >= .25 * steady)]
+    before_off = np.median(power[(t >= stop - .05) & (t < stop)])
+    # Ignore release levels already at the noise floor. A tail still above
+    # threshold at the end of the clip is right-censored.
+    after_off = t[(t >= stop) & (power >= .01 * before_off)]
+    attack = 1000 * (on[0] - dry_on) if on.size and steady > 1e-8 and on[0] > start_search + .001 else np.nan
+    release = np.nan
+    if before_off > 1e-8 and (not after_off.size or after_off[-1] < t[-1] - .01):
+        release = 1000 * (after_off[-1] - stop) if after_off.size else 0.0
+    return attack, release
+
+
+def match_sound(outdir, real=False, takes=20, share_trim=False):
 
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
     rate = 44100
-    t = np.arange(rate * 2) / rate
-    window = (t >= 0.45) & (t < 1.25)
-    midi = [40, 45, 50, 55, 60, 65, 69, 72]
-    notes = []
-    for m in midi:
-        f0 = 440 * 2 ** ((m - 69) / 12)
-        env = np.clip(np.minimum((t - 0.1) / 0.01, (1.45 - t) / 0.02), 0, 1)
-        x = 0.16 * env * sum(amplitude * np.sin(2 * np.pi * f0 * h * t)
-                             for h, amplitude in enumerate((1, 0.36, 0.18, 0.09, 0.05), 1))
-        notes.append(x)
-    write_wav(out / 'input.wav', np.concatenate(notes))
+    notes = list(real_match_notes(takes)) if real else []
+    if real and not notes:
+        raise ValueError('no long isolated notes in the selected GuitarSet takes')
+    if not real:
+        t = np.arange(rate * 2) / rate
+        for m in (40, 45, 50, 55, 60, 65, 69, 72):
+            f0 = 440 * 2 ** ((m - 69) / 12)
+            env = np.clip(np.minimum((t - 0.1) / 0.01, (1.45 - t) / 0.02), 0, 1)
+            x = 0.16 * env * sum(amplitude * np.sin(2 * np.pi * f0 * h * t)
+                                 for h, amplitude in enumerate((1, 0.36, 0.18, 0.09, 0.05), 1))
+            notes.append((x, .1, 1.45, m, 'synthetic', .1))
+    write_wav(out / 'input.wav', np.concatenate([note[0] for note in notes]))
+    spans = [(start + .25 * (stop - start), stop - .25 * (stop - start))
+             if real else (.45, 1.25) for _, start, stop, *_ in notes]
+    dry_onsets = [dry_attack(x, start) if real else start for x, start, *_ in notes]
+    labels = ['onset_s\tend_s\tmidi\tsource\tsource_onset_s']
+    position = 0
+    for x, start, stop, midi, source, original_time in notes:
+        labels.append(f'{position / rate + start:.5f}\t{position / rate + stop:.5f}\t'
+                      f'{midi:.2f}\t{source}\t{original_time:.5f}')
+        position += len(x)
+    (out / 'notes.tsv').write_text('\n'.join(labels) + '\n')
 
-    def features(y):
-        seg = y[window]
+    def features(y, span):
+        seg = y[round(span[0] * rate):round(span[1] * rate)]
         energy = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))) ** 2
         f = np.fft.rfftfreq(len(seg), 1 / rate)
         total = energy.sum()
@@ -117,28 +189,51 @@ def match_sound(outdir):
             10 * np.log10(max(energy[f > 3000].sum() / max(total, 1e-20), 1e-6)),
         ])
 
+    scores = ['original\thq\tratio\tmode\tnote\tharmonic_filter\twithin_limits\t'
+              'level_db\tcentroid_pct\tbelow_200_db\tabove_3000_db']
     for old, new, ratio, *settings in PAIRS:
         block, knobs = settings if settings else ('SYN', None)
-        original = [render(old, x, block, knobs)[0] for x in notes]
-        hq = [render(new, x, block, knobs)[0] for x in notes]
-        for name, audio in [(old, original), (new, hq)]:
-            stem = f'{name.lower().replace(" ", "-")}-{ratio:g}'
-            write_wav(out / f'{stem}.wav', np.concatenate(audio))
-        expected = np.stack([features(y) for y in original])
-        delta = np.stack([features(y) for y in hq]) - expected
-        delta[:, 1] *= 100 / np.maximum(expected[:, 1], 1)
+        original = [render(old, x, block, knobs)[0] for x, *_ in notes]
+        trim_from = old if share_trim else None
+        hq = [render(new, x, block, knobs, trim_from=trim_from)[0] for x, *_ in notes]
         # Report the pitch filter separately. Compare tone on steady notes with
         # at least half their measured energy on the expected harmonics.
         pitch_ok = np.array([
-            all(np.max(on_pitch(y, [(0.1, 1.45, m)], ratio), initial=0) >= 0.5 for y in (left, right))
-            for m, left, right in zip(midi, original, hq)
+            all(np.max(on_pitch(y, [(a, b, m)], ratio), initial=0) >= 0.5 for y in (left, right))
+            for (_, a, b, m, *_), left, right in zip(notes, original, hq)
         ])
-        rms_ok = np.abs(delta[:, 0]) <= 0.5
-        shape_ok = (np.abs(delta[:, 1:]) <= [5, 1, 1]).all(axis=1)
-        median = ' '.join(f'{x:+.2f}' for x in np.median(delta[pitch_ok], axis=0)) if pitch_ok.any() else '—'
-        print(f'{old:18s} -> {new:18s} {ratio:g}×  {sum(rms_ok & shape_ok & pitch_ok)}/{pitch_ok.sum()} within limits; '
-              f'{len(midi) - pitch_ok.sum()} excluded by pitch filter; '
-              f'median differences (dB, %, dB, dB) {median}')
+        mixed = knobs.split() if knobs else ['50'] * 5
+        mixed[{'PITCH': 0, 'SFX': 3, 'SYN': 4}[block]] = '50'
+        mixed_knobs = ' '.join(mixed)
+        mixed_original = [render(old, x, block, mixed_knobs)[0] for x, *_ in notes]
+        mixed_hq = [render(new, x, block, mixed_knobs, trim_from=trim_from)[0] for x, *_ in notes]
+        for mode, left, right in [('wet', original, hq), ('mixed', mixed_original, mixed_hq)]:
+            audio = [np.concatenate(left), np.concatenate(right)]
+            peak = max(np.max(abs(y)) for y in audio)
+            scale = min(1., .999 / max(peak, 1e-12))
+            for name, y in zip((old, new), audio):
+                stem = f'{name.lower().replace(" ", "-")}-{ratio:g}'
+                suffix = '-mixed' if mode == 'mixed' else ''
+                write_wav(out / f'{stem}{suffix}.wav', y * scale)
+            expected = np.stack([features(y, span) for y, span in zip(left, spans)])
+            delta = np.stack([features(y, span) for y, span in zip(right, spans)]) - expected
+            delta[:, 1] *= 100 / np.maximum(expected[:, 1], 1)
+            matches = (np.abs(delta) <= [.5, 5, 1, 1]).all(axis=1) & pitch_ok
+            for index, (changes, eligible, match) in enumerate(zip(delta, pitch_ok, matches), 1):
+                values = '\t'.join(f'{change:.4f}' for change in changes)
+                scores.append(f'{old}\t{new}\t{ratio:g}\t{mode}\t{index}\t{int(eligible)}\t{int(match)}\t{values}')
+            median = ' '.join(f'{x:+.2f}' for x in np.median(delta[pitch_ok], axis=0)) if pitch_ok.any() else '—'
+            print(f'{old:18s} -> {new:18s} {ratio:g}× {mode:5s}  {matches.sum()}/{pitch_ok.sum()} within limits; '
+                  f'{len(notes) - pitch_ok.sum()} excluded by pitch filter; '
+                  f'median differences (dB, %, dB, dB) {median}; WAV gain {scale:.3f}')
+        metrics = np.array([[attack_release(y, a, b, onset) for y, (_, a, b, *_), onset
+                             in zip(audio, notes, dry_onsets)]
+                            for audio in (original, hq)])
+        for i, label in enumerate(('attack', 'release')):
+            keep = pitch_ok & np.isfinite(metrics[:, :, i]).all(axis=0)
+            medians = np.median(metrics[:, keep, i], axis=1) if keep.any() else [np.nan, np.nan]
+            print(f'  wet {label}: {medians[0]:.1f} / {medians[1]:.1f} ms original / HQ ({keep.sum()}/{pitch_ok.sum()} paired)')
+    (out / 'scores.tsv').write_text('\n'.join(scores) + '\n')
 
 
 def octave_attacks(direction):
@@ -174,15 +269,24 @@ p = argparse.ArgumentParser(); p.add_argument('--takes', type=int, default=20); 
 p.add_argument('--wobble', action='store_true', help='added level wobble on the bundled loops instead')
 p.add_argument('--bench', help='another ensemble_bench build (e.g. with -DPX_SUB2_TEST)')
 p.add_argument('--pair', help='OLD|NEW|BASE|BLK|KNOBS instead of the built-in pairs')
-p.add_argument('--match', metavar='OUTDIR', help='compare wet sound on paired synthetic notes and save audition WAVs')
+p.add_argument('--match', metavar='OUTDIR', help='compare wet and mixed sound and save paired audition WAVs')
+p.add_argument('--match-real', action='store_true', help='use isolated GuitarSet solo notes for --match')
+p.add_argument('--share-trim', action='store_true', help='apply the original block trim to its HQ partner in --match')
 p.add_argument('--octave-voices', choices=['up', 'down'], help='score only the specified organ, strings or choir octave')
 p.add_argument('--attacks', action='store_true', help='measure isolated low-note arrival and pick transients')
 a = p.parse_args()
 if a.bench: BENCH = a.bench
 if a.pair:
     o, n, b, k, kn = a.pair.split('|'); PAIRS = [(o, n, float(b), k, kn)]
+if a.match_real and (not a.match or a.takes < 1):
+    p.error('--match-real requires --match and positive --takes')
+if a.share_trim and not a.match:
+    p.error('--share-trim requires --match')
 if a.match:
-    match_sound(a.match)
+    try:
+        match_sound(a.match, a.match_real, a.takes, a.share_trim)
+    except ValueError as error:
+        p.error(str(error))
     sys.exit(0)
 if a.octave_voices:
     names = {'ORGAN', 'CHURCH ORGAN', 'CHOIR'}
