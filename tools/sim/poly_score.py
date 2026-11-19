@@ -130,6 +130,23 @@ else:
     error=abs(1200*np.log2(pitch/wanted[:,None])).min(axis=1)
     print("bend",round(100*np.mean(error[region]<50),1),"within 50 cents; median/p95",np.round(np.percentile(error[region],[50,95]),1))
     write_wav(root/'bend-pulse.wav',y)
+    # A phase-continuous single string changes pitch without a fresh pick.
+    # Keep the same envelope across the hammer-on and pull-off.
+    legato_hz = np.select([t < .48, t < .85], [hz(40), hz(43)], default=hz(40))
+    phase = 2 * np.pi * np.cumsum(legato_hz) / RATE
+    envelope = .20 * np.clip(np.minimum((t - .12) / .003, (1.26 - t) / .006), 0, 1)
+    envelope *= np.exp(-1.1 * np.maximum(t - .12, 0))
+    legato = envelope * (np.sin(phase) + .35 * np.sin(2 * phase) + .20 * np.sin(3 * phase))
+    y, rows = render(legato)
+    times = np.array([row['t'] for row in rows])
+    both = np.array([row['gain1'] > .065 and row['gain2'] > .065 for row in rows])
+    for label, start, stop, midi in [('hammer-on', .48, .85, 43), ('pull-off', .85, 1.26, 40)]:
+        region = (times >= start) & (times < stop)
+        hits = active(rows, midi) & region
+        delay = round(1000 * (times[hits][0] - start), 1) if hits.any() else None
+        print(f'legato {label}: entry {delay} ms, correct {100 * hits[region].mean():.1f}%, '
+              f'two voices {100 * both[region].mean():.1f}%', flush=True)
+    write_wav(root/'legato-pulse.wav',y)
     demo=read_di('assets/loops/arpeggio.wav')*.22
     y,_=render(demo)
     write_wav(root/'guitar-pulse.wav',y)

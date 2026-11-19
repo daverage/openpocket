@@ -722,6 +722,25 @@ half-ghost limit for this benchmark is 17.575%.
   and 6.9–16.2% across the four weak-upper synthetic offsets. This simple
   phase residual overlaps the low-E control too much to add missing
   candidates. This was a host trace with the root supplied by the fixture.
+- A second phase experiment measured changes over several reports. It removed
+  the root's phase from each partial and compared the average of four recent
+  complex amplitudes with the preceding twelve. A candidate needed a residual
+  at H2 and either H4 or H6 above the residuals in the odd partials. At the
+  same development control rate as the static check, it admitted 19.55% and
+  18.35% of upper-entry frames on the original and audit holdouts, versus
+  33.24% and 35.25% for the four-report power contrast. It admitted 0% of
+  scale controls and 0.04% of low-E controls. Normalising each residual by
+  its previous variability reduced held-out recall further. Only one weak
+  synthetic offset produced any qualifying reports with these variants
+  (+80 ms, two reports in the 150 ms entry window). The phase experiment
+  stays host-only.
+- The synthetic Poly bench now checks a phase-continuous E2→G2→E2 legato
+  phrase with a shared decay envelope. v66 and the frozen candidate reached
+  the hammer-on in 51.2 ms and the pull-off in 52.7 ms, with zero two-voice
+  frames. With the same fixture and a second E2→E3→E2 run, v66 MONO SYNTH
+  and the 900 Hz period-check candidate had identical first-hit timings
+  (38.1/29.5 ms for the minor third, 23.6/38.2 ms for the octave).
+  Played legato is still part of the pedal listening check.
 - A host comparison with Cycfi Q's BACF detector covered both owner DIs and
   32 native-pitch bass plucks. With its low bound set to 27 Hz for bass, Q
   detected all eight B0, E1 and A1 plucks at each pitch where v66 MONO SYNTH
