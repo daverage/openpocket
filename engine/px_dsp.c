@@ -170,6 +170,9 @@ static float erb_host_mask[ERB_O_BANDS];
  * and ducking the octave voices after a pick (erb_octaves2) */
 static float erb_host_beta, erb_host_pw[ERB_O_BANDS + 2], erb_host_duck_ms, erb_host_duck_ratio = 2.0f, erb_host_duck_depth;
 #endif
+#ifdef PX_LOWSIG_HOST
+static float px_lowsig_acc;
+#endif
 static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, float up, float down, float up2, float range)
 {
     (void)e;
@@ -240,6 +243,9 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
          * Keep phase history for every band while the dial moves. */
         float weight = range + 0.5f - (float)i;
         if (g < 1.0f) weight = weight < g ? weight : g;
+#ifdef PX_LOWSIG_HOST
+        px_lowsig_acc += real * g;                     /* (host bench: the selected bands at their own pitch) */
+#endif
         if (down != 0.0f && weight > 0.0f) {
             /* |z| cos(arg(z)/2), evaluated without a per-band division. */
             const float half_cosine_squared = 0.5f + 0.5f * real * inv;
