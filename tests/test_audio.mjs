@@ -67,6 +67,21 @@ check("a preset change changes the spectrum", () => {
   const share = (h) => h.slice(1).reduce((a, b) => a + b) / h[0];
   assert.ok(share(metal) > 3 * share(clean), `harmonics over fundamental: ${share(clean)} ${share(metal)}`);
 });
+check("Synth2: ANALOG and ARCADE play the guitar's note in the WebAssembly engine, a retired SYNTH type is bypassed", () => {
+  const on = [1, 0, 0, 1, 0, 0, 0, 0, 0], order = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const mk = (t, p3) => { const p = Array.from({ length: 9 }, () => [10, 20, 50, 0, 0]); p[3] = p3; return presetBytes({ name: "SYNTH2", on, type: [0, 0, 0, t, 0, 0, 0, 0, 0], p, order }); };
+  const play = (bytes) => { const e = engine(0); e.preset(bytes); return run(e, tone(220, 1, 0.3)); };
+  const gate = presetBytes({ name: "GATE", on, type: [0, 0, 0, 0, 0, 0, 0, 0, 0], p: Array.from({ length: 9 }, () => [10, 20, 50, 0, 0]), order });
+  for (const t of [28, 29]) {                                                 // ANALOG (CLASSIC), ARCADE (ARCADE, synth only)
+    const out = play(mk(t, [5, 50, 50, 50, t === 29 ? 100 : 50]));
+    assert.ok(finite(out) && peak(tail(out)) > 0.02, `type ${t}: peak ${peak(tail(out))}`);
+    const h = harmonics(tail(out), 220);                                      // the synth plays the 220 Hz it hears
+    assert.ok(h[0] > 0.001, `type ${t}: power at 220 Hz ${h[0]}`);
+  }
+  const retired = play(mk(2, [50, 50, 50, 50, 50]));                           // STRINGS (id 2, retired): bypassed, the block adds nothing
+  const bare = play(gate);
+  assert.deepEqual(Array.from(retired.subarray(1000, 1100)), Array.from(bare.subarray(1000, 1100)), "a retired type is the block off");
+});
 check("a block switched off changes the sound", () => {
   const s = new PxEngine(module);
   s.factory(15);

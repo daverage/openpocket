@@ -1,4 +1,4 @@
-// v49 diagnosis: which SYN type takes the second core down? The current sound (not saved) gets each type in turn on
+// v49 diagnosis (Synth2: the SYN types are ANALOG, ARCADE and POLY OCT FUZZ; TYPES=... for others): which SYN type takes the second core down? The current sound (not saved) gets each type in turn on
 // its SYN block for SEC seconds while you play; after each, PING says whether the second core still runs. The sound
 // the pedal had is put back at the end. Read-only for the flash.  node tools/core2_probe.mjs [SEC]
 import { C, Editor } from "../docs/pxedit.js";
@@ -14,7 +14,7 @@ if (!info) { access.close(); throw new Error("No OpenPocket MIDI pedal found"); 
 console.log(`${info.identity} firmware ${info.version}`);
 const cat = await ed.catalog();
 const SYN = 3, syn = cat.blocks[SYN];   // (v70: SYNTH is block 3)
-const want = (process.env.TYPES || "TRUMPET,BOWED CELLO,CELLO ENSEMBLE,BASS SYNTH HQ,PWM SYNTH HQ,STRINGS HQ,POLY OCT FUZZ,POLY BRASS,PITCH:POLY OCTAVE HQ").split(",");   // (PITCH:name: a PITCH type)
+const want = (process.env.TYPES || "ANALOG,ARCADE,POLY OCT FUZZ,PITCH:POLY OCTAVE HQ").split(",");   // (PITCH:name: a PITCH type)
 const st = await ed.state(), was = st.preset;
 const sleep = (s) => new Promise((r) => setTimeout(r, s * 1000));
 let p = parsePing(await ed.request(C.PING));

@@ -35,3 +35,14 @@ block alone; all identical).
 The 28 SYNTH ids are unchanged (`PX_SYN_X_*` = tombstone, `PX_SYN_OCT_FUZZ` = 16; the retired ids keep their numbers). `tests/engine/syn_ids_test.c`
 checks all 256 byte values: a retired or unknown id is bypassed bit for bit, never another sound, and `px_block_canonical` leaves it
 alone. The factory default SYNTH type is POLY OCT FUZZ (off).
+
+## Added after stage 1
+
+| Added | Why |
+|---|---|
+| `engine/px_mono.h` | the one mono tracker's interface (stage 2), over `px_track.h`; `px_track` gained a `fmin` field (`pxt_set_range`) so the bass range is a configuration |
+| `engine/px_synth_adapter.h`, `engine/px_synth_patches.h`, `third_party/felucca-engines/` | ANALOG and ARCADE (stages 3 and 4); vendored MIT sources, pinned in `PINNED.md` |
+| `tests/engine/{protected,syn_ids_test,mono_test,synth_test}.c`, `tests/protected.sh`, `third_party/felucca-engines/tests/` | the protected-effect harness and the new types' tests |
+| `tools/sim/{mono_track_bench,synth_cost}.c` | the tracker bench for `mono_compare.py` (`eng_v73`) and the host cost bench |
+
+`px_resonator_test.h` is kept (the OCTAVE block's LOWEST OCTAVE HQ uses `pxr_advance`); its `pxr_reset` / `pxr_run` wrappers are used by the research header `px_lowest_sub.h` only. The `PX_RUNS=0` path (the Bluetooth test image: `make ble` builds) keeps `ps_voice_al`.

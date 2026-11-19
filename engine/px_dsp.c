@@ -1856,6 +1856,23 @@ PX_HOT static float ps_align(const float *buf, int w, float d_ref, float d_new, 
 /* v40.4: the runs' work buffers are not on the stack (the second core's is 2.8 KB, and px_engine_part alone takes 1.9 KB
  * of it): one set a block, in the low RAM. A block's run is never on both cores at once (it is before the amp or after
  * it), and nothing is kept in them from one call to the next */
+#if !PX_RUNS                                           /* (the Bluetooth test image's pitch shifters, sample by sample; PX_RUNS=1: ps_step / pitch_run) */
+PX_INL static inline float ps_voice_al(float *buf, int w, float *ph, float *off, float inc, float W)
+{
+    float a0 = *ph, a = wrap1(a0 + inc);
+    *ph = a;
+    float b = a + 0.5f; if (b >= 1.0f) b -= 1.0f;
+    int wa = inc > 0.0f ? (a < a0) : (a > a0);                                  /* tap A restarts (silent) */
+    int wb = inc > 0.0f ? (a0 < 0.5f && a >= 0.5f) : (a0 >= 0.5f && a < 0.5f);   /* tap B restarts (silent) */
+    float da = 3.0f + a * W, db = 3.0f + b * W;
+    if (wa) off[0] = ps_align(buf, w, db + off[1], da);
+    if (wb) off[1] = ps_align(buf, w, da + off[0], db);
+    float pa = (float)w - (da + off[0]); if (pa < 0.0f) pa += (float)PX_PS_N;
+    float pb = (float)w - (db + off[1]); if (pb < 0.0f) pb += (float)PX_PS_N;
+    float s = lfo_sin(a * 0.5f), g = s * s;
+    return rd_frac(buf, PX_PS_N - 1, pa) * g + rd_frac(buf, PX_PS_N - 1, pb) * (1.0f - g);
+}
+#endif
 #if PX_RUNS
 static float px_ps_xs[2][32] PX_LO(px_ps_xs);          /* ps_align's reference samples: [0] PITCH, [1] SYN */
 static float px_run_y[2][32] PX_LO(px_run_y);          /* a run's output so far: [0] PITCH, [1] SYN */
