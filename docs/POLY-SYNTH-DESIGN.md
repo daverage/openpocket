@@ -231,3 +231,39 @@ characters, such as `STEP PU` for stepped pulse.
 Every pass had zero late blocks, no safety bypass and an active second core.
 Input was uncontrolled. Playing load and listening through the guitar input
 remain open.
+
+## Phase 2 baseline: v57 frozen
+
+v57 is the reference for the tracking work that follows. The tracker and
+allocator are shared by all four Poly voicings, so one score covers them.
+`tools/sim/poly_score.py` reruns every figure below from
+`tools/sim/pulse_poly_bench.c` in about five seconds:
+
+```sh
+cc -O2 -Iengine -Ifirmware tools/sim/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+PYTHONPATH=tools/sim python3 tools/sim/poly_score.py build/pulse_poly_bench --guitar
+PYTHONPATH=tools/sim python3 tools/sim/poly_score.py build/pulse_poly_bench --guitar --transpose -5
+PYTHONPATH=tools/sim python3 tools/sim/poly_score.py build/pulse_poly_bench --bass-di DIR
+```
+
+| v57 voices, GuitarSet takes 24–47 | Standard | −5 semitones |
+| --- | ---: | ---: |
+| Dyads, both pitches within 50 cents | 33.6% | 29.2% |
+| Lowest pitch right | 66.7% | 62.9% |
+| Single-note frames with an extra voice | 37.1% | 32.7% |
+| Second-note entries within 100 ms | 109/270 | 114/324 |
+| Comping precision / recall | 76.1% / 51.6% | 74.2% / 48.5% |
+
+| v57 synthetic sustain | Both notes sounding | Low repick, both sounding |
+| --- | ---: | ---: |
+| Fourth | 93.9% | 51.4% |
+| Fifth | 96.5% | 0.0% |
+| Octave | 93.0% | 0.0% |
+| Semitone | 0.0% | 9.3% |
+| Bass fifth (B0/F#1) | 15.8% | 0.0% |
+
+The bend case stays within 50 cents for 88.1% of the window. Its median error
+is 20 cents. The recorded bass pairs give 0–20% both-note sustain. A
+replacement tracker must beat 33.6% standard dyads. Extra voices on single
+notes must stay at 37.1% or lower. The pedal smoke-test loads above are the
+CPU baseline: 17–19%, or 21–23% with Smart Gate.
