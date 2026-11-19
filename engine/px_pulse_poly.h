@@ -104,15 +104,15 @@ static __attribute__((noinline)) float poly_synth_oscillator(const px_engine *e,
 
 #ifdef PX_ENSEMBLE_TEST
 /* v65 STRING DUO: each tracked note is its own instrument. The lower sounding note plays a cello (its pitch, a darker
- * low-pass, no vibrato for 0.4 s then a slow one), the upper a violin an octave above (brighter, vibrato after
- * 0.25 s). Both are two detuned band-limited saws through a two-pole low-pass whose cutoff follows the note's level.
+ * low-pass, no vibrato for 0.4 s then a slow one), the upper a violin (v66: at its pitch, brighter, vibrato after
+ * 0.25 s); v66: a note alone is the violin from G3 (196 Hz) up, the cello below. Both are two detuned band-limited saws through a two-pole low-pass whose cutoff follows the note's level.
  * The roles follow the two notes' pitches at every sample, so a crossing swaps the timbres, not the notes. */
 static __attribute__((noinline)) float duo_voice(const px_engine *e, px_poly_voice *v, const pxp_note *n, int upper, float step)
 {
     v->held += pxp.inv_rate;
     const float onset = upper ? 0.25f : 0.40f, depth = upper ? 0.0045f : 0.0025f;
     const float vib = v->held > onset ? depth * lfo_sin(e->syn_lfo[0] + (upper ? 0.37f : 0.0f)) : 0.0f;
-    float s = step * (upper ? 2.0f : 1.0f) * (1.0f + vib);
+    float s = step * (1.0f + vib);
     if (s > 0.45f) s = 0.45f;
     const float s1 = s * 1.0021f, s2 = s * 0.9979f;
     v->phase = wrap1(v->phase + s1);
@@ -156,7 +156,8 @@ static __attribute__((noinline)) float pulse_poly_voice_sample(int index, float 
 #ifdef PX_ENSEMBLE_TEST
     if (type == PX_SYN_STRING_DUO) {
         const pxp_note *other = &pxp.note[1 - index];
-        const int upper = other->gain > 1e-5f && other->frequency > 0.0f && n->frequency > other->frequency;
+        const int pair = other->gain > 1e-5f && other->frequency > 0.0f;
+        const int upper = pair ? n->frequency > other->frequency : n->frequency >= 196.0f;
         return n->gain * duo_voice(e, v, n, upper, step);
     }
 #endif

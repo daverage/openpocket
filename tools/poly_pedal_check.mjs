@@ -83,15 +83,18 @@ try {
         console.log(JSON.stringify({migrated: ["PWM SYNTH HQ -> PWM SYNTH", "POLY OCTAVE -> POLY OCTAVE HQ, RANGE 0"]}));
         const hq = blocks[pit].types.findIndex(t => t?.name === "POLY OCTAVE HQ");
         assert.deepEqual(blocks[pit].types[hq].params.map(p => p.name), ["DRY", "OCT -1", "OCT +1", "RANGE", "OCT -2"]);
-        for (const knobs of [[50, 100, 0, 0, 0], [50, 0, 0, 0, 100], [50, 100, 100, 0, 100]]) {
+        const lowest = blocks[pit].types.findIndex(t => t?.name === "LOWEST OCTAVE HQ");   // v54's lowest-note mode
+        assert.ok(lowest >= 0, "LOWEST OCTAVE HQ present");
+        for (const [type, knobs] of [[hq, [50, 100, 0, 0, 0]], [hq, [50, 0, 0, 0, 100]], [hq, [50, 100, 100, 0, 100]],
+                                     [lowest, [50, 100, 0, 0, 0]]]) {
             const r = structuredClone(original.preset); r.on.fill(0); r.order = r.order.map((_, i) => i);
-            r.on[pit] = 1; r.type[pit] = hq; r.p[pit] = knobs; r.p[0][2] = 50;
+            r.on[pit] = 1; r.type[pit] = type; r.p[pit] = knobs; r.p[0][2] = 50;
             assert.equal(await editor.put(r), 0);
             await pause(650);
             const a = await ping(); let peak = a.peak, b = a, core = a.secondCore, safe = a.bypass;
             for (let i = 0; i < 10; i++) { await pause(500); b = await ping(); peak = Math.max(peak, b.peak); core &&= b.secondCore; safe ||= b.bypass; }
             const late = (b.xrun - a.xrun + 16384) % 16384;
-            console.log(JSON.stringify({name: "POLY OCTAVE HQ " + knobs.join(","), peak, pitch: b.prof?.[pit], secondCore: core, safety: safe, late}));
+            console.log(JSON.stringify({name: blocks[pit].types[type].name + " " + knobs.join(","), peak, pitch: b.prof?.[pit], secondCore: core, safety: safe, late}));
             assert.ok(core && !safe && late === 0);
         }
     }

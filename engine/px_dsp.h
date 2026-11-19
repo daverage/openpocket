@@ -209,7 +209,7 @@ typedef struct {
 #ifdef PX_ENSEMBLE_TEST
     /* v61: the ensembles' support layer, rendered beside the lead from the same note (engine/px_acoustic.h) */
     float ens_ph[2], ens_amp, ens_lp[2], ens_vib, ens_rel, ens_level, ens_k_att, ens_det, ens_tone0, ens_tone1,
-          ens_vib_amt, ens_vib_inc;
+          ens_vib_amt, ens_vib_inc, ens_f, ens_cand; int ens_n;   /* v66: ens_f the settled pitch */
 #endif
 } px_acoustic;
 

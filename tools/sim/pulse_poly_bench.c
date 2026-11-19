@@ -65,7 +65,14 @@ int main(int argc, char **argv)
         else if (!strcmp(name, "OLD")) PXP_OLD = (int)value; else if (!strcmp(name, "ACQ")) PXP_ACQ = value;
         else if (!strcmp(name, "HGUARD")) PXP_HGUARD = value; else if (!strcmp(name, "MATCH")) PXP_MATCH = value;
         else if (!strcmp(name, "CONFIRM")) PXP_CONFIRM_N = (unsigned)value;
-        else if (!strcmp(name, "HOLD")) PXP_HOLD_N = (unsigned)value; else return 2;
+        else if (!strcmp(name, "HOLD")) PXP_HOLD_N = (unsigned)value;
+        else if (!strcmp(name, "NEAR")) PXP_NEAR = value; else if (!strcmp(name, "HREL")) PXP_HREL = value;
+        else if (!strcmp(name, "ENVMIN")) PXP_ENVMIN = value; else if (!strcmp(name, "BYRANK")) PXP_BYRANK = (int)value;
+        else if (!strcmp(name, "SUBFIX")) PXP_SUBFIX = value; else if (!strcmp(name, "ACQB")) PXP_ACQ2 = value;
+        else if (!strcmp(name, "CONFIRMB")) PXP_CONFIRM2 = (unsigned)value;
+        else if (!strcmp(name, "SECOND")) PXP_SECOND = value; else if (!strcmp(name, "DECAY")) PXP_DECAY = value;
+        else if (!strcmp(name, "QUIET")) PXP_QUIET = (int)value;
+        else return 2;
     }
     if (getenv("PXP_DUMP") && !(pxp_dump = fopen(getenv("PXP_DUMP"), "wb"))) return 1;
     static px_engine engine;
@@ -97,7 +104,7 @@ int main(int argc, char **argv)
     if (trace) {
         fprintf(trace, "t,nn");
         for (int i = 0; i < PXT_NOTES; ++i) fprintf(trace, ",n%d", i + 1);
-        fprintf(trace, ",v1,v2,gain1,gain2,held1,held2,repick1,repick2\n");
+        fprintf(trace, ",v1,v2,gain1,gain2,held1,held2,repick1,repick2,acq1,acq2\n");
     }
     float input[PX_MAX_BLOCK], output[PX_MAX_BLOCK];
     size_t offset = 0, n;
@@ -110,8 +117,9 @@ int main(int argc, char **argv)
             for (int i = 0; i < PXT_NOTES; ++i)
                 fprintf(trace, ",%.5f", i < pxa_trk.nnotes ? pxa_trk.notes[i] : 0.0f);
             const pxp_note *a = &pxp.note[0], *b = &pxp.note[1];
-            fprintf(trace, ",%.5f,%.5f,%.6f,%.6f,%u,%u,%u,%u\n",
-                    a->frequency, b->frequency, a->gain, b->gain, a->held, b->held, a->repick, b->repick);
+            fprintf(trace, ",%.5f,%.5f,%.6f,%.6f,%u,%u,%u,%u,%u,%u\n",
+                    a->frequency, b->frequency, a->gain, b->gain, a->held, b->held, a->repick, b->repick,
+                    a->acquisitions, b->acquisitions);
         }
     }
     if (pxp_dump) fclose(pxp_dump);

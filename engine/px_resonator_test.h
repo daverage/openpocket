@@ -28,11 +28,11 @@ typedef struct {
 static pxr_bank pxr_test PX_LO(pxr_test);
 #endif
 
-static void pxr_reset_bank(pxr_bank *bank, float sample_rate)
+static void pxr_reset_bank_decay(pxr_bank *bank, float sample_rate, float seconds)
 {
     memset(bank, 0, sizeof *bank);
     const float rate = 0.25f * sample_rate;
-    const float decay = expf(-1.0f / (0.0226644f * rate));
+    const float decay = expf(-1.0f / (seconds * rate));
     for (int i = PXR_FIRST_MIDI - PXR_LOW; i < PXR_BANDS; ++i) {
         const float hz = 440.0f * expf((i + PXR_LOW - 69) * 0.057762265f);
         const float phase = 2.0f * PI_F * hz / rate;
@@ -40,6 +40,7 @@ static void pxr_reset_bank(pxr_bank *bank, float sample_rate)
         bank->coeff[i] = (px_erb_complex){decay * cosf(phase), decay * sinf(phase)};
     }
 }
+static void pxr_reset_bank(pxr_bank *bank, float sample_rate) { pxr_reset_bank_decay(bank, sample_rate, 0.0226644f); }
 
 static __attribute__((noinline)) void pxr_pick(pxr_bank *bank, px_track *out)
 {

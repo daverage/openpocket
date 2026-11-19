@@ -1,4 +1,6 @@
 /* OpenPocket, SPDX-License-Identifier: GPL-3.0-or-later.
+ * v66 (docs/POLY-SYNTH-DESIGN.md): a second note while the first still sounds needs 6 reports, never starts on a
+ * harmonic of the held note or within 7.5% of its pitch (a bend); the quieter free voice takes a new note first.
  * v58: the two-note polyphonic tracker and allocator, independent of any
  * oscillator. The quarter-rate resonator bank (px_resonator_test.h) proposes
  * semitone candidates; phase differences between reports refine each
@@ -16,6 +18,9 @@ typedef struct {
     float frequency, target, gain, sustain, power;
     float pending, note;            /* candidate being confirmed; accepted semitone bin */
     unsigned stable, missing, held, repick, events;
+#ifdef PXP_TUNE
+    unsigned acquisitions;                             /* (host benches: each start of a note) */
+#endif
 } pxp_note;
 
 typedef struct {
@@ -28,8 +33,16 @@ typedef struct {
 
 typedef struct {
     float note, hz, power;
+    int rank;                                          /* v66: 0 the picker's first note, 1 its second, 9 a bass rescue */
 } pxp_candidate;
 
+#ifndef PXP_DECAY
+#ifdef PXP_TUNE
+static float PXP_DECAY = 0.0226644f;
+#else
+#define PXP_DECAY 0.0226644f                           /* the poly bank's time constant (s); v66: tunable */
+#endif
+#endif
 static pxr_bank pxp_bank PX_LO(pxp_bank);
 static pxp_tracker pxp;
 
@@ -37,7 +50,7 @@ static void pxp_reset(px_engine *e, int configure)
 {
     if (configure) {
         erb_prepare(e);
-        pxr_reset_bank(&pxp_bank, e->sr);
+        pxr_reset_bank_decay(&pxp_bank, e->sr, PXP_DECAY);
     } else {
         memset(pxp_bank.state, 0, sizeof pxp_bank.state);
         memset(pxp_bank.age, 0, sizeof pxp_bank.age);
@@ -47,7 +60,7 @@ static void pxp_reset(px_engine *e, int configure)
     memset(&pxp, 0, sizeof pxp);
     pxp.inv_rate = 1.0f / e->sr;
     pxp.report_rate = e->sr / (4 * PXR_HOP);
-    pxp.excitation_scale = 2.0f * onepole_k(e->sr * 0.25f, 0.0226644f);
+    pxp.excitation_scale = 2.0f * onepole_k(e->sr * 0.25f, PXP_DECAY);
     pxp.dip = onepole_k(e->sr, 0.0018f);
 }
 
@@ -67,8 +80,37 @@ static float PXP_ALPHA = 0.15f, PXP_RHO = 0.20f, PXP_G = 0.50f, PXP_BETA = 1.00f
              PXP_BONUS = 0.0f;
 static int PXP_MAXN = 2, PXP_AGE = 3, PXP_OLD = 0;
 static float PXP_ACQ = 0.01f, PXP_HGUARD = 0.68f, PXP_MATCH = 0.058f;
+static float PXP_NEAR = 0.075f, PXP_HREL = 1000.0f, PXP_ENVMIN = 0.0012f, PXP_SUBFIX = 0.0f, PXP_ACQ2 = 0.0f;
+static int PXP_BYRANK = 0, PXP_QUIET = 1; static unsigned PXP_CONFIRM2 = 6; static float PXP_SECOND = 0.5f;
 static unsigned PXP_CONFIRM_N = 3, PXP_HOLD_N = 4;
 #else
+#ifndef PXP_NEAR
+#define PXP_NEAR 0.075f
+#endif
+#ifndef PXP_HREL
+#define PXP_HREL 1000.0f
+#endif
+#ifndef PXP_ENVMIN
+#define PXP_ENVMIN 0.0012f
+#endif
+#ifndef PXP_SUBFIX
+#define PXP_SUBFIX 0.0f
+#endif
+#ifndef PXP_ACQ2
+#define PXP_ACQ2 0.0f
+#endif
+#ifndef PXP_CONFIRM2
+#define PXP_CONFIRM2 6u
+#endif
+#ifndef PXP_QUIET
+#define PXP_QUIET 1
+#endif
+#ifndef PXP_SECOND
+#define PXP_SECOND 0.5f
+#endif
+#ifndef PXP_BYRANK
+#define PXP_BYRANK 0
+#endif
 #define PXP_ACQ 0.01f  /* v57: 0.20, which dropped weak true notes */
 #define PXP_HGUARD 0.68f
 #define PXP_MATCH 0.058f
@@ -85,6 +127,7 @@ static unsigned PXP_CONFIRM_N = 3, PXP_HOLD_N = 4;
 #endif
 enum { PXP_HARMONICS = 5, PXP_PICKS = 3 };
 static const uint8_t pxp_offset[PXP_HARMONICS] = {0, 12, 19, 24, 28};
+static int8_t pxp_rank[PXR_BANDS];                     /* v66: each band's place in this report's picks, -1 not picked */
 
 static float pxp_salience(const float *amp, const uint8_t *claimed, int bin, float share)
 {
@@ -137,6 +180,8 @@ static __attribute__((noinline)) void pxp_pick(pxr_bank *bank, px_track *out)
                 claimed[best + pxp_offset[h]] = 1;
         }
     }
+    memset(pxp_rank, -1, sizeof pxp_rank);
+    for (int k = 0; k < count; ++k) pxp_rank[picks[k]] = (int8_t)k;
     for (int k = 0; k < count; ++k) {
         const int bin = picks[k];
         present[bin] = 1;
@@ -220,7 +265,7 @@ static int pxp_bass(float maximum, pxp_candidate result[2])
         if (px_abs(twice - third) > 0.055f * note || px_abs(third - note) > 0.035f * note) continue;
         const float support = even < odd ? even : odd;
         score[bin] = support + 0.20f * (even + odd) + 0.12f * root;
-        bass[bin] = (pxp_candidate){note, 0.25f * twice + 0.75f * third, 0.60f * (even + odd)};
+        bass[bin] = (pxp_candidate){note, 0.25f * twice + 0.75f * third, 0.60f * (even + odd), 9};
         if (best < 0 || score[bin] > score[best]) best = bin;
     }
     if (best < 0) return 0;
@@ -243,7 +288,7 @@ static int pxp_bass(float maximum, pxp_candidate result[2])
 static int pxp_candidates(const px_track *track, pxp_candidate *candidates)
 {
     int count = 0;
-    if (pxp.env > 0.0012f) {
+    if (pxp.env > PXP_ENVMIN) {
         const int bass_count = pxp_bass(track->level, candidates);
         count = bass_count;
         int bin = PXR_FIRST_MIDI - PXR_LOW;
@@ -257,8 +302,18 @@ static int pxp_candidates(const px_track *track, pxp_candidate *candidates)
             if (explained) continue;
             while (bin < PXR_BANDS && pxp_bank.hz[bin] < note) ++bin;
             if (bin == PXR_BANDS || count == PXT_NOTES) break;
-            candidates[count++] = (pxp_candidate){note, pxp_frequency(bin, 0.046f),
-                                                  track->sal[i] * track->level};
+            /* v66: a candidate that is the second harmonic of a note still building up: its octave below holds
+             * PXP_SUBFIX of its energy, and so does that note's third harmonic (a fifth above the candidate) */
+            int at = bin;
+            if (PXP_SUBFIX > 0.0f && bin - 12 >= PXR_FIRST_MIDI - PXR_LOW && bin + 7 < PXR_BANDS) {
+                const float e = pxp_power(bin);
+                if (pxp_power(bin - 12) > PXP_SUBFIX * e && pxp_power(bin + 7) > PXP_SUBFIX * e) at = bin - 12;
+            }
+            int dup = 0;
+            for (int j = 0; j < count; ++j) dup |= candidates[j].note == pxp_bank.hz[at];
+            if (dup) continue;
+            candidates[count++] = (pxp_candidate){pxp_bank.hz[at], pxp_frequency(at, 0.046f),
+                                                  track->sal[i] * track->level, pxp_rank[bin] < 0 ? 9 : pxp_rank[bin]};
         }
     }
     memcpy(pxp.previous, pxp_bank.state, sizeof pxp.previous);
@@ -300,30 +355,45 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
         v->note = c->note;
         v->missing = 0;
     }
-    for (int i = 0; i < 2; ++i) {
+    /* v66: the quieter free voice first: a releasing voice must dip to silence before it can start again */
+    const int quiet_first = PXP_QUIET && !voices[0].held && !voices[1].held && voices[1].gain < voices[0].gain;
+    for (int n = 0; n < 2; ++n) {
+        const int i = quiet_first ? 1 - n : n;
         pxp_note *v = &voices[i];
         if (v->held) continue;
-        int best = -1;
-        float power = track->level * PXP_ACQ;
+        int best = -1, rank = 99;
+        /* v66: the other voice holds a note that still carries PXP_SECOND of the level: this one is a second note
+         * (stricter); a held note that has faded leaves the new one the lead (as fast as the first) */
+        const int second = voices[1 - i].held && voices[1 - i].power >= PXP_SECOND * track->level;
+        const float floor = track->level * (second && PXP_ACQ2 > PXP_ACQ ? PXP_ACQ2 : PXP_ACQ);
+        float power = floor;
         for (int j = 0; j < count; ++j) {
             const pxp_candidate *c = &candidates[j];
-            if ((used & (1u << j)) || c->power <= power) continue;
+            if ((used & (1u << j)) || c->power <= floor) continue;
             const pxp_note *other = &voices[1 - i];
             if (other->held && pxp_harmonic(c->note, other->target) &&
                 c->power < PXP_HGUARD * track->level) continue;
+            /* v66: a harmonic of the other held note needs PXP_HREL of its power; a pitch within PXP_NEAR of it is
+             * that note bending, not a new one */
+            if (other->held && PXP_HREL > 0.0f && pxp_harmonic(c->hz, other->target) && c->power < PXP_HREL * other->power) continue;
+            if (other->held && PXP_NEAR > 0.0f && px_abs(c->hz - other->target) < PXP_NEAR * other->target) continue;
+            /* v66: the picker's order (harmonic sum) first, power within the same rank */
+            if (PXP_BYRANK ? (c->rank > rank || (c->rank == rank && c->power <= power)) : c->power <= power) continue;
             best = j;
             power = c->power;
+            rank = c->rank;
         }
         if (best < 0) { v->stable = 0; continue; }
         used |= 1u << best;
         const pxp_candidate *c = &candidates[best];
+        const unsigned confirm = second && PXP_CONFIRM2 > PXP_CONFIRM_N ? PXP_CONFIRM2 : PXP_CONFIRM_N;
         if (v->pending == c->note) {
-            if (v->stable < PXP_CONFIRM_N) ++v->stable;
+            if (v->stable < confirm) ++v->stable;
         } else {
             v->pending = c->note;
             v->stable = 1;
         }
-        if (v->stable >= PXP_CONFIRM_N && v->gain < 0.025f) {
+        if (v->stable >= confirm && v->gain < 0.025f) {
             v->held = 1;
             v->missing = v->stable = 0;
             v->target = v->frequency = c->hz;
@@ -331,6 +401,9 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
             v->sustain = pxp_sustain(c->power);
             v->note = c->note;
             v->events |= PXP_ACQUIRED;
+#ifdef PXP_TUNE
+            ++v->acquisitions;
+#endif
         }
     }
 }

@@ -167,11 +167,11 @@ static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, f
      * trumpet (at the guitar's pitch at OCTAVE 0) */
     if (ens == PX_SYN_STRING_ENS) {
         s->ens_rel = 2.0f; s->ens_det = 0.0023f; s->ens_tone0 = 3.0f; s->ens_tone1 = 6.0f;
-        s->ens_k_att = onepole_k(sr, 0.070f); s->ens_vib_amt = 0.0035f;
+        s->ens_k_att = onepole_k(sr, 0.020f); s->ens_vib_amt = 0.0035f;   /* v66: 70 -> 20 ms */
         s->ens_level *= PXA_ENS_STRINGS;
     } else if (ens == PX_SYN_BRASS_ENS) {
         s->ens_rel = 0.5f; s->ens_det = 0.0009f; s->ens_tone0 = 1.5f; s->ens_tone1 = 9.0f;
-        s->ens_k_att = onepole_k(sr, 0.025f); s->ens_vib_amt = 0.0f;
+        s->ens_k_att = onepole_k(sr, 0.012f); s->ens_vib_amt = 0.0f;      /* v66: 25 -> 12 ms */
         s->ens_level *= PXA_ENS_BRASS;
     }
     s->ens_vib_inc = 5.3f / sr;
@@ -331,6 +331,13 @@ static void pxa_rate_consts(px_acoustic *s)
 /* v61: one sample of the ensemble's support layer at the lead's note f (Hz, after OCTAVE) */
 static inline float pxa_support(px_acoustic *s, float f)
 {
+    /* v66: the support follows settled pitch only: a new pitch is taken once it has held within 30 cents for 8 ms
+     * (or at a pick), so the tracker's brief wrong frames are not doubled an octave away */
+    if (s->onset || s->ens_f <= 0.0f) { s->ens_f = s->ens_cand = f; s->ens_n = 0; }
+    else if (pxa_near(f, s->ens_f, PXA_C50)) s->ens_f = f;
+    else if (pxa_near(f, s->ens_cand, PXA_C50)) { if (++s->ens_n > (int)(0.008f * s->sr)) { s->ens_f = f; s->ens_n = 0; } }
+    else { s->ens_cand = f; s->ens_n = 0; }
+    f = s->ens_f;
     float vib = 0.0f;
     if (s->ens_vib_amt > 0.0f) {
         s->ens_vib += s->ens_vib_inc; if (s->ens_vib >= 1.0f) s->ens_vib -= 1.0f;

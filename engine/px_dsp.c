@@ -1086,11 +1086,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             put_str(buf, ratios[poly_ratio(v)]); return 1;
         }
 #endif
-        if (t == PX_SYN_OCT_FUZZ && k == 4) {
-            const float db = syn_fuzz_level_db(x);
-            put_int(buf, (int)(db + (db < 0.0f ? -0.5f : 0.5f)), 1);
-            return 1;
-        }
         if ((t == PX_SYN_STRINGS || t == PX_SYN_CHOIR || t == PX_SYN_STRINGS_HQ || t == PX_SYN_CHOIR_HQ || t == PX_SYN_STRING_MACHINE) && k < 2) {
             put_int(buf, (int)((k == 0 ? syn_att_ms(x) : syn_rel_ms(x)) + 0.5f), 0); return 1;
         }
@@ -2522,7 +2517,8 @@ static void rc_syn(px_engine *e)
         e->syn_lvl[1] = octave_down_level(a, 1);
         e->syn_fuzz_tone = d - 0.5f;
         e->syn_lpk = onepole_k(sr, 1.0f / (2.0f * PI_F * 1500.0f));
-        e->syn_out = db2lin(syn_fuzz_level_db(f));
+        /* v66: LEVEL 0..100 as the owner asked: 0 silent, rising as the square to 0 dB at noon, then up to +6 dB */
+        e->syn_out = f < 0.5f ? 4.0f * f * f : db2lin(syn_fuzz_level_db(f));
         break;
     }
 #ifdef PX_PULSE_TEST
