@@ -105,3 +105,32 @@ because Playwright is not installed here. They still describe the old layout.
   guitar playing (tools/synth_probe.mjs).
 - Install Playwright and update the browser page tests for the 9-block layout.
 - Stage 5: tracker research and benchmarks.
+
+## Stage 5: tracker research (in progress)
+
+### Mono trackers, first comparison (GuitarSet development players 00-01, 60 solo takes, 6,420 notes)
+
+`tools/research/mono_compare.py` runs each candidate as published on the same takes and scores it the same way.
+Each candidate's output is stamped at the moment it could be known. The neural models are stamped late by their
+measured look-ahead: SwiftF0 152 ms, PESTO 62 ms.
+
+| Candidate | Notes right (95 % CI) | Octave errors | Latency median / 90th | Raw pitch acc. | Voicing false alarm |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Engine v70 (MONO SYNTH) | 83.6 % (78.3-86.7) | 2.0 % | 7 / 47 ms | 77.2 % | 90.5 % |
+| YIN (librosa, 46 ms causal) | 80.0 % | 2.0 % | 16 / 54 ms | 72.9 % | 64.9 % |
+| PESTO 2.0 | 75.5 % | 0.6 % | 47 / 76 ms | 62.2 % | 42.2 % |
+| pYIN (offline reference) | 73.2 % | 2.5 % | 45 / 87 ms | 65.5 % | 74.7 % |
+| Cycfi Q | 72.2 % | 3.0 % | 31 / 71 ms | 65.4 % | 75.5 % |
+| SwiftF0 0.3 | 33.7 % | 0.7 % | 138 / 163 ms | 46.4 % | 74.5 % |
+
+What it shows:
+
+- The engine's tracker is the most accurate and the fastest on this data.
+- The engine keeps a note sounding through most annotated gaps (voicing false alarm 90 %). Note release is
+  the first thing to fix.
+- PESTO makes a third of the octave errors. It is a candidate for an octave check, not a replacement.
+- SwiftF0 cannot be a pedal tracker: it needs 152 ms of look-ahead.
+- GuitarSet is an acoustic guitar. The electric (Guitar-TECHS, CC BY 4.0) and bass (IDMT-SMT-Bass and
+  Bass-Single-Track, CC BY-NC-ND 4.0, kept in build/ and never committed) sets are next.
+- Range: the engine's tracker covers 60 Hz to 1.4 kHz (B1 to F6) without a semitone grid, so detuned and dropped
+  tunings track. Bass E1 (41 Hz) and A1 (55 Hz) are below its floor.
