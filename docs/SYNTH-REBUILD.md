@@ -174,3 +174,25 @@ Bass split at the engine's 60 Hz floor (notes right / octave errors):
 5. Cycfi Q trails everywhere.
 6. Single bass notes cap every tracker near 65 %: the set includes dead notes and harmonics, whose labelled pitch
    is not what sounds.
+
+### Mono fixes (v70, development data, then the frozen test set once)
+
+The tracker's floor is 38 Hz now (`PXT_FMIN`, engine/px_track.h; it was 60 Hz). Notes right / octave errors:
+
+| Set | 60 Hz floor | 38 Hz floor | YIN |
+| --- | --- | --- | --- |
+| Bass lines | 62.8 % / 12.9 % | 84.2 % / 2.0 % | 85.3 % / 2.4 % |
+| Single bass notes | 55.4 % / 4.9 % | 64.6 % / 0.8 % | 65.1 % / 0.8 % |
+| Electric guitar | 89.5 % / 1.4 % | 89.3 % / 1.5 % | 85.7 % / 1.7 % |
+| GuitarSet development | 83.6 % / 2.0 % | 83.5 % / 1.9 % | 80.0 % / 2.0 % |
+| GuitarSet test, players 02-05, frozen, scored once | 94.4 % / 1.7 % | 94.4 % / 1.7 % | 92.9 % / 1.5 % |
+
+Latency is unchanged: 6 ms median on the test set (YIN 17 ms). Every tracked voice shares the tracker, so the
+lower floor applies to all of them.
+
+Release: no change. The engine's voicing false alarm comes from strings that are still ringing after the
+annotation's note-off. 50-150 ms after the annotated end, the electric DI is a median 26 dB under the note's attack,
+and above the pedal's gate in 56 % of gaps, which matches the engine's 58 %. Three release rules were tried and
+removed: the level a set dB under the note's peak, the pitch lost for 44-87 ms, and a fast fall within 23 ms.
+Each cut real sustained notes, or never fired. Whether a synth should stop while the string still rings is for
+listening on the pedal, perhaps as a control.

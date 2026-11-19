@@ -22,7 +22,10 @@
 #define PXT_HOP     16                 /* v49: quarter-rate (11.025 kHz) samples per frame: 1.45 ms */
 #define PXT_PART    16                 /* partials considered per frame */
 #define PXT_NOTES   6                  /* notes found per frame */
-#define PXT_FMIN    60.0f              /* fundamentals: B1 .. */
+#ifndef PXT_FMIN
+#define PXT_FMIN    38.0f              /* fundamentals: v70, from below a bass's E1 (41 Hz; v49..v67: 60 Hz, B1, which
+                                          played E1..A#1 an octave up: tools/research, docs/SYNTH-REBUILD.md) .. */
+#endif
 #define PXT_FMAX    1400.0f            /* .. F6 */
 #ifndef PXT_OCT_A
 #define PXT_OCT_A   0.05f              /* the octave-below check: its fundamental at least this of the strongest partial */

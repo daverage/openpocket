@@ -36,6 +36,7 @@ FMIN = 60.0                                            # (the bass sets: 35 Hz, 
 LOOK = os.path.join(OUT, 'lookahead.json')
 CANDS = ['engine', 'q', 'yin', 'pyin', 'swiftf0', 'pesto']
 CAUSAL = {'engine', 'q', 'yin'}
+EXTRA = []                                             # eng_NAME: build/mono_NAME, an engine variant (causal)
 
 
 def takes(name):
@@ -143,6 +144,11 @@ def cand_pesto(wav, la):
     return t + la['pesto'], f
 
 
+def runner(cand):
+    if cand.startswith('eng_'): return lambda wav, la: run_bench(os.path.join(ROOT, 'build', 'mono_' + cand[4:]), wav, 'voice')
+    return RUN[cand]
+
+
 RUN = {'engine': cand_engine, 'q': cand_q, 'yin': cand_yin, 'pyin': cand_pyin, 'swiftf0': cand_swiftf0,
        'pesto': cand_pesto}
 
@@ -195,7 +201,7 @@ def run(args):
         for name, wav, _ in tk:
             p = cache_path(args.set, cand, name)
             if os.path.exists(p): continue
-            t, f = RUN[cand](wav, la)
+            t, f = runner(cand)(wav, la)
             np.savetxt(p, np.column_stack([t, f]), fmt='%.5f', delimiter=',')
         print(f'{cand}: {len(tk)} takes')
 
@@ -211,7 +217,7 @@ def boot(vals, n=2000, seed=1):
 def report(args):
     tk = takes(args.set)
     rows = []
-    for cand in CANDS:
+    for cand in CANDS + (args.extra.split(',') if args.extra else []):
         per, lat, fm = [], [], {}
         for name, wav, ref in tk:
             p = cache_path(args.set, cand, name)
@@ -233,13 +239,13 @@ def report(args):
     print(f'set {args.set}: notes right = within 50 cents for most of the note\'s middle half; latency = to the first right frame')
     print(f'{"candidate":9} {"takes":>5} {"notes":>6} {"right %":>8} {"95% CI":>13} {"octave %":>8} {"lat50":>6} {"lat90":>6} {"RPA":>5} {"RCA":>5} {"VR":>5} {"VFA":>5}  causal')
     for r in rows:
-        print(f'{r[0]:9} {r[1]:5d} {r[2]:6d} {r[3]:8.1f} {r[4]:6.1f}-{r[5]:5.1f} {r[6]:8.1f} {r[7]:6.0f} {r[8]:6.0f} {r[9]:5.1f} {r[10]:5.1f} {r[11]:5.1f} {r[12]:5.1f}  {"yes" if r[0] in CAUSAL else "no (stamped late)" if r[0] != "pyin" else "no (offline reference)"}')
+        print(f'{r[0]:9} {r[1]:5d} {r[2]:6d} {r[3]:8.1f} {r[4]:6.1f}-{r[5]:5.1f} {r[6]:8.1f} {r[7]:6.0f} {r[8]:6.0f} {r[9]:5.1f} {r[10]:5.1f} {r[11]:5.1f} {r[12]:5.1f}  {"yes" if r[0] in CAUSAL or r[0].startswith("eng_") else "no (stamped late)" if r[0] != "pyin" else "no (offline reference)"}')
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('cmd', choices=['lookahead', 'run', 'report'])
     ap.add_argument('--set', default='dev')
-    ap.add_argument('--only'); ap.add_argument('--limit', type=int)
+    ap.add_argument('--only'); ap.add_argument('--limit', type=int); ap.add_argument('--extra')
     a = ap.parse_args()
     {'lookahead': lambda: lookahead(), 'run': lambda: run(a), 'report': lambda: report(a)}[a.cmd]()
