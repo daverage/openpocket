@@ -360,6 +360,44 @@ indistinguishable on single notes.
   per-voice memory for the acoustic ensembles before proposing additional
   voices. Use the v67 A/B to determine which tracker rules are worth carrying.
 
+### Mono lead interference benchmark
+
+Run `python3 tools/sim/mono_interference.py BENCH66 BENCH67` with the
+`mono_bench.c` executables. The synthetic cases establish a lead at 100 ms,
+introduce a second note or strengthen a partial at 340 ms, and mute the
+lead at 760 ms in the two-note cases. Score lead pitch in the overlap and
+the first five consecutive reports of the remaining note after the mute.
+The report identifies a tracker that had switched before the mute.
+
+The 16-case comparison used four synthetic intervals and three real
+GuitarSet pairs, each at second-to-lead input gains of 0.55 and 1.20,
+plus two rising-partial cases. The real clips came from solo annotations
+at 4.694 s in `02_Rock3-148-C` (48.18), 21.521 s in `00_BN2-166-Ab`
+(51.09), 2.812 s in `01_BN3-119-G` (69.25), 4.709 s in `03_BN1-147-Gb`
+(66.05), and 1.660 s in `03_Jazz1-130-D` (72.04). The three pairs
+were 48.18/51.09, 69.25/66.05 and 48.18/72.04. The scorer accepts these
+isolated clips with repeated `--pair LEAD_MIDI LEAD.wav SECOND_MIDI SECOND.wav`
+arguments. These constructed overlaps provide known note identities and
+mute timing. Played dyads still need listening and verification.
+
+v66 and v67 retained the lead for the same 45.1% of overlap frames on
+average, with all 16 leads correctly established. In v66, the upper-octave
+cases retained 95.8–100%, but adding a lower octave retained only
+6.2–10.7%. On the synthetic H2 rise the lead was absent from the candidate
+list during every wrong-pitch frame. It was absent during 94.6–95.4% of
+the wrong-pitch frames in the lower-octave cases. The stronger fourth
+case also had no listed lead during 98.9% of its wrong frames.
+
+A host-only test let a settled lead remain when it was listed within
+50 cents at one fifth or more of the top salience. Mean retention reached
+46.3%. On the scale DI it reduced octave-below frames from 5.16% to
+1.18%, and both low-E sustains matched v66. The longer owner recordings
+`mvave` and `mvave2` fell from 74.2% and 84.4% of notes correct to
+71.4% and 79.2%, while GuitarSet solo median arrival slowed from
+6.3 to 7.6 ms. Keep v66 as the reference. Measure the evidence for
+the held pitch before the candidate shortlist discards it. Retaining
+only pitches already on that list cannot cover most of these misses.
+
 ---
 
 ## Stage 6: show where the band-bank HQ types actually win
