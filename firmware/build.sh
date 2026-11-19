@@ -44,7 +44,7 @@ if [ -n "$CHAN" ]; then
   DEFAULT_TESTVER=42
   [ "$CHAN" = lowest-test ] && DEFAULT_TESTVER=54
   [ "$CHAN" = pulse-test ] && DEFAULT_TESTVER=56
-  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=62
+  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=63
   TESTVER="${OP_TEST_VERSION:-$DEFAULT_TESTVER}"
   printf '#define OP_VERSION_NUM "%s"\n#define OP_TAG " %s"\n' "$TESTVER" "$(echo "$CHAN" | tr a-z- A-Z' ')" > "$O/channel.h"
   APP="$HERE/openpocket-$CHAN.bin"; PKG="$HERE/../docs/firmware/$CHAN"
@@ -60,7 +60,7 @@ if [ "$CHAN" = lowest-test ] || [ "$CHAN" = pulse-test ] || [ "$CHAN" = poly-tes
   [ "$TESTVER" = 53 ] && DSPDEF="$DSPDEF -DPX_LOWEST_V53=1"
 fi
 [ "$CHAN" = pulse-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1"
-[ "$CHAN" = poly-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1 -DPX_POLY_TEST=1 -DPX_MONO_LAYER=1 -DPX_ENSEMBLE_TEST=1 -DPX_ERB_LAYOUT2=1"   # v60 MONO on the note layer; v61 ensembles; v62 octave bank
+[ "$CHAN" = poly-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1 -DPX_POLY_TEST=1 -DPX_MONO_LAYER=1 -DPX_ENSEMBLE_TEST=1 -DPX_ERB_LAYOUT2=1 -DPX_CONSOLIDATE_TEST=1"   # v60 MONO on the note layer; v61 ensembles; v62 octave bank; v63 BASS SYNTH -> HQ
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \

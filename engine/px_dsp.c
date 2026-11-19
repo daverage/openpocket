@@ -597,7 +597,13 @@ static const char *const PN_FM_POLY[] = {"RATIO", "INDEX", "DECAY", "RELEASE", "
 static inline int pxa_is(int t);                       /* v48: px_acoustic.h (TRUMPET .. CELLO SECTION, v61 ensembles) */
 static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ORGAN", 5, PN_ORG}, {"CHURCH ORGAN", 5, PN_CHU}, {"STRINGS", 5, PN_STR}, {"CHOIR", 5, PN_CHO},
-    {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM}, {"BASS SYNTH", 5, PN_BSY}, {"12-STRING", 3, PN_12S},
+    {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM},
+#ifdef PX_CONSOLIDATE_TEST
+    {"", 5, PN_BSY},                                   /* v63: retired, plays BASS SYNTH HQ (px_type_canonical) */
+#else
+    {"BASS SYNTH", 5, PN_BSY},
+#endif
+    {"12-STRING", 3, PN_12S},
     {"ACOUSTIC", 4, PN_ACO}, {"SITAR", 4, PN_SIT}, {"BARITONE", 3, PN_BAR}, {"POLY BRASS", 5, PN_BRASS},
     {"STRINGS HQ", 5, PN_STR}, {"CHOIR HQ", 5, PN_CHO}, {"ORGAN HQ", 5, PN_ORG}, {"CHURCH ORGAN HQ", 5, PN_CHU},
     {"BASS SYNTH HQ", 5, PN_BSY}, {"PWM SYNTH HQ", 5, PN_PWM}, {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
@@ -763,6 +769,12 @@ int px_ntypes(int b)
 }
 int px_type_canonical(int b, int t)
 {
+#ifdef PX_CONSOLIDATE_TEST
+    /* v63 (poly-test): BASS SYNTH's flip-flop divider retires; its presets play BASS SYNTH HQ with the same five
+     * controls (OCT -1, OCT -2, CUTOFF, ENV, DRY). tools/sim/syn_compare.py: HQ is cleaner on GuitarSet solo notes
+     * (40.2% of the energy on the notes' sub-octave harmonics, against 36.5%) and chords (30.1%, against 26.5%) */
+    if (b == PX_B_SYN && t == PX_SYN_BASS) return PX_SYN_BASS_HQ;
+#endif
     return b == PX_B_SYN && t == PX_SYN_TRUMPET_MODEL ? PX_SYN_TRUMPET : t;
 }
 static const tdef *tdef_of(int b, int t)

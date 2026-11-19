@@ -57,6 +57,15 @@ try {
     console.log(JSON.stringify({saved: saved.length, savedHash: sha.digest("hex"),
         types: specs.map(({name, type}) => ({name, type}))}));
     original = await editor.state();
+    if (process.argv[3] === "consolidated") {           // v63: BASS SYNTH (type 6) is retired; a preset with it plays HQ
+        assert.ok(!blocks[syn].types[6]?.name, "BASS SYNTH hidden");
+        const q = structuredClone(original.preset); q.type[syn] = 6; q.on[syn] = 1;
+        assert.equal(await editor.put(q), 0);
+        await pause(300);
+        const got = (await editor.state()).preset.type[syn];
+        assert.equal(blocks[syn].types[got]?.name, "BASS SYNTH HQ");
+        console.log(JSON.stringify({migrated: "BASS SYNTH (6) -> " + blocks[syn].types[got].name + " (" + got + ")"}));
+    }
     const temporary = ({type, knobs}, gateOn) => {
         const q = structuredClone(original.preset);
         q.on.fill(0);
