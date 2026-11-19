@@ -325,10 +325,11 @@ static int overhaul(const char *d)
         last = pos;
     }
     tap(UB_FX); CHECK(ui_blk == PRESET.order[0] || ui_pos_of(ui_blk) < 3, "F10: after the last, FX starts again from the first");
-    /* F17: SYN's page is SYNTH; a block of one model shows no arrows */
+    /* F17: SYN's page is SYNTH. v50 gave NOISE GATE a second model (SMART GATE), so no block has a single
+     * model any more: check the other side, a block of several models shows its arrows */
     CHECK(!strcmp(ui_block_name(PX_B_SYN), "SYNTH"), "F17: SYN's page is SYNTH");
-    ui_blk = PX_B_GATE; ui_mode = M_BLOCK; ui_item = 0; full(); shot(d, "edit_gate_no_arrows");
-    CHECK(px_ntypes(PX_B_GATE) == 1 && !count_col(8, E_TYPE_Y, 20, 23, UI_ACC), "F17: NOISE GATE: no arrows");
+    ui_blk = PX_B_GATE; ui_mode = M_BLOCK; ui_item = 0; full(); shot(d, "edit_gate_arrows");
+    CHECK(px_ntypes(PX_B_GATE) == 2 && count_col(8, E_TYPE_Y, 20, 23, UI_ACC), "F17: NOISE GATE: model arrows");
     /* F15, F16: SAVE says a copy keeps its name; RESTORE FACTORY says RESTORE and does nothing on a factory sound */
     ui_home(); load_preset(9); cur_preset = 9; full();
     poison(); save_open(); save_knob(1); save_draw(); shot(d, "save_copy_keeps_name");

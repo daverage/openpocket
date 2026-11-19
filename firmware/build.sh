@@ -44,7 +44,7 @@ if [ -n "$CHAN" ]; then
   DEFAULT_TESTVER=42
   [ "$CHAN" = lowest-test ] && DEFAULT_TESTVER=54
   [ "$CHAN" = pulse-test ] && DEFAULT_TESTVER=56
-  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=58
+  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=59
   TESTVER="${OP_TEST_VERSION:-$DEFAULT_TESTVER}"
   printf '#define OP_VERSION_NUM "%s"\n#define OP_TAG " %s"\n' "$TESTVER" "$(echo "$CHAN" | tr a-z- A-Z' ')" > "$O/channel.h"
   APP="$HERE/openpocket-$CHAN.bin"; PKG="$HERE/../docs/firmware/$CHAN"
@@ -93,9 +93,9 @@ RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_bl
   pxn_lp_split_now pxn_frame_ticks px_nam_lp_handed px_nam_lp_before pxn_lp_handed pxn_lp_before
   px_nam_lp_split_used px_nam_lp_force pxn_lp_split_used pxn_lp_force px_nam_lp_gave_up pxn_lp_gave_up
   ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run synth_hq_track cab_detail_run gate_run comp_run bq_chain"
-[ "$CHAN" = resonator-test ] && RAM_DSP="$RAM_DSP pxr_run_bank pxr_pick"
+[ "$CHAN" = resonator-test ] && RAM_DSP="$RAM_DSP pxr_advance pxr_pick"
 if [ "$CHAN" = lowest-test ] || [ "$CHAN" = pulse-test ] || [ "$CHAN" = poly-test ]; then
-  RAM_DSP="$RAM_DSP lowest_pitch_run pxl_run pxr_run_bank lf_run lf_pick"
+  RAM_DSP="$RAM_DSP lowest_pitch_run pxl_run pxr_advance lf_run lf_pick"
 fi
 [ "$CHAN" = lowest-test ] && RAM_DSP="$RAM_DSP pxr_pick"
 # These channels keep the per-report picker in flash to fit the voice loops in RAM.

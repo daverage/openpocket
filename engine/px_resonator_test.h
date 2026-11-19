@@ -93,7 +93,8 @@ static __attribute__((noinline)) void pxr_pick(pxr_bank *bank, px_track *out)
     for (int i = start; i < PXR_BANDS; ++i) if (!present[i]) bank->age[i] = 0;
 }
 
-static __attribute__((noinline)) int pxr_run_bank(pxr_bank *bank, px_track *out, float input)
+/* v59: advance the bank by one input sample; 1 when a report is due (the caller picks). */
+static __attribute__((noinline)) int pxr_advance(pxr_bank *bank, px_track *out, float input)
 {
     float x;
     if (!pxt_decimate(out, input, &x)) return 0;
@@ -103,6 +104,12 @@ static __attribute__((noinline)) int pxr_run_bank(pxr_bank *bank, px_track *out,
     }
     if (++bank->hop < PXR_HOP) return 0;
     bank->hop = 0;
+    return 1;
+}
+
+static inline int pxr_run_bank(pxr_bank *bank, px_track *out, float input)
+{
+    if (!pxr_advance(bank, out, input)) return 0;
     pxr_pick(bank, out);
     return 1;
 }

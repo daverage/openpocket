@@ -9,7 +9,7 @@
 #ifndef PX_POLY_TRACK_H
 #define PX_POLY_TRACK_H
 
-enum { PXP_NOTES = 2, PXP_CONFIRM = 3, PXP_HOLD = 4 };
+enum { PXP_NOTES = 2 };
 enum { PXP_ACQUIRED = 1u, PXP_RESTRUCK = 2u };   /* pxp_note::events, cleared by the renderer */
 
 typedef struct {
@@ -51,6 +51,110 @@ static void pxp_reset(px_engine *e, int configure)
     pxp.dip = onepole_k(e->sr, 0.0018f);
 }
 
+/* v59: the poly tracker's own candidate picker. The shared pxr_pick (Lowest
+ * Octave HQ) keeps the six strongest local maxima above 15% of the peak
+ * energy; on GuitarSet dyads the weaker note of a pair is often a peak below
+ * that line, and a harmonic is the strongest band in about a quarter of the
+ * frames. Rank local maxima by harmonic sum instead: a band's amplitude plus
+ * its 2nd..5th harmonic bands, weighted by PXP_G per harmonic. The best sum
+ * is the first note. Further notes must reach PXP_RHO of its sum, counting
+ * bands already claimed as another note's harmonics at PXP_SHARE, and a band
+ * that is itself such a harmonic needs PXP_BETA of the first note's
+ * amplitude. Notes picked in the previous report get PXP_BONUS. As before, a
+ * second note must persist for PXP_AGE reports before it is offered. */
+#ifdef PXP_TUNE
+static float PXP_ALPHA = 0.15f, PXP_RHO = 0.20f, PXP_G = 0.50f, PXP_BETA = 1.00f, PXP_SHARE = 0.35f,
+             PXP_BONUS = 0.0f;
+static int PXP_MAXN = 2, PXP_AGE = 3, PXP_OLD = 0;
+static float PXP_ACQ = 0.01f, PXP_HGUARD = 0.68f, PXP_MATCH = 0.058f;
+static unsigned PXP_CONFIRM_N = 3, PXP_HOLD_N = 4;
+#else
+#define PXP_ACQ 0.01f  /* v57: 0.20, which dropped weak true notes */
+#define PXP_HGUARD 0.68f
+#define PXP_MATCH 0.058f
+#define PXP_CONFIRM_N 3u
+#define PXP_HOLD_N 4u
+#define PXP_ALPHA 0.15f
+#define PXP_RHO 0.20f
+#define PXP_G 0.50f
+#define PXP_BETA 1.00f
+#define PXP_SHARE 0.35f
+#define PXP_BONUS 0.0f
+#define PXP_MAXN 2
+#define PXP_AGE 3
+#endif
+enum { PXP_HARMONICS = 5, PXP_PICKS = 3 };
+static const uint8_t pxp_offset[PXP_HARMONICS] = {0, 12, 19, 24, 28};
+
+static float pxp_salience(const float *amp, const uint8_t *claimed, int bin, float share)
+{
+    float sum = 0.0f, weight = 1.0f;
+    for (int h = 0; h < PXP_HARMONICS; ++h, weight *= PXP_G) {
+        const int at = bin + pxp_offset[h];
+        if (at >= PXR_BANDS) break;
+        sum += weight * (claimed[at] ? share * amp[at] : amp[at]);
+    }
+    return sum;
+}
+
+static __attribute__((noinline)) void pxp_pick(pxr_bank *bank, px_track *out)
+{
+    float energy[PXR_BANDS], amp[PXR_BANDS], maximum = 0.0f;
+    uint8_t claimed[PXR_BANDS] = {0}, present[PXR_BANDS] = {0};
+    const int start = PXR_FIRST_MIDI - PXR_LOW;
+    for (int i = start; i < PXR_BANDS; ++i) {
+        const px_erb_complex z = bank->state[i];
+        energy[i] = z.r * z.r + z.i * z.i;
+        amp[i] = sqrtf(energy[i]);
+        if (energy[i] > maximum) maximum = energy[i];
+    }
+    out->mono = 0.0f;
+    out->conf = 0.0f;
+    out->level = maximum;
+    out->onset = 0.0f;
+    out->nnotes = 0;
+    int picks[PXP_PICKS], count = 0;
+    if (maximum >= 1e-10f) {
+        const float floor = PXP_ALPHA * sqrtf(maximum);
+        float first = 0.0f;
+        while (count < PXP_MAXN) {
+            int best = -1;
+            float score = 0.0f;
+            for (int i = start; i < PXR_BANDS; ++i) {
+                if (amp[i] < floor || (i > start && amp[i] <= amp[i - 1]) ||
+                    (i + 1 < PXR_BANDS && amp[i] <= amp[i + 1])) continue;
+                int taken = 0;
+                for (int j = 0; j < count; ++j) taken |= picks[j] == i;
+                if (taken || (count && claimed[i] && amp[i] < PXP_BETA * amp[picks[0]])) continue;
+                float s = pxp_salience(amp, claimed, i, count ? PXP_SHARE : 1.0f);
+                if (bank->age[i]) s *= 1.0f + PXP_BONUS;
+                if (s > score) { score = s; best = i; }
+            }
+            if (best < 0 || (count && score < PXP_RHO * first)) break;
+            if (!count) first = score;
+            picks[count++] = best;
+            for (int h = 1; h < PXP_HARMONICS && best + pxp_offset[h] < PXR_BANDS; ++h)
+                claimed[best + pxp_offset[h]] = 1;
+        }
+    }
+    for (int k = 0; k < count; ++k) {
+        const int bin = picks[k];
+        present[bin] = 1;
+        if (bank->age[bin] < PXP_AGE) ++bank->age[bin];
+        if (k > 0 && bank->age[bin] < PXP_AGE) continue;
+        if (k == 0) { out->mono = bank->hz[bin]; out->conf = 1.0f; }
+        int j = out->nnotes++;
+        while (j > 0 && out->notes[j - 1] > bank->hz[bin]) {
+            out->notes[j] = out->notes[j - 1];
+            out->sal[j] = out->sal[j - 1];
+            --j;
+        }
+        out->notes[j] = bank->hz[bin];
+        out->sal[j] = energy[bin] / maximum;
+    }
+    for (int i = start; i < PXR_BANDS; ++i) if (!present[i]) bank->age[i] = 0;
+}
+
 /* Unwrap each tracked partial relative to the resonator's nominal pitch.
  * Reject estimates outside a nearby interval before smoothing the bend. */
 static float pxp_frequency(int bin, float tolerance)
@@ -75,7 +179,7 @@ static int pxp_nearest(const pxp_candidate *candidates, int count, const pxp_not
 {
     if (!v->held) return -1;
     int match = -1;
-    float distance = 0.058f * v->target;
+    float distance = PXP_MATCH * v->target;
     for (int i = 0; i < count; ++i) {
         const float next = px_abs(candidates[i].hz - v->target);
         if (i != avoid && next < distance) { match = i; distance = next; }
@@ -163,7 +267,7 @@ static int pxp_candidates(const px_track *track, pxp_candidate *candidates)
 }
 
 /* Keep each held note on its nearest candidate; start free notes on the
- * strongest unexplained candidate once it repeats for PXP_CONFIRM reports. */
+ * strongest unexplained candidate once it repeats for PXP_CONFIRM_N reports. */
 static void pxp_allocate(const px_track *track, const pxp_candidate *candidates, int count)
 {
     pxp_note *const voices = pxp.note;
@@ -180,7 +284,7 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
         if (!v->held) continue;
         const int match = matches[i];
         if (match < 0) {
-            if (++v->missing >= PXP_HOLD) { v->held = 0; v->repick = 0; }
+            if (++v->missing >= PXP_HOLD_N) { v->held = 0; v->repick = 0; }
             continue;
         }
         used |= 1u << match;
@@ -200,13 +304,13 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
         pxp_note *v = &voices[i];
         if (v->held) continue;
         int best = -1;
-        float power = track->level * 0.20f;
+        float power = track->level * PXP_ACQ;
         for (int j = 0; j < count; ++j) {
             const pxp_candidate *c = &candidates[j];
             if ((used & (1u << j)) || c->power <= power) continue;
             const pxp_note *other = &voices[1 - i];
             if (other->held && pxp_harmonic(c->note, other->target) &&
-                c->power < 0.68f * track->level) continue;
+                c->power < PXP_HGUARD * track->level) continue;
             best = j;
             power = c->power;
         }
@@ -214,12 +318,12 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
         used |= 1u << best;
         const pxp_candidate *c = &candidates[best];
         if (v->pending == c->note) {
-            if (v->stable < PXP_CONFIRM) ++v->stable;
+            if (v->stable < PXP_CONFIRM_N) ++v->stable;
         } else {
             v->pending = c->note;
             v->stable = 1;
         }
-        if (v->stable >= PXP_CONFIRM && v->gain < 0.025f) {
+        if (v->stable >= PXP_CONFIRM_N && v->gain < 0.025f) {
             v->held = 1;
             v->missing = v->stable = 0;
             v->target = v->frequency = c->hz;
@@ -234,6 +338,9 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
 static __attribute__((noinline)) void pxp_frame(const px_track *track)
 {
     pxp_candidate candidates[PXT_NOTES];
+#ifdef PXP_FRAME_HOOK
+    PXP_FRAME_HOOK(track);                       /* host benches only: tools/sim/pulse_poly_bench.c */
+#endif
     const int count = pxp_candidates(track, candidates);
     pxp_allocate(track, candidates, count);
 }
@@ -242,7 +349,12 @@ static __attribute__((noinline)) void pxp_frame(const px_track *track)
 static inline void pxp_input(float input, float env_coeff)
 {
     pxp.env += env_coeff * (px_abs(input) - pxp.env);
-    if (pxr_run_bank(&pxp_bank, &pxa_trk, input)) pxp_frame(&pxa_trk);
+    if (!pxr_advance(&pxp_bank, &pxa_trk, input)) return;
+#ifdef PXP_TUNE
+    if (PXP_OLD) pxr_pick(&pxp_bank, &pxa_trk); else
+#endif
+    pxp_pick(&pxp_bank, &pxa_trk);
+    pxp_frame(&pxa_trk);
 }
 
 /* Per output sample: advance one note's gain envelope and pitch glide.
@@ -254,7 +366,7 @@ static inline float pxp_note_step(pxp_note *v, float attack, float release)
         v->events |= PXP_RESTRUCK;
     }
     const float target = v->held && !v->repick ? v->sustain : 0.0f;
-    const float k = v->repick || (!v->held && v->stable >= PXP_CONFIRM) ? pxp.dip :
+    const float k = v->repick || (!v->held && v->stable >= PXP_CONFIRM_N) ? pxp.dip :
                     target > v->gain ? attack : release;
     v->gain += k * (target - v->gain);
     if (v->gain < 1e-5f && !v->held) { v->gain = 0.0f; return 0.0f; }

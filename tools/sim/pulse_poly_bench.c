@@ -5,9 +5,15 @@
  */
 #define PX_PULSE_TEST 1
 #define PX_POLY_TEST 1
-#include "../../engine/px_dsp.c"
+#define PXP_TUNE 1
 #include <stdio.h>
 #include <stdlib.h>
+/* PXP_DUMP=FILE: per tracker report, float32 [env, level, 66 x (re, im)] of the poly bank. */
+static FILE *pxp_dump;
+#define PXP_FRAME_HOOK(track) do { if (pxp_dump) { \
+    const float head[2] = {pxp.env, (track)->level}; fwrite(head, sizeof head, 1, pxp_dump); \
+    fwrite(pxp_bank.state, sizeof pxp_bank.state, 1, pxp_dump); } } while (0)
+#include "../../engine/px_dsp.c"
 
 static int fm_oscillator(int argc, char **argv)
 {
@@ -47,6 +53,21 @@ int main(int argc, char **argv)
         type += (int)i;
     }
 
+    /* PXP_SET="name=value ..." overrides the picker's tuning (engine/px_poly_track.h). */
+    for (const char *s = getenv("PXP_SET"); s && *s;) {
+        char name[16]; float value; int used;
+        if (sscanf(s, " %15[A-Z]=%f%n", name, &value, &used) != 2) return 2;
+        s += used;
+        if (!strcmp(name, "ALPHA")) PXP_ALPHA = value; else if (!strcmp(name, "RHO")) PXP_RHO = value;
+        else if (!strcmp(name, "G")) PXP_G = value; else if (!strcmp(name, "BETA")) PXP_BETA = value;
+        else if (!strcmp(name, "SHARE")) PXP_SHARE = value; else if (!strcmp(name, "BONUS")) PXP_BONUS = value;
+        else if (!strcmp(name, "MAXN")) PXP_MAXN = (int)value; else if (!strcmp(name, "AGE")) PXP_AGE = (int)value;
+        else if (!strcmp(name, "OLD")) PXP_OLD = (int)value; else if (!strcmp(name, "ACQ")) PXP_ACQ = value;
+        else if (!strcmp(name, "HGUARD")) PXP_HGUARD = value; else if (!strcmp(name, "MATCH")) PXP_MATCH = value;
+        else if (!strcmp(name, "CONFIRM")) PXP_CONFIRM_N = (unsigned)value;
+        else if (!strcmp(name, "HOLD")) PXP_HOLD_N = (unsigned)value; else return 2;
+    }
+    if (getenv("PXP_DUMP") && !(pxp_dump = fopen(getenv("PXP_DUMP"), "wb"))) return 1;
     static px_engine engine;
     px_preset_t preset;
     px_engine_init(&engine, 44100.0f);
@@ -93,5 +114,6 @@ int main(int argc, char **argv)
                     a->frequency, b->frequency, a->gain, b->gain, a->held, b->held, a->repick, b->repick);
         }
     }
+    if (pxp_dump) fclose(pxp_dump);
     return ferror(stdin) || (trace && fclose(trace) != 0);
 }
