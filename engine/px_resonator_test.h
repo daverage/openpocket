@@ -24,9 +24,7 @@ typedef struct {
     unsigned hop;
 } pxr_bank;
 
-#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST)
 static pxr_bank pxr_test PX_LO(pxr_test);
-#endif
 
 static void pxr_reset_bank_decay(pxr_bank *bank, float sample_rate, float seconds)
 {
@@ -114,8 +112,6 @@ static inline int pxr_run_bank(pxr_bank *bank, px_track *out, float input)
     pxr_pick(bank, out);
     return 1;
 }
-#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST)
 static void pxr_reset(float rate) { pxr_reset_bank(&pxr_test, rate); }
 static int pxr_run(px_track *out, float input) { return pxr_run_bank(&pxr_test, out, input); }
-#endif
 #endif

@@ -40,13 +40,8 @@
 #define PI_F 3.14159265f
 /* v49: the octave voices kept at v48's level (the mean over the bundled chords, lead and riff loops, through POLY
  * OCTAVE HQ: tools/sim/px_engine.wasm of v48 against v49) */
-#ifdef PX_ERB_LAYOUT2
 #define ERB_GAIN_UP   0.631f                           /* v62: the 26-band bank at the 29-band one's wet level (loops) */
 #define ERB_GAIN_DOWN 1.451f
-#else
-#define ERB_GAIN_UP   0.669f
-#define ERB_GAIN_DOWN 1.480f
-#endif
 #ifndef PX_SUB2_LEVEL
 #define PX_SUB2_LEVEL 1.79f                            /* v64: OCT -2 at OCT -1's wet level, same setting (loops) */
 #endif
@@ -100,7 +95,6 @@ static float onepole_k(float sr, float sec) { return 1.0f - expf(-1.0f / (sec * 
 #define ERB_WIDTH 0.8f                                 /* bandwidth, of the spacing */
 static px_erb_band erb_band[PX_ERB_BANDS];
 static float erb_hb[8], erb_fc[PX_ERB_BANDS], erb_bw[PX_ERB_BANDS], erb_rate;
-#ifdef PX_ERB_LAYOUT2
 /* v62 (poly-test): the octave voices get their own bank, 26 bands 60 Hz + 2% apart and 0.7 of the spacing wide
  * (docs/OCTAVE-LAYOUT-v62.md: less added wobble, faster low notes); the note tracker keeps erb_band */
 #define ERB_O_BANDS 26
@@ -109,13 +103,6 @@ static float erb_hb[8], erb_fc[PX_ERB_BANDS], erb_bw[PX_ERB_BANDS], erb_rate;
 #define ERB_O_WIDTH 0.7f
 static px_erb_band erb_oband[ERB_O_BANDS];
 static float erb_ofc[ERB_O_BANDS];
-#else
-#define ERB_O_BANDS PX_ERB_BANDS
-#define ERB_O_S0    ERB_S0
-#define ERB_O_SC    ERB_SC
-#define erb_oband   erb_band
-#define erb_ofc     erb_fc
-#endif
 #define ERB_FULL  ((float)ERB_O_BANDS)
 static void erb_layout(px_erb_band *band, float *fc, float *bw, int n, float s0, float sc, float width, float rate)
 {
@@ -139,9 +126,7 @@ static void erb_prepare(px_engine *e)
     const float rate = e->sr * 0.25f;
     if (erb_rate == rate) return;
     erb_layout(erb_band, erb_fc, erb_bw, PX_ERB_BANDS, ERB_S0, ERB_SC, ERB_WIDTH, rate);
-#ifdef PX_ERB_LAYOUT2
     erb_layout(erb_oband, erb_ofc, NULL, ERB_O_BANDS, ERB_O_S0, ERB_O_SC, ERB_O_WIDTH, rate);
-#endif
     for (int i = 0; i < 8; ++i) {
         const float offset = (float)(2 * i + 1);
         const float window = 0.54f + 0.46f * cosf(2.0f * PI_F * offset / 30.0f);
@@ -186,9 +171,7 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
 {
     (void)e;
     float raised = 0.0f, lowered = 0.0f, raised2 = 0.0f;
-#ifdef PX_SUB2_TEST
     float lowered2 = 0.0f;
-#endif
     for (int i = 0; i < ERB_O_BANDS; ++i) {
         const px_erb_band *b = &erb_oband[i];
         const float real = b->b0 * x + state->z1[i].r;
@@ -221,7 +204,6 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
         }
         const unsigned negative = imag < 0.0f;
         unsigned phase = state->half_phase[i];
-#ifdef PX_SUB2_TEST
         /* v64: two octaves down, |z| cos((a + 2 pi k) / 4): k counts the crossings of the negative real axis modulo 4
          * (tools/sim/sub2_proto.c); a band whose -24 would sound under 35 Hz fades out (a low E's 20.6 Hz) */
         if (real < 0.0f && (phase & 1) != negative) state->quarter[i] = (uint8_t)((state->quarter[i] + (negative ? 1 : 3)) & 3);
@@ -237,7 +219,6 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
                 lowered2 += power * inv * sign * qa * (floor2 < 1.0f ? floor2 : 1.0f);
             }
         }
-#endif
         if (real < 0.0f && (phase & 1) != negative) phase ^= 2;
         state->half_phase[i] = (uint8_t)((phase & 2) | negative);
         /* Taper the octave-down band mix around the selected input pitch.
@@ -258,12 +239,8 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
             lowered += (phase & 2) ? -sample : sample;
         }
     }
-#ifdef PX_SUB2_TEST
     return up * raised * ERB_GAIN_UP + down * lowered * ERB_GAIN_DOWN + up2 * raised2 * ERB_GAIN_UP2
          + state->down2 * lowered2 * ERB_GAIN_DOWN2;
-#else
-    return up * raised * ERB_GAIN_UP + down * lowered * ERB_GAIN_DOWN + up2 * raised2 * ERB_GAIN_UP2;
-#endif
 }
 
 /* one 44.1 kHz sample in, the octave voices (mixed by their levels) out: down to 11.025 kHz in two half-band stages,
@@ -274,11 +251,7 @@ static PX_HOT float erb_octaves2(const px_engine *e, px_erb_octave *state, float
     /* v49: with every voice at zero (STRINGS HQ with OCT at 0, say) the bank's output is silent: once its tail is out
      * the bank rests and its state is cleared. A voice turned up again starts from silence and builds up with the
      * bands (their own ~10-17 ms), so it fades in rather than stepping in on stale filter state. */
-#ifdef PX_SUB2_TEST
     if (up == 0.0f && down == 0.0f && up2 == 0.0f && state->down2 == 0.0f) {
-#else
-    if (up == 0.0f && down == 0.0f && up2 == 0.0f) {
-#endif
         if (state->idle >= ERB_IDLE) return 0.0f;
         if (++state->idle == ERB_IDLE) { memset(state, 0, sizeof *state); state->idle = ERB_IDLE; return 0.0f; }
     } else state->idle = 0;
@@ -548,13 +521,8 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
     bq_set(b, A * (ap + am * c + tsa), -2 * A * (am + ap * c), A * (ap + am * c - tsa),
            ap - am * c + tsa, 2 * (am - ap * c), ap - am * c - tsa);
 }
-#ifndef PX_MONO_LAYER
-#define PX_MONO_LAYER 0                                /* v60: MONO SYNTH on the shared note layer */
-#endif
 #include "px_track.h"                                  /* v49: the note tracker (band bank, salience, note layer) */
-#if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST) || defined(PX_PULSE_TEST)
 #include "px_resonator_test.h"
-#endif
 static float tan_pi(float fs, float f) { float w = PI_F * clampf_hz(fs, f) / fs; return sinf(w) / cosf(w); }
 static inline float op_run(px_op *o, float x)
 {
@@ -614,20 +582,10 @@ static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT},
-#ifdef PX_CONSOLIDATE_TEST
     {"", 3, PN_POLY},                                  /* v64: retired, plays POLY OCTAVE HQ (px_block_canonical) */
-#else
-    {"POLY OCTAVE", 3, PN_POLY},
-#endif
     {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
-#ifdef PX_SUB2_TEST
     {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 5, PN_POLY_HQ},
-#else
-    {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 4, PN_POLY_HQ},
-#endif
-#ifdef PX_LOWEST_TEST
     {"LOWEST OCTAVE HQ", 3, PN_POLY},
-#endif
 };
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
@@ -661,48 +619,28 @@ static const char *const PN_BRASS[] = {"ATTACK", "RELEASE", "BRIGHT", "BITE", "D
 static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
 static const char *const PN_TRP[] = {"OCTAVE", "TONE", "DYNAMICS", "RELEASE", "DRY"};       /* v48 (px_acoustic.h) */
 static const char *const PN_CEL[] = {"OCTAVE", "BOW", "VIBRATO", "RELEASE", "DRY"};
-#ifdef PX_PULSE_TEST
 static const char *const PN_PULSE_POLY[] = {"WIDTH", "PWM", "CUTOFF", "RESO", "RELEASE"};
-#endif
-#ifdef PX_ENSEMBLE_TEST
 static const char *const PN_ENS[] = {"OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"};
 static const char *const PN_DUO[] = {"CELLO", "VIOLIN", "TONE", "ATTACK", "RELEASE"};
-#endif
-#ifdef PX_POLY_TEST
 static const char *const PN_SAW_POLY[] = {"DETUNE", "OCTAVE", "CUTOFF", "SWEEP", "RELEASE"};
 static const char *const PN_ARCADE_POLY[] = {"WAVE", "OCTAVE", "CRUSH", "DECAY", "MIX"};
 static const char *const PN_FM_POLY[] = {"RATIO", "INDEX", "DECAY", "RELEASE", "LEVEL"};
-#endif
 static inline int pxa_is(int t);                       /* v48: px_acoustic.h (TRUMPET .. CELLO SECTION, v61 ensembles) */
 static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ORGAN", 5, PN_ORG}, {"CHURCH ORGAN", 5, PN_CHU}, {"STRINGS", 5, PN_STR}, {"CHOIR", 5, PN_CHO},
     {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM},
-#ifdef PX_CONSOLIDATE_TEST
     {"", 5, PN_BSY},                                   /* v63: retired, plays BASS SYNTH HQ (px_type_canonical) */
-#else
-    {"BASS SYNTH", 5, PN_BSY},
-#endif
     {"12-STRING", 3, PN_12S},
     {"ACOUSTIC", 4, PN_ACO}, {"SITAR", 4, PN_SIT}, {"BARITONE", 3, PN_BAR}, {"POLY BRASS", 5, PN_BRASS},
     {"STRINGS HQ", 5, PN_STR}, {"CHOIR HQ", 5, PN_CHO}, {"ORGAN HQ", 5, PN_ORG}, {"CHURCH ORGAN HQ", 5, PN_CHU},
     {"BASS SYNTH HQ", 5, PN_BSY},
-#ifdef PX_CONSOLIDATE_TEST
     {"", 5, PN_PWM},                                   /* v64: retired, plays PWM SYNTH (px_type_canonical) */
-#else
-    {"PWM SYNTH HQ", 5, PN_PWM},
-#endif
     {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     {"TRUMPET", 5, PN_TRP}, {"", 5, PN_TRP}, {"BOWED CELLO", 5, PN_CEL}, {"CELLO ENSEMBLE", 5, PN_TRP},
     {"STRING MACHINE", 5, PN_STRING_MACHINE},
-#ifdef PX_PULSE_TEST
     {"PULSE POLY", 5, PN_PULSE_POLY},
-#endif
-#ifdef PX_POLY_TEST
     {"SAW POLY", 5, PN_SAW_POLY}, {"ARCADE POLY", 5, PN_ARCADE_POLY}, {"FM POLY", 5, PN_FM_POLY},
-#ifdef PX_ENSEMBLE_TEST
     {"STRING ENSEMBLE", 5, PN_ENS}, {"BRASS ENSEMBLE", 5, PN_ENS}, {"STRING DUO", 5, PN_DUO},
-#endif
-#endif
 };
 
 /* drives: each knob has a role; the name shown comes from the role */
@@ -854,7 +792,6 @@ int px_ntypes(int b)
 }
 int px_type_canonical(int b, int t)
 {
-#ifdef PX_CONSOLIDATE_TEST
     /* v63 (poly-test): BASS SYNTH's flip-flop divider retires; its presets play BASS SYNTH HQ with the same five
      * controls (OCT -1, OCT -2, CUTOFF, ENV, DRY). tools/sim/syn_compare.py: HQ is cleaner on GuitarSet solo notes
      * (40.2% of the energy on the notes' sub-octave harmonics, against 36.5%) and chords (30.1%, against 26.5%) */
@@ -865,17 +802,12 @@ int px_type_canonical(int b, int t)
     /* v64: the delay-line POLY OCTAVE retires to POLY OCTAVE HQ: cleaner down (chords 32.1%, against 29.5%) and up
      * (77.5%, against 62.2%), less added wobble (2.61 / 2.11 dB, against 3.60 / 2.42) */
     if (b == PX_B_PITCH && t == PX_PIT_POLYOCT) return PX_PIT_POLYOCT_HQ;
-#endif
     return b == PX_B_SYN && t == PX_SYN_TRUMPET_MODEL ? PX_SYN_TRUMPET : t;
 }
 void px_block_canonical(int b, uint8_t *type, uint8_t *p)
 {
     const int t = px_type_canonical(b, *type);
-#ifdef PX_CONSOLIDATE_TEST
     if (b == PX_B_PITCH && *type == PX_PIT_POLYOCT && t == PX_PIT_POLYOCT_HQ) p[3] = 0;   /* RANGE: every band */
-#else
-    (void)p;
-#endif
     *type = (uint8_t)t;
 }
 static const tdef *tdef_of(int b, int t)
@@ -961,11 +893,9 @@ static float syn_att_ms(float x) { return 10.0f + x * x * 1490.0f; }     /* STRI
 static float syn_rel_ms(float x) { return 50.0f + x * x * 2950.0f; }     /* release */
 static int syn_bari_st(int v) { return -1 - (int)((float)v * 0.01f * 11.99f); }
 static int syn_oct(int v) { return v < 34 ? -1 : (v < 67 ? 0 : 1); }
-#ifdef PX_POLY_TEST
 static int poly_wave(uint8_t v) { return (int)(f01(v) * 7.99f); }
 static int poly_ratio(uint8_t v) { return (int)(f01(v) * 5.99f); }
 static float poly_octave(uint8_t v) { return v < 34 ? 0.5f : (v < 67 ? 1.0f : 2.0f); }
-#endif
 static float syn_fuzz_level_db(float level)
 {
     return (level - 0.5f) * (level < 0.5f ? 24.0f : 12.0f);
@@ -1072,7 +1002,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_MOD_ROTARY && k == 0) { put_str(buf, v < 50 ? "SLOW" : "FAST"); return 1; }
         break;
     case PX_B_SYN:
-#ifdef PX_POLY_TEST
         if ((t == PX_SYN_SAW_POLY || t == PX_SYN_ARCADE_POLY) && k == 1) {
             put_int(buf, syn_oct(v), 1); return 1;
         }
@@ -1085,7 +1014,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             static const char *const ratios[] = {"1:1", "3:2", "2:1", "5:2", "7:2", "5:1"};
             put_str(buf, ratios[poly_ratio(v)]); return 1;
         }
-#endif
         if ((t == PX_SYN_STRINGS || t == PX_SYN_CHOIR || t == PX_SYN_STRINGS_HQ || t == PX_SYN_CHOIR_HQ || t == PX_SYN_STRING_MACHINE) && k < 2) {
             put_int(buf, (int)((k == 0 ? syn_att_ms(x) : syn_rel_ms(x)) + 0.5f), 0); return 1;
         }
@@ -1348,9 +1276,7 @@ static void rc_pitch(px_engine *e)
     const int raw = p->type[PX_B_PITCH] % PX_PIT_COUNT;
     int t = px_type_canonical(PX_B_PITCH, raw);
     int hq = t == PX_PIT_POLYOCT_HQ;
-#ifdef PX_LOWEST_TEST
     hq |= t == PX_PIT_LOWEST_HQ;
-#endif
     if (hq && !e->erb_pitch_active) {
         erb_prepare(e);
         memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
@@ -1368,16 +1294,12 @@ static void rc_pitch(px_engine *e)
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 2.5f; e->oct_s2 = f01(q[2]) * 2.5f; e->oct_up = f01(q[3]) * 2.0f;
         break;
     case PX_PIT_POLYOCT: case PX_PIT_POLYOCT_HQ:
-#ifdef PX_LOWEST_TEST
     case PX_PIT_LOWEST_HQ:
-#endif
         e->ps_nv = hq ? 0 : 2; e->ps_dry = f01(q[0]);
         if (hq) e->erb_pitch_range = erb_range_band(raw != t || q[3] > 100 ? (raw != t ? 0 : 100) : q[3]);
         e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = octave_down_level(f01(q[1]), hq);
         e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = octave_up_level(f01(q[2]), hq);
-#ifdef PX_SUB2_TEST
         e->erb_pitch.down2 = t == PX_PIT_POLYOCT_HQ && raw == t ? octave_down_level(f01(q[4]), 1) * PX_SUB2_LEVEL : 0.0f;
-#endif
         break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
@@ -1971,7 +1893,6 @@ static void irfft128(float *x)
     fft64(x, 1.0f);                                    /* z = 64 x IFFT(Z): x[2n] = Re, x[2n+1] = Im */
 }
 /* the spectra of an IR (PX_IR_LEN taps), its level set as the modelled cabinets' (energy 1/2) */
-#ifdef PX_LOWEST_TEST
 #include "px_lowest_sub.h"
 static px_lowest_sub pxl_pitch;
 
@@ -1987,7 +1908,6 @@ static __attribute__((noinline)) float lowest_pitch_run(px_engine *e, float x)
     const float up = erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], 0.0f, ERB_FULL);
     return x * e->ps_dry + e->ps_lvl[0] * sub + up;
 }
-#endif
 
 static void ir_load_h(const float *h, float *b)       /* b: IR_F floats of scratch */
 {
@@ -2388,20 +2308,12 @@ static void syn_fuzz_reset(px_engine *e)
     e->syn_fuzz.dcs = e->syn_lp = 0.0f;
 }
 
-#ifdef PX_PULSE_TEST
 static void pulse_poly_reset(px_engine *e, int configure);
 static int poly_synth_type(int type)
 {
-#ifdef PX_POLY_TEST
-#ifdef PX_ENSEMBLE_TEST
     if (type == PX_SYN_STRING_DUO) return 1;
-#endif
     return type >= PX_SYN_PULSE_POLY && type <= PX_SYN_FM_POLY;
-#else
-    return type == PX_SYN_PULSE_POLY;
-#endif
 }
-#endif
 static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, float f);   /* v48: px_acoustic.h */
 static void rc_syn(px_engine *e)
 {
@@ -2413,19 +2325,12 @@ static void rc_syn(px_engine *e)
     if (t != e->syn_type) {                            /* new instrument: start from a quiet state */
         if (syn_octave_hq(t)) memset(&e->erb_syn, 0, sizeof e->erb_syn);
         if (t == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
-#ifdef PX_PULSE_TEST
         if (poly_synth_type(t)) pulse_poly_reset(e, 1);
-#endif
         if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || pxa_is(t)
-#if PX_MONO_LAYER
             || t == PX_SYN_MONO
-#endif
             ) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
             pxt_reset(e, &pxa_trk, &pxa_lay);           /* v49 */
-#ifdef PX_RESONATOR_TEST
-            if (t == PX_SYN_BASS_HQ) pxr_reset(sr);
-#endif
         }
         e->syn_type = t; e->syn_kg = 0.0f; e->syn_key = 0; e->syn_ff = 1.0f; e->syn_ff2 = 1.0f; e->syn_sq = 0.0f;
         for (int i = 0; i < 4; i++) e->syn_lad[i] = 0.0f;
@@ -2505,9 +2410,7 @@ static void rc_syn(px_engine *e)
         e->syn_dry = f;
         break;
     case PX_SYN_TRUMPET: case PX_SYN_CELLO: case PX_SYN_CELLO_SECTION:
-#ifdef PX_ENSEMBLE_TEST
     case PX_SYN_STRING_ENS: case PX_SYN_BRASS_ENS:
-#endif
         pxa_setup(e, t, a, b, c, d, f);
         break;
     case PX_SYN_OCT_FUZZ: {
@@ -2521,7 +2424,6 @@ static void rc_syn(px_engine *e)
         e->syn_out = f < 0.5f ? 4.0f * f * f : db2lin(syn_fuzz_level_db(f));
         break;
     }
-#ifdef PX_PULSE_TEST
     case PX_SYN_PULSE_POLY:
         e->syn_pw0 = 0.5f + (a - 0.5f) * 0.76f;
         e->syn_pwd = 0.15f * b;
@@ -2531,8 +2433,6 @@ static void rc_syn(px_engine *e)
         e->syn_ka = onepole_k(sr, 0.004f);
         e->syn_kr = onepole_k(sr, 0.003f + 0.052f * f * f);
         break;
-#endif
-#ifdef PX_POLY_TEST
     case PX_SYN_SAW_POLY:
         e->syn_mul = poly_octave(q[1]);
         e->syn_pwd = expf(a * (18.0f * 0.00057762265f)) - 1.0f;
@@ -2554,7 +2454,6 @@ static void rc_syn(px_engine *e)
         e->syn_dry = 1.0f - f;
         e->syn_out = 0.26f * f;
         break;
-#ifdef PX_ENSEMBLE_TEST
     case PX_SYN_STRING_DUO:                            /* v65: CELLO, VIOLIN levels; TONE; ATTACK; RELEASE */
         e->syn_wave = 0.60f * a; e->syn_pwd = 0.60f * b;     /* (50 / 50: STRING ENSEMBLE's level on the loops) */
         e->syn_fenv = 2.0f + 8.0f * c;                 /* the low-pass, in harmonics at full level */
@@ -2562,7 +2461,6 @@ static void rc_syn(px_engine *e)
         e->syn_kr = onepole_k(sr, 0.030f + 0.60f * f * f);
         e->syn_linc[0] = 5.3f / sr;
         break;
-#endif
     case PX_SYN_FM_POLY: {
         const float ratios[] = {1.0f, 1.5f, 2.0f, 2.5f, 3.5f, 5.0f};
         e->syn_mul = ratios[poly_ratio(q[0])];
@@ -2573,7 +2471,6 @@ static void rc_syn(px_engine *e)
         e->syn_out = 0.24f * f;
         break;
     }
-#endif
     case PX_SYN_MONO:                                  /* one note: tracker -> oscillator -> 24 dB ladder */
         bq_lowpass(&e->syn_f[0], sr, 110.0f, 0.54f); bq_lowpass(&e->syn_f[1], sr, 110.0f, 1.31f);
         bq_highpass(&e->syn_f[2], sr, 50.0f, 0.7f);   /* no DC / rumble in the tracker */
@@ -2688,10 +2585,8 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
     px_recalc(e);
-#ifdef PX_LOWEST_TEST
     if (e->cur.on[PX_B_PITCH] && e->cur.type[PX_B_PITCH] == PX_PIT_LOWEST_HQ)
         lowest_pitch_reset(e);
-#endif
     e->run = e->cur;                                   /* v38: nothing gliding, nothing fading */
     wl_clear(e);                                       /* v39: the lanes start empty (the output fades in) */
     e->gl_left = 0;
@@ -2802,24 +2697,15 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
             e->bf[b] = e->bfa[b] = 0.0f;
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
-#ifdef PX_LOWEST_TEST
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
-#endif
             if (b == PX_B_SYN && syn_octave_hq(p->type[b]))
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
             if (b == PX_B_SYN && p->type[b] == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
-#ifdef PX_PULSE_TEST
             if (b == PX_B_SYN && poly_synth_type(p->type[b])) pulse_poly_reset(e, 0);
-#endif
             if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ
-#if PX_MONO_LAYER
                                   || p->type[b] == PX_SYN_MONO
-#endif
                                   )) {
                 memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq); pxt_reset(e, &pxa_trk, &pxa_lay);
-#ifdef PX_RESONATOR_TEST
-                if (p->type[b] == PX_SYN_BASS_HQ) pxr_reset(e->sr);
-#endif
             }
             if (b == PX_B_SFX && p->type[b] == PX_SFX_SYNTH_HQ) {
                 memset(&e->sfx_track, 0, sizeof e->sfx_track); pxt_reset(e, &pxs_trk, &pxs_lay);
@@ -3388,9 +3274,7 @@ static inline float syn_ladder(px_engine *e, float in, float fc)
 {
     return syn_ladder_step(e, in, syn_ladder_coefficient(e, fc));
 }
-#ifdef PX_PULSE_TEST
 #include "px_pulse_poly.h"
-#endif
 static inline float syn_tap(const px_engine *e, float d)   /* ensemble / doubler line, d samples back */
 {
     float pos = (float)e->syn_cw - d; if (pos < 0.0f) pos += (float)PX_SYN_CB;
@@ -3533,7 +3417,6 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
     case PX_SYN_MONO: {
         float a = px_abs(x);
         e->syn_env += (a - e->syn_env) * (a > e->syn_env ? e->syn_ea : e->syn_er);
-#if PX_MONO_LAYER
         /* v60: the shared note layer (engine/px_track.h, as TRUMPET .. CELLO and the HQ synths) plays the note: its
          * gate, pick and pitch replace syn_track's zero crossings; the oscillator and ladder are unchanged */
         pxt_layer_run(&pxa_lay, &pxa_trk, x, pxt_run(e, &pxa_trk, x));
@@ -3548,19 +3431,6 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
             if (pxa_lay.onset || r < 0.944f || r > 1.059f) e->syn_f0 = e->syn_f0t;
         }
         e->syn_kg += ((on ? 1.0f : 0.0f) - e->syn_kg) * (on ? e->syn_ka : e->syn_kr);
-#else
-        e->syn_slow += (e->syn_env - e->syn_slow) * e->syn_glk;           /* slower: re-attack detection */
-        int on = e->syn_key ? (e->syn_env > e->syn_thr * 0.5f) : (e->syn_env > e->syn_thr * 1.5f);
-        if (on && !e->syn_key) {
-            e->syn_snap = 1;
-            e->syn_per = e->syn_p1 = e->syn_p2 = 0.0f;  /* measure new periods entirely inside this note */
-            e->syn_kg = 0.0f;
-        }
-        syn_track(e, x);
-        if ((on && !e->syn_key) || e->syn_env > 1.6f * e->syn_slow + e->syn_thr) e->syn_fenv = 1.0f;
-        e->syn_key = on;
-        e->syn_kg += ((on && !e->syn_snap && e->syn_f0 > 0.0f ? 1.0f : 0.0f) - e->syn_kg) * (on ? e->syn_ka : e->syn_kr);
-#endif
         if (e->syn_kg < 1e-6f) e->syn_kg = 0.0f;
         e->syn_f0 += (e->syn_f0t - e->syn_f0) * e->syn_glk;
         float fr = e->syn_f0 * e->syn_mul, dt = fr / e->sr;
@@ -3618,11 +3488,7 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
         float h = e->syn_sq * 0.2f;
         float s;
         if (t == PX_SYN_BASS_HQ) {
-#ifdef PX_RESONATOR_TEST
-            pxt_layer_run(&pxa_lay, &pxa_trk, x, pxr_run(&pxa_trk, x));
-#else
             pxt_layer_run(&pxa_lay, &pxa_trk, x, pxt_run(e, &pxa_trk, x));
-#endif
             pxt_drive(&e->syn_track_hq, &pxa_lay, e->sr);
             /* v49: a sub floor: a sub that would sound under 35 Hz (a low E's two octaves down is 20.6 Hz: below what a
              * speaker gives and what the ear calls a note) plays an octave higher */
@@ -3880,13 +3746,11 @@ static __attribute__((noinline)) void syn_organ_run(px_engine *e, int type, floa
 /* PITCH's shifters: POLY OCT, WHAMMY, HARMONY, DETUNE */
 static __attribute__((noinline)) void pitch_run(px_engine *e, int type, float *xb, int n0, float strim)
 {
-#ifdef PX_LOWEST_TEST
     if (type == PX_PIT_LOWEST_HQ) {
         for (int k = 0; k < n0; ++k) xb[k] = lowest_pitch_run(e, xb[k]) * strim;
         e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
         return;
     }
-#endif
     if (type == PX_PIT_POLYOCT_HQ) {
         for (int k = 0; k < n0; ++k) {
             const float x = xb[k];
@@ -4428,12 +4292,10 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             }
             goto faded;
         }
-#ifdef PX_PULSE_TEST
         if (sblk == PX_B_SYN && poly_synth_type(syn_t)) {
             pulse_poly_block(e, xb, n, strim);
             goto faded;
         }
-#endif
         if (sblk == PX_B_SYN && pxa_is(syn_t)) { pxa_run(e, syn_t, xb, n, strim); goto faded; }   /* v48 */
 #if PX_RUNS
         if (sblk == PX_B_SYN && (syn_t == PX_SYN_ORGAN || syn_t == PX_SYN_CHURCH ||
@@ -4509,12 +4371,10 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     x = x * e->oct_dry + s1 * e->oct_s1 + s2 * e->oct_s2 + u * e->oct_up;
                 } else {
 #if !PX_RUNS                                           /* (with the runs: pitch_run) */
-#ifdef PX_LOWEST_TEST
                     if (pit_t == PX_PIT_LOWEST_HQ) {
                         x = lowest_pitch_run(e, x);
                         break;
                     }
-#endif
                     if (pit_t == PX_PIT_POLYOCT_HQ) {
                         x = x * e->ps_dry + erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], e->ps_lvl[0], e->erb_pitch_range);
                         break;

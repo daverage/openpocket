@@ -12,9 +12,7 @@ typedef struct {
     float rate, inv_rate, env_step, attack, release, swap, normalize;
     float env, proposed, selected, pitch, phase, gain, target;
     float fit_previous, fit_confirmed;
-#ifndef PX_LOWEST_V53
     float anchor_level, release_hz;
-#endif
     int stable, missing, anchor_missing;
 #ifdef PX_LOWEST_HOST
     int reported;
@@ -28,11 +26,7 @@ static void pxl_reset(px_lowest_sub *sub, float rate)
     sub->inv_rate = 1.0f / rate;
     sub->env_step = onepole_k(rate, 0.006f);
     sub->attack = onepole_k(rate, 0.003f);
-#ifdef PX_LOWEST_V53
-    sub->release = onepole_k(rate, 0.008f);
-#else
     sub->release = onepole_k(rate, 0.005f);
-#endif
     sub->swap = onepole_k(rate, 0.0015f);
     sub->normalize = 2.0f * onepole_k(rate * 0.25f, 0.0226644f);
     pxr_reset(rate);
@@ -55,7 +49,6 @@ static void pxl_fit_note(px_lowest_sub *sub)
         fit->first_root > floor)
         low = fit->first_hz;
     const int held = fit->held_hz > 0.0f && fit->held_gain > 0.025f * loudest;
-#ifndef PX_LOWEST_V53
     /* A steep loss of note-specific level can start the fade while the
      * harmonic window still holds the pitch and the upper string rings. */
     const float anchor_hz = fit->anchor * (sub->rate / (LF_SIZE * LF_DECIMATE));
@@ -63,7 +56,6 @@ static void pxl_fit_note(px_lowest_sub *sub)
     sub->release_hz = anchor_hz > 0.0f && fit->first_hz != anchor_hz &&
                       sub->anchor_level > 0.004f && fit->held_gain < 0.60f * sub->anchor_level
                       ? anchor_hz : 0.0f;
-#endif
     if (held) {
         sub->anchor_missing = 0;
         if (low <= 0.0f || low >= fit->held_hz) low = fit->held_hz;
@@ -74,12 +66,6 @@ static void pxl_fit_note(px_lowest_sub *sub)
     sub->fit_confirmed = low == sub->fit_previous ? low : 0.0f;
     sub->fit_previous = low;
     /* Use the isolated-note check to establish a fresh hold. */
-#ifdef PX_LOWEST_V53
-    /* v53 lets a confirmed lower fit replace the anchor during a hold. */
-    if (held && sub->fit_confirmed > 0.0f && sub->fit_confirmed < fit->held_hz) {
-        fit->anchor = sub->fit_confirmed == fit->first_hz ? fit->first.pitch : fit->second.pitch;
-    } else
-#endif
     if (fit->anchor == 0.0f && sub->fit_confirmed > 0.0f &&
         sub->fit_confirmed < PXT_FMIN && sub->fit_confirmed == fit->first_hz &&
         fit->second_hz == 0.0f && fit->first_share > 0.74f &&
@@ -114,9 +100,7 @@ static __attribute__((noinline)) void pxl_pick(px_lowest_sub *sub)
 
     sub->target = 0.0f;
     if (sub->selected <= 0.0f ||
-#ifndef PX_LOWEST_V53
         sub->selected == sub->release_hz ||
-#endif
         sub->env <= 0.001f) return;
     if (sub->selected == sub->fit_confirmed) {
         if (sub->selected == sub->fit.held_hz) sub->target = sub->fit.held_gain;

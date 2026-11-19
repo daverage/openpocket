@@ -41,11 +41,7 @@ CHAN="${OP_CHANNEL:-}"
 : > "$O/channel.h"
 if [ -n "$CHAN" ]; then
   case "$CHAN" in *[!a-z0-9-]*|"") echo "ERROR: OP_CHANNEL must be lowercase letters, digits and -"; exit 1;; esac
-  DEFAULT_TESTVER=42
-  [ "$CHAN" = lowest-test ] && DEFAULT_TESTVER=54
-  [ "$CHAN" = pulse-test ] && DEFAULT_TESTVER=56
-  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=66
-  TESTVER="${OP_TEST_VERSION:-$DEFAULT_TESTVER}"
+  TESTVER="${OP_TEST_VERSION:-70}"
   printf '#define OP_VERSION_NUM "%s"\n#define OP_TAG " %s"\n' "$TESTVER" "$(echo "$CHAN" | tr a-z- A-Z' ')" > "$O/channel.h"
   APP="$HERE/openpocket-$CHAN.bin"; PKG="$HERE/../docs/firmware/$CHAN"
   rm -f "$APP"
@@ -54,21 +50,7 @@ fi
 # AC791N hardware FPU (same options as the JieLi SDK for the WL82) + DSP engine at 44.1 kHz
 FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
-[ "$CHAN" = resonator-test ] && DSPDEF="$DSPDEF -DPX_RESONATOR_TEST=1"
-if [ "$CHAN" = lowest-test ] || [ "$CHAN" = pulse-test ] || [ "$CHAN" = poly-test ]; then
-  DSPDEF="$DSPDEF -DPX_LOWEST_TEST=1"
-  [ "$TESTVER" = 53 ] && DSPDEF="$DSPDEF -DPX_LOWEST_V53=1"
-fi
-[ "$CHAN" = pulse-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1"
-[ "$CHAN" = poly-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1 -DPX_POLY_TEST=1 -DPX_MONO_LAYER=1 -DPX_ENSEMBLE_TEST=1 -DPX_ERB_LAYOUT2=1 -DPX_CONSOLIDATE_TEST=1 -DPX_SUB2_TEST=1"   # v60 MONO layer; v61 ensembles; v62 octave bank; v63/64 retired types; v64 OCT -2
-if [ "$CHAN" = poly-test ] && [ "$TESTVER" = 67 ]; then
-  DSPDEF="$DSPDEF -DPX_POLY_EVICT_TEST=1 -DPXP_EXTEND_GUARD=1 -DPXP_EVICT_RATIO=6
-    -DPX_POLY_OCTAVE_EVIDENCE_TEST=1 -DPXP_EVICT_FAST_RELEASE=1
-    -DPXP_OCT_ODD_LIMIT=0.10f -DPXP_OCT_SIXTH_FLOOR=0.025f
-    -DPX_POLY_FADE_TEST=1 -DPXP_FADE_SETTLE=16 -DPXP_LATE_ROOT_TEST=9
-    -DPXP_NOMINAL_OCTAVE_TEST=1 -DPXP_LOW_ENTRY_CENTER=1 -DPXP_ACQ2=0.06f -DPXP_SECOND=0.58f
-    -DPXT_OCT_CHECK_MAX=900.0f -DPX_BRASS_BALANCE_TEST=1"
-fi
+# OpenPocket Synth (v70): one engine recipe. The v66 poly-test flags are part of the engine source now (engine/).
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
@@ -76,7 +58,7 @@ $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF 
 $CC $FP -O2 -ffunction-sections -fno-builtin $DSPDEF $INC -c "$HERE/../engine/px_dsp.c" -o "$O/px_dsp.o"
 $CC $FP -O2 -fno-builtin -c "$HERE/px_math.c" -o "$O/px_math.o"
 BLEOBJ=""; MAPOPT=""
-[ "$CHAN" = poly-test ] && [ "$TESTVER" = 67 ] && MAPOPT="-Map $O/openpocket.map"
+MAPOPT="-Map $O/openpocket.map"   # every build keeps its linker map (resource reports)
 if [ -n "$OP_BLE" ]; then
   MAPOPT="-Map $O/openpocket.map"
   # JieLi's LE controller (LLVM bitcode, Apache-2.0, third_party/jieli-ble) -> pi32v2 objects, and our context switch
@@ -102,15 +84,7 @@ RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_bl
   pxn_lp_split_now pxn_frame_ticks px_nam_lp_handed px_nam_lp_before pxn_lp_handed pxn_lp_before
   px_nam_lp_split_used px_nam_lp_force pxn_lp_split_used pxn_lp_force px_nam_lp_gave_up pxn_lp_gave_up
   ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run synth_hq_track cab_detail_run gate_run comp_run bq_chain"
-[ "$CHAN" = resonator-test ] && RAM_DSP="$RAM_DSP pxr_advance pxr_pick"
-if [ "$CHAN" = lowest-test ] || [ "$CHAN" = pulse-test ] || [ "$CHAN" = poly-test ]; then
-  RAM_DSP="$RAM_DSP lowest_pitch_run pxl_run pxr_advance lf_run lf_pick"
-fi
-[ "$CHAN" = lowest-test ] && RAM_DSP="$RAM_DSP pxr_pick"
-# These channels keep the per-report picker in flash to fit the voice loops in RAM.
-if [ "$CHAN" = pulse-test ] || [ "$CHAN" = poly-test ]; then
-  RAM_DSP="$RAM_DSP pulse_poly_block pulse_poly_voice_sample"
-fi
+RAM_DSP="$RAM_DSP lowest_pitch_run pxl_run pxr_advance lf_run lf_pick pulse_poly_block pulse_poly_voice_sample"   # (the per-report picker stays in flash)
 # v40.2: the layer split's path (pxn_lp_*, lp_job, dsp_lp_run) in RAM; out of it, to make the room: the frame split's serving
 # (now the fallback when the layer split cannot run), the vector unit's paths (never chosen: slower) and the C versions
 # of the hand routines (used only if a hand one fails its start-up check: the network is then too slow anyway)

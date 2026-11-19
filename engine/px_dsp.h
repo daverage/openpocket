@@ -39,9 +39,7 @@ enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_DRIVE, PX_B_AMP, PX_B_CA
 enum { PX_GATE_NORMAL, PX_GATE_SMART, PX_GATE_COUNT };
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ,
-#ifdef PX_LOWEST_TEST
        PX_PIT_LOWEST_HQ,
-#endif
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
        PX_SFX_SYNTH_HQ, PX_SFX_COUNT };
@@ -68,16 +66,10 @@ enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, P
        PX_SYN_ORGAN_HQ, PX_SYN_CHURCH_HQ, PX_SYN_BASS_HQ, PX_SYN_PWM_HQ, PX_SYN_OCT_FUZZ,
        /* v48: tracked acoustic voices (engine/px_acoustic.h) */
        PX_SYN_TRUMPET, PX_SYN_TRUMPET_MODEL, PX_SYN_CELLO, PX_SYN_CELLO_SECTION, PX_SYN_STRING_MACHINE,
-#ifdef PX_PULSE_TEST
        PX_SYN_PULSE_POLY,
-#ifdef PX_POLY_TEST
        PX_SYN_SAW_POLY, PX_SYN_ARCADE_POLY, PX_SYN_FM_POLY,
-#ifdef PX_ENSEMBLE_TEST
        PX_SYN_STRING_ENS, PX_SYN_BRASS_ENS,            /* v61: one note, a sampled lead and a light support layer */
        PX_SYN_STRING_DUO,                              /* v65: two tracked notes, a cello on the lower, a violin on the upper */
-#endif
-#endif
-#endif
        PX_SYN_COUNT };
 enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
@@ -178,10 +170,8 @@ typedef struct {
     float input[32], up[32];                           /* 44.1 kHz in; 22.05 kHz out (its odd slots stay zero) */
     float in2[32], up2[32];                            /* v49: 22.05 kHz in; 11.025 kHz out (the voices, mixed) */
     uint8_t half_phase[PX_ERB_BANDS];
-#ifdef PX_SUB2_TEST
     uint8_t quarter[PX_ERB_BANDS];                     /* v64: each band's wraps modulo 4 (two octaves down) */
     float down2;                                       /* v64: the -24 voice's level (POLY OCTAVE HQ's OCT -2) */
-#endif
     unsigned pos, pos2;
     unsigned idle;                                     /* v49: samples with every voice at zero (the bank rests) */
 } px_erb_octave;
@@ -206,11 +196,9 @@ typedef struct {
     float str_lp, bowv, vib_ph, vib_amt, held_t, noise_lp, kick_p, kick_a; int kick_n;   /* v49: kick, the string set going */
     float lip_y1, lip_y2, lip_a1, lip_g, dc_x, dc_y, breath, out_lp, fb, last_f, amp, lvl_t;
     float mp;                                         /* v49: the brass's blowing pressure for the note's pitch */
-#ifdef PX_ENSEMBLE_TEST
     /* v61: the ensembles' support layer, rendered beside the lead from the same note (engine/px_acoustic.h) */
     float ens_ph[2], ens_amp, ens_lp[2], ens_vib, ens_rel, ens_level, ens_k_att, ens_det, ens_tone0, ens_tone1,
           ens_vib_amt, ens_vib_inc, ens_f, ens_cand; int ens_n;   /* v66: ens_f the settled pitch */
-#endif
 } px_acoustic;
 
 #define PX_PS_N 2048                   /* pitch shifter buffer (46 ms) */
