@@ -82,16 +82,16 @@ static float ratio = 2.0f;
 static void render(int which, const float *x, float *y, int n)
 {
     if (which == 1 || which == 2) { run_bank(&BK[which - 1], x, y, n); return; }
-    px_erb_band saved[PX_ERB_BANDS];
+    px_erb_band saved[ERB_O_BANDS];                      /* (v62: the octave voices' bank, erb_oband) */
     if (which == 3) {
-        memcpy(saved, erb_band, sizeof saved);
-        memset(erb_band, 0, sizeof erb_band);
-        memcpy(erb_band, BK[2].b, (size_t)BK[2].n * sizeof erb_band[0]);
+        memcpy(saved, erb_oband, sizeof saved);
+        memset(erb_oband, 0, sizeof erb_oband);
+        memcpy(erb_oband, BK[2].b, (size_t)BK[2].n * sizeof erb_oband[0]);
     }
     px_erb_octave state = {0};
     for (int t = 0; t < n; t++)
         y[t] = erb_octaves(&E, &state, x[t], ratio == 2.0f, ratio == 0.5f, ERB_FULL);
-    if (which == 3) memcpy(erb_band, saved, sizeof saved);
+    if (which == 3) memcpy(erb_oband, saved, sizeof saved);
 }
 
 /* ---- test signals and scores ---- */
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
     int n1 = terrarium ? 80 : law_bands(s1, c1);
     make_bank(&BK[1], n1, terrarium ? 1.0f : w1, 44100.0);
     int n2 = law_bands(s2, c2);
-    if (n2 > PX_ERB_BANDS) { fputs("Compact candidate exceeds the engine bank capacity\n", stderr); return 1; }
+    if (n2 > ERB_O_BANDS) { fputs("Compact candidate exceeds the engine bank capacity\n", stderr); return 1; }
     make_bank(&BK[2], n2, w2, 11025.0);
     LAW_S0 = 0;
     static char l1[40], l2[40]; snprintf(l1, 40, "%.0f+%.3f w%.1f(%d)", s1, c1, w1, n1); snprintf(l2, 40, "%.0f+%.3f w%.1f(%d)", s2, c2, w2, n2);

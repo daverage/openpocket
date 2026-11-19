@@ -35,6 +35,8 @@ try {
         ["BRASS ENSEMBLE", ["OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"], [50, 50, 100, 50, 0]],
         ["CELLO ENSEMBLE", null, [50, 50, 50, 50, 0]],       // v61: the string ensemble's lead alone (load reference)
         ["TRUMPET", null, [50, 50, 50, 50, 0]],
+        ["POLY OCT FUZZ", null, [100, 100, 50, 50, 50]],     // v62: the HQ octave bank (both voices up)
+        ["STRINGS HQ", null, [50, 50, 50, 50, 50]],
     ].map(([name, params, knobs]) => {
         const type = lookup(syn, name);
         if (params) assert.deepEqual(blocks[syn].types[type].params.map(p => p.name), params);

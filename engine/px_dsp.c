@@ -40,8 +40,13 @@
 #define PI_F 3.14159265f
 /* v49: the octave voices kept at v48's level (the mean over the bundled chords, lead and riff loops, through POLY
  * OCTAVE HQ: tools/sim/px_engine.wasm of v48 against v49) */
+#ifdef PX_ERB_LAYOUT2
+#define ERB_GAIN_UP   0.631f                           /* v62: the 26-band bank at the 29-band one's wet level (loops) */
+#define ERB_GAIN_DOWN 1.451f
+#else
 #define ERB_GAIN_UP   0.669f
 #define ERB_GAIN_DOWN 1.480f
+#endif
 #ifndef ERB_GAIN_UP2
 #define ERB_GAIN_UP2  0.46f                            /* v49: the 2' at CHURCH ORGAN's level (its shifter's, -6.7 dB) */
 #endif
@@ -87,16 +92,30 @@ static float onepole_k(float sr, float sec) { return 1.0f - expf(-1.0f / (sec * 
 #define ERB_S0    37.5f                                /* the spacing to the next band: ERB_S0 + ERB_SC x centre (Hz) */
 #define ERB_SC    0.04f
 #define ERB_WIDTH 0.8f                                 /* bandwidth, of the spacing */
-#define ERB_FULL  ((float)PX_ERB_BANDS)
 static px_erb_band erb_band[PX_ERB_BANDS];
 static float erb_hb[8], erb_fc[PX_ERB_BANDS], erb_bw[PX_ERB_BANDS], erb_rate;
-static void erb_prepare(px_engine *e)
+#ifdef PX_ERB_LAYOUT2
+/* v62 (poly-test): the octave voices get their own bank, 26 bands 60 Hz + 2% apart and 0.7 of the spacing wide
+ * (docs/OCTAVE-LAYOUT-v62.md: less added wobble, faster low notes); the note tracker keeps erb_band */
+#define ERB_O_BANDS 26
+#define ERB_O_S0    60.0f
+#define ERB_O_SC    0.02f
+#define ERB_O_WIDTH 0.7f
+static px_erb_band erb_oband[ERB_O_BANDS];
+static float erb_ofc[ERB_O_BANDS];
+#else
+#define ERB_O_BANDS PX_ERB_BANDS
+#define ERB_O_S0    ERB_S0
+#define ERB_O_SC    ERB_SC
+#define erb_oband   erb_band
+#define erb_ofc     erb_fc
+#endif
+#define ERB_FULL  ((float)ERB_O_BANDS)
+static void erb_layout(px_erb_band *band, float *fc, float *bw, int n, float s0, float sc, float width, float rate)
 {
-    const float rate = e->sr * 0.25f;
-    if (erb_rate == rate) return;
     float center = ERB_LOW;
-    for (int i = 0; i < PX_ERB_BANDS; ++i, center += ERB_S0 + ERB_SC * center) {
-        const float omega = PI_F * ERB_WIDTH * (ERB_S0 + ERB_SC * center) / rate;
+    for (int i = 0; i < n; ++i, center += s0 + sc * center) {
+        const float omega = PI_F * width * (s0 + sc * center) / rate;
         const float a0 = 1.0f / (1.0f + 0.70710678f * sinf(omega));
         const float half_sine = sinf(0.5f * omega);
         const float b0 = a0 * half_sine * half_sine;
@@ -104,10 +123,19 @@ static void erb_prepare(px_engine *e)
         const float phase = 2.0f * PI_F * center / rate;
         const float c = cosf(phase), s = sinf(phase);
         const float c2 = c * c - s * s, s2 = 2.0f * c * s;
-        erb_fc[i] = center; erb_bw[i] = ERB_WIDTH * (ERB_S0 + ERB_SC * center);
-        erb_band[i] = (px_erb_band){ b0, {2.0f * b0 * c, 2.0f * b0 * s},
-                                     {b0 * c2, b0 * s2}, {a1 * c, a1 * s}, {a2 * c2, a2 * s2} };
+        fc[i] = center; if (bw) bw[i] = width * (s0 + sc * center);
+        band[i] = (px_erb_band){ b0, {2.0f * b0 * c, 2.0f * b0 * s},
+                                 {b0 * c2, b0 * s2}, {a1 * c, a1 * s}, {a2 * c2, a2 * s2} };
     }
+}
+static void erb_prepare(px_engine *e)
+{
+    const float rate = e->sr * 0.25f;
+    if (erb_rate == rate) return;
+    erb_layout(erb_band, erb_fc, erb_bw, PX_ERB_BANDS, ERB_S0, ERB_SC, ERB_WIDTH, rate);
+#ifdef PX_ERB_LAYOUT2
+    erb_layout(erb_oband, erb_ofc, NULL, ERB_O_BANDS, ERB_O_S0, ERB_O_SC, ERB_O_WIDTH, rate);
+#endif
     for (int i = 0; i < 8; ++i) {
         const float offset = (float)(2 * i + 1);
         const float window = 0.54f + 0.46f * cosf(2.0f * PI_F * offset / 30.0f);
@@ -140,14 +168,14 @@ static inline float erb_inverse_root(float power)
  * (+24: CHURCH ORGAN HQ's 2', phase x4, from the bands below ERB_UP2_TOP, whose fourfold stays under the rate's limit) */
 #define ERB_UP2_TOP 1250.0f
 #ifdef PX_LOWEST_HOST
-static float erb_host_mask[PX_ERB_BANDS];
+static float erb_host_mask[ERB_O_BANDS];
 #endif
 static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, float up, float down, float up2, float range)
 {
     (void)e;
     float raised = 0.0f, lowered = 0.0f, raised2 = 0.0f;
-    for (int i = 0; i < PX_ERB_BANDS; ++i) {
-        const px_erb_band *b = &erb_band[i];
+    for (int i = 0; i < ERB_O_BANDS; ++i) {
+        const px_erb_band *b = &erb_oband[i];
         const float real = b->b0 * x + state->z1[i].r;
         const float imag = state->z1[i].i;
         state->z1[i].r = b->b1.r * x - (b->a1.r * real - b->a1.i * imag) + state->z2[i].r;
@@ -160,7 +188,7 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
         const float rr = real * real, ii = imag * imag, power = rr + ii + 1e-24f;
         const float inv = erb_inverse_root(power);
         raised += (rr - ii) * inv;
-        if (up2 != 0.0f && erb_fc[i] < ERB_UP2_TOP) {     /* v49: Re(z⁴) / |z|³, two octaves up */
+        if (up2 != 0.0f && erb_ofc[i] < ERB_UP2_TOP) {     /* v49: Re(z⁴) / |z|³, two octaves up */
             const float d = rr - ii;
             raised2 += (d * d - 4.0f * rr * ii) * inv * inv * inv;
         }
@@ -812,7 +840,7 @@ static float erb_range_band(int value)
     const float hz = 440.0f * powf(2.0f, ((float)erb_range_note(value) + 0.5f - 69.0f) / 12.0f);
     /* v49: the band position of hz in the bank (fractional, between its centres) */
     float c = ERB_LOW, i = 0.0f;
-    while (i < ERB_FULL - 1.0f) { const float next = c + ERB_S0 + ERB_SC * c; if (hz < next) return i + (hz - c) / (next - c); c = next; i += 1.0f; }
+    while (i < ERB_FULL - 1.0f) { const float next = c + ERB_O_S0 + ERB_O_SC * c; if (hz < next) return i + (hz - c) / (next - c); c = next; i += 1.0f; }
     return i;
 }
 static int syn_key_idx(int v) { int i = v * 12 / 101; return i < 0 ? 0 : (i > 11 ? 11 : i); }
