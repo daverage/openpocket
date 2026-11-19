@@ -200,7 +200,7 @@ def report(args):
     print(f'set {args.set}: frames of 10 ms; P precision, R recall, R2 recall of up to two notes, ghosts = harmonics among the wrong notes;'
           ' entry = onset to first report (ms), found = notes reported within 0.5 s')
     print(f'{"candidate":9} {"takes":>5} {"P %":>6} {"R %":>6} {"R2 %":>6} {"F %":>6} {"ghost %":>8} {"entry50":>8} {"entry90":>8} {"found %":>8}')
-    for cand in CANDS:
+    for cand in CANDS + (args.extra.split(',') if args.extra else []):
         S = np.zeros(6); lat = []; nn = 0; k = 0
         for name, wav, ref in takes(args.set):
             p = cache(args.set, cand, name)
@@ -218,6 +218,6 @@ def report(args):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('cmd', choices=['lookahead', 'run', 'report'])
-    ap.add_argument('--set', default='dev'); ap.add_argument('--only'); ap.add_argument('--limit', type=int)
+    ap.add_argument('--set', default='dev'); ap.add_argument('--only'); ap.add_argument('--limit', type=int); ap.add_argument('--extra')
     a = ap.parse_args()
     {'lookahead': lookahead, 'run': lambda: run(a), 'report': lambda: report(a)}[a.cmd]()

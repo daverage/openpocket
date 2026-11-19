@@ -2,6 +2,7 @@
 """OpenPocket Synth, stage 5: electric guitar and bass test sets for tools/research/mono_compare.py.
 
   python3 tools/research/prep_sets.py gtechs        Guitar-TECHS (CC BY 4.0), DI takes and their MIDI
+  python3 tools/research/prep_sets.py gtchords      Guitar-TECHS chords (for tools/research/poly_compare.py)
   python3 tools/research/prep_sets.py bass          IDMT-SMT-Bass-Single-Track (CC BY-NC-ND 4.0): 17 bass lines
   python3 tools/research/prep_sets.py bassnotes     IDMT-SMT-Bass (CC BY-NC-ND 4.0): single notes, E1 .. G3
 
@@ -61,11 +62,12 @@ def lag_of(x, sr, notes):
     return lag
 
 
-def gtechs():
+def gtechs(parts=('scales', 'singlenotes', 'techniques', 'music'), set_name='gtechs'):
     import soundfile as sf
     rows = []
     for di in sorted(glob.glob(os.path.join(DATA, 'guitar-techs', 'P*', 'audio', 'directinput', '*.wav'))):
         part = di.split(os.sep)[-4]                        # P1_scales ...
+        if part.split('_', 1)[1] not in parts: continue
         key = os.path.basename(di)[len('directinput_'):-4]
         mid = os.path.join(DATA, 'guitar-techs', part, 'midi', f'midi_{key}.mid')
         if not os.path.exists(mid): print('no MIDI for', di); continue
@@ -75,7 +77,7 @@ def gtechs():
         lag = lag_of(x, sr, notes)
         notes = [(a - lag, b - lag, m) for a, b, m in notes if a - lag >= 0]
         name = f'{part}_{key}'
-        write('gtechs', name, x, sr, notes)
+        write(set_name, name, x, sr, notes)
         rows.append((name, len(notes), lag))
         print(f'{name:28} {len(notes):5d} notes, MIDI {lag * 1000:+.0f} ms against the DI, '
               f'MIDI {min(m for *_, m in notes):.0f}..{max(m for *_, m in notes):.0f}')
@@ -123,4 +125,4 @@ def bassnotes(per_dir=60, seed=1):
 
 
 if __name__ == '__main__':
-    {'gtechs': gtechs, 'bass': bass, 'bassnotes': bassnotes}[sys.argv[1]]()
+    {'gtechs': gtechs, 'gtchords': lambda: gtechs(('chords',), 'gtchords'), 'bass': bass, 'bassnotes': bassnotes}[sys.argv[1]]()

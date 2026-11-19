@@ -219,3 +219,27 @@ What it shows:
 - The engine loses most between its analysis and its voices. R2 falls from 74.3 to 68.9 %, and notes found
   within 0.5 s fall from 75 to 63 %. The two-slot allocator is the first thing to improve. It should get simpler,
   not gain more rules (docs/TRACKING-ARCHITECTURE-REVIEW.md).
+
+### A minimal two-voice allocator on the shared tracker
+
+`tools/research/poly_alloc.py` runs causally on the shared tracker's notes. A voice follows its note within
+120 cents and is released after HOLD frames without it. A new note takes a free voice once the tracker has reported
+it for CONFIRM frames running. There are no harmonic, level or eviction rules. Frames are 1.45 ms.
+
+| Set | Candidate | P | R2 | Ghosts | Entry median | Found |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| GuitarSet development | v70 voices | 74.7 % | 68.9 % | 9.1 % | 26 ms | 62.9 % |
+| | confirm 5, hold 8 | 77.1 % | 76.3 % | 10.2 % | 25 ms | 64.4 % |
+| Guitar-TECHS chords (electric) | v70 voices | 90.1 % | 75.7 % | 28.7 % | 33 ms | 76.6 % |
+| | confirm 5, hold 8 | 86.5 % | 87.5 % | 21.3 % | 28 ms | 78.5 % |
+| GuitarSet test, frozen, scored once | v70 voices | 71.0 % | 65.4 % | 8.9 % | 29 ms | 65.0 % |
+| | confirm 5, hold 8 | **73.4 %** | **73.3 %** | 10.5 % | 27 ms | 66.7 % |
+| | confirm 8, hold 8 | 75.3 % | 68.6 % | 10.3 % | 36 ms | 63.3 % |
+
+The test set settles it. Confirm 5 / hold 8 is better than the v70 allocator on precision and on two-note recall
+(+7.9 points), at the same entry time. On electric chords it trades 3.6 points of precision for 11.8 of recall.
+Seven of the electric chord takes align their MIDI at -48 to -66 ms (strummed onsets), so their entry times are
+less certain than their frame scores.
+
+Next: port it to engine/px_poly_track.h as the poly voices' allocator, fed by the shared tracker in place of the
+resonator picker. Then check that the synths render the same, measure the load on the pedal, and listen.
