@@ -5,6 +5,7 @@
 #   make ble        the Bluetooth MIDI test image: firmware/openpocket-ble.bin, build/ble/*.fwsc (docs/BLE-TEST.md)
 #   make test       the host tests (tests/run_tests.sh)
 #   make package    build + build/SHA256SUMS of the outputs
+#   make package-synth2  the Synth2 test channel (docs/firmware/synth2/, version 1 = PocketX_901)
 #   make package-test   the MIDI test channel package (docs/firmware/midi-test/, never the installer default)
 #   make clean      remove every build output (needs no Docker)
 #   make shell      a shell in the build container
@@ -22,8 +23,8 @@
 #   make rescue-write [ARGS=..]   the same, writing the official firmware back (run `make rescue` first)
 #   make rescue-check   the UBOOT rescue tool (tools/uboot_rescue.py) against a simulated pedal; needs only Python 3
 # `make NATIVE=1 build` skips Docker (toolchain installed with firmware/setup.sh).
-.PHONY: doctor build ble test package package-test clean shell image serve serve-ble wasm render appimage flash flash-rescue log rescue rescue-write rescue-check sim
-doctor build ble test package package-test clean shell image serve wasm rescue-check:
+.PHONY: doctor build ble test package package-test package-synth2 clean shell image serve serve-ble wasm render appimage flash flash-rescue log rescue rescue-write rescue-check sim
+doctor build ble test package package-test package-synth2 clean shell image serve wasm rescue-check:
 	@node tools/op.mjs $@
 serve-ble:
 	@node tools/op.mjs serve ble

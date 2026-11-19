@@ -22,6 +22,7 @@ const IMAGE = "openpocket-build";
 const native = Boolean(process.env.NATIVE || process.env.OP_IN_CONTAINER);
 const python = process.platform === "win32" ? ["py", "-3"] : ["python3"];
 const OUTS = "firmware/openpocket.bin docs/firmware/*.fwsc docs/firmware/manifest.json";
+const SYNTH2 = "firmware/openpocket-synth2.bin docs/firmware/synth2/*.fwsc docs/firmware/synth2/manifest.json";
 const TEST = "firmware/openpocket-midi-test.bin docs/firmware/midi-test/*.fwsc docs/firmware/midi-test/manifest.json";
 
 function fail(message) {
@@ -89,9 +90,11 @@ const commands = {
   ble: () => inContainer(["sh", "-c", "OP_BLE=1 sh firmware/build.sh && sha256sum firmware/openpocket-ble.bin build/ble/*.fwsc"]),   // the Bluetooth MIDI test image (docs/BLE-TEST.md)
   test: () => inContainer(["sh", "tests/run_tests.sh"]),
   package: () => inContainer(["sh", "-c", `sh firmware/build.sh && mkdir -p build && sha256sum ${OUTS} > build/SHA256SUMS && cat build/SHA256SUMS`]),
+  // Synth2 test channel: version 1 -> PocketX_901 / BlackBox_901 in docs/firmware/synth2/ (docs/SYNTH2-PLAN.md); never the installer default
+  "package-synth2": () => inContainer(["sh", "-c", `OP_CHANNEL=synth2 OP_TEST_VERSION=${process.env.OP_TEST_VERSION || 1} sh firmware/build.sh && mkdir -p build && sha256sum ${SYNTH2} > build/SHA256SUMS-synth2 && cat build/SHA256SUMS-synth2`]),
   "package-test": () => inContainer(["sh", "-c", `OP_CHANNEL=midi-test sh firmware/build.sh && mkdir -p build && sha256sum ${TEST} > build/SHA256SUMS-midi-test && cat build/SHA256SUMS-midi-test`]),
   clean() {
-    for (const p of ["build", "firmware/build", "firmware/build-ble", "firmware/openpocket.bin", "firmware/openpocket-ble.bin", "firmware/openpocket-midi-test.bin", "docs/firmware/midi-test", "docs/firmware/manifest.json", "engine/px_render"]) {
+    for (const p of ["build", "firmware/build", "firmware/build-ble", "firmware/openpocket.bin", "firmware/openpocket-ble.bin", "firmware/openpocket-midi-test.bin", "docs/firmware/midi-test", "firmware/openpocket-synth2.bin", "docs/firmware/synth2", "docs/firmware/manifest.json", "engine/px_render"]) {
       rmSync(resolve(root, p), { recursive: true, force: true });
     }
     const dir = resolve(root, "docs/firmware");
