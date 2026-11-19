@@ -398,6 +398,31 @@ A host-only test let a settled lead remain when it was listed within
 the held pitch before the candidate shortlist discards it. Retaining
 only pitches already on that list cannot cover most of these misses.
 
+### Support for a held pitch before ranking
+
+An annotated-pitch probe compared the existing local maxima with all 15
+active ERB band frequency estimates and their bandwidth-normalised
+amplitudes. It asked whether the lead still had at least 20% of its own
+median pre-interference amplitude within 50 cents. Across the 16 cases,
+the maxima retained that evidence in 32.5% of wrong-pitch overlap
+reports. All bands retained it in 66.4%. From 65 ms after the lead mute,
+the all-band test still fired in 2.6% of reports. These scores use the
+known lead pitch. They do not account for a tracker latching onto a wrong
+pitch or changing its reference level.
+
+The causal prototype compared band power near its own held pitch with a
+slowly decaying reference learned while the main estimate agreed. Holding
+on any disagreement raised mean lead retention from 45.1% to 57.9%, but
+correct scale frames fell from 86.41% to 73.47%, and held-out solo accuracy
+fell from 91.5% to 90.1%. Limiting the decision to jumps up by a factor
+of two or three, with the existing detected-pick path intact, kept the
+lead throughout both synthetic partial rises. Mean retention was 51.9%.
+The scale and both low-E sustains matched v66, but solo accuracy was
+91.4% and octave errors rose from 120 to 122. The lower-second-note
+cases also remained weak. Keep this host-only. The evidence justifies
+testing the held pitch before ranking, with a separate check that the
+pitch was correctly acquired and should survive a legato transition.
+
 ---
 
 ## Stage 6: show where the band-bank HQ types actually win
