@@ -113,6 +113,8 @@ typedef struct {
     uint8_t half_phase[PX_ERB_BANDS];
     uint8_t quarter[PX_ERB_BANDS];                     /* v64: each band's wraps modulo 4 (two octaves down) */
     float down2;                                       /* v64: the -24 voice's level (POLY OCTAVE HQ's OCT -2) */
+    float low_env[PX_ERB_BANDS];                       /* v73: each band's level, for the lowest-note selection */
+    float low_sel;                                     /* v73: 0 off; > 0 the lowest-note selection's threshold */
     unsigned pos, pos2;
     unsigned idle;                                     /* v49: samples with every voice at zero (the bank rests) */
 } px_erb_octave;

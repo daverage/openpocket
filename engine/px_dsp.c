@@ -97,6 +97,16 @@ static float erb_hb[8], erb_fc[PX_ERB_BANDS], erb_bw[PX_ERB_BANDS], erb_rate;
 static px_erb_band erb_oband[ERB_O_BANDS];
 static float erb_ofc[ERB_O_BANDS];
 #define ERB_FULL  ((float)ERB_O_BANDS)
+#ifndef LOW_SEL_MIN
+#define LOW_SEL_MIN 0.1f
+#endif
+#ifndef LOW_MAKEUP
+#define LOW_MAKEUP 2.8f                                /* v73: +9 dB at RANGE 1 */
+#endif
+#ifndef LOW_ATTACK
+#define LOW_ATTACK  0.06f                              /* v73: 1.5 ms at 11.025 kHz */
+#define LOW_RELEASE 0.0018f                            /* v73: 50 ms */
+#endif
 static void erb_layout(px_erb_band *band, float *fc, float *bw, int n, float s0, float sc, float width, float rate)
 {
     float center = ERB_LOW;
@@ -165,6 +175,8 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
     (void)e;
     float raised = 0.0f, lowered = 0.0f, raised2 = 0.0f;
     float lowered2 = 0.0f;
+    float below = 0.0f, neighbour = 0.0f;              /* v73: the level of the bands under this one (bar the next) */
+    const float sel = state->low_sel;
     for (int i = 0; i < ERB_O_BANDS; ++i) {
         const px_erb_band *b = &erb_oband[i];
         const float real = b->b0 * x + state->z1[i].r;
@@ -178,6 +190,16 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
          * square root's sign across each crossing of the negative real axis. */
         const float rr = real * real, ii = imag * imag, power = rr + ii + 1e-24f;
         const float inv = erb_inverse_root(power);
+        float g = 1.0f;
+        if (sel > 0.0f) {                              /* v73: the lowest sounding band (Roland EP3929910B1's rule): a
+                                                          band with much more level under it (bar its neighbour) is muted */
+            float *env = &state->low_env[i];
+            const float lvl = power * inv;             /* |z| */
+            *env += (lvl - *env) * (lvl > *env ? LOW_ATTACK : LOW_RELEASE);
+            const float r = below / (*env + 1e-12f);
+            g = r < sel ? 1.0f : (r > 2.0f * sel ? 0.0f : 2.0f - r / sel);
+            below += neighbour; neighbour = *env;
+        }
 #ifdef ERB_HOST_EXPERIMENTS
         float cohere = 1.0f;
         if (erb_host_beta > 0.0f) {
@@ -209,14 +231,15 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
                 const float qc = 0.5f + 0.5f * ((k & 1) ? -h : h);
                 const float qa = qc > 0.0f ? qc * erb_inverse_root(qc + 1e-30f) : 0.0f;
                 const float sign = k == 0 ? 1.0f : k == 2 ? -1.0f : ((k == 1) == (negative != 0) ? 1.0f : -1.0f);
-                lowered2 += power * inv * sign * qa * (floor2 < 1.0f ? floor2 : 1.0f);
+                lowered2 += power * inv * sign * qa * (floor2 < 1.0f ? floor2 : 1.0f) * g;
             }
         }
         if (real < 0.0f && (phase & 1) != negative) phase ^= 2;
         state->half_phase[i] = (uint8_t)((phase & 2) | negative);
         /* Taper the octave-down band mix around the selected input pitch.
          * Keep phase history for every band while the dial moves. */
-        const float weight = range + 0.5f - (float)i;
+        float weight = range + 0.5f - (float)i;
+        if (g < 1.0f) weight = weight < g ? weight : g;
         if (down != 0.0f && weight > 0.0f) {
             /* |z| cos(arg(z)/2), evaluated without a per-band division. */
             const float half_cosine_squared = 0.5f + 0.5f * real * inv;
@@ -628,17 +651,7 @@ static void put_int(char *b, int v, int plus)
 static void put_str(char *b, const char *s) { int i = 0; while (s[i] && i < 7) { b[i] = s[i]; i++; } b[i] = 0; }
 static const char *const NOTE_TXT[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 /* Zero preserves the full range in presets created before the control existed. */
-static int erb_range_note(int value) { return 35 + (value - 1) * 42 / 100; } /* B1–E5 */
 
-static float erb_range_band(int value)
-{
-    if (value == 0) return ERB_FULL;
-    const float hz = 440.0f * powf(2.0f, ((float)erb_range_note(value) + 0.5f - 69.0f) / 12.0f);
-    /* v49: the band position of hz in the bank (fractional, between its centres) */
-    float c = ERB_LOW, i = 0.0f;
-    while (i < ERB_FULL - 1.0f) { const float next = c + ERB_O_S0 + ERB_O_SC * c; if (hz < next) return i + (hz - c) / (next - c); c = next; i += 1.0f; }
-    return i;
-}
 static int syn_key_idx(int v) { int i = v * 12 / 101; return i < 0 ? 0 : (i > 11 ? 11 : i); }
 static float syn_att_ms(float x) { return 10.0f + x * x * 1490.0f; }     /* STRINGS / CHOIR attack */
 static float syn_rel_ms(float x) { return 50.0f + x * x * 2950.0f; }     /* release */
@@ -682,13 +695,9 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_PITCH:
         if (t == PX_PIT_POLYOCT_HQ && k == 3) {
-            if (v == 0) put_str(buf, "FULL");
-            else {
-                const int note = erb_range_note(v);
-                const char *name = NOTE_TXT[note % 12];
-                put_str(buf, name);
-                put_int(buf + (name[1] ? 2 : 1), note / 12 - 1, 0);
-            }
+            if (v == 0 || v >= 100) put_str(buf, "FULL");       /* v73: 1 the lowest note alone .. 100 every note */
+            else if (v == 1) put_str(buf, "LOWEST");
+            else put_int(buf, v, 0);
             return 1;
         }
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
@@ -894,10 +903,23 @@ static void rc_pitch(px_engine *e)
     case PX_PIT_POLYOCT_HQ:
     case PX_PIT_LOWEST_HQ:
         e->ps_nv = hq ? 0 : 2; e->ps_dry = f01(q[0]);
-        if (hq) e->erb_pitch_range = erb_range_band(raw != t || q[3] > 100 ? (raw != t ? 0 : 100) : q[3]);
         e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = octave_down_level(f01(q[1]), hq);
         e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = octave_up_level(f01(q[2]), hq);
         e->erb_pitch.down2 = t == PX_PIT_POLYOCT_HQ && raw == t ? octave_down_level(f01(q[4]), 1) * PX_SUB2_LEVEL : 0.0f;
+        /* v73: RANGE (and LOWEST OCTAVE HQ) no longer cut the bank at a fixed note, which left a chord over that
+         * note silent: the octave-down follows the lowest sounding band (erb_bank), RANGE 1 the lowest note
+         * alone, up to 100 nearly every note; the make-up gain keeps the level (tools/research/low_bench.py) */
+        e->erb_pitch.low_sel = 0.0f;
+        if (hq) {
+            const int v = t == PX_PIT_LOWEST_HQ ? 1 : q[3] > 100 ? 100 : q[3];
+            e->erb_pitch_range = ERB_FULL;
+            if (v > 0) {
+                const float sel = LOW_SEL_MIN * expf((float)(v - 1) * (3.4011974f / 99.0f));   /* 0.1 .. 3 */
+                const float makeup = 1.0f + (LOW_MAKEUP - 1.0f) * (1.0f - (float)(v - 1) / 99.0f);
+                e->erb_pitch.low_sel = sel;
+                e->ps_lvl[0] *= makeup; e->erb_pitch.down2 *= makeup;
+            }
+        }
         break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
@@ -1015,70 +1037,17 @@ static void fuzz_setup(px_drive_state *state, float sr, int os, float fuzz)
     state->level = 0.07f * 2.0f * level * powf(10.0f, -3.0f * 0.05f);   /* (v36 trim of the Fuzz Face row) */
 }
 
-/* ---- a real FFT of 128 (px_lowest_fit.h) ---- */
-static float fft_w[64];                                /* e^(2 pi i m / 64), m = 0..31: cos, sin */
-static float rft_c[33], rft_s[33];                     /* cos, sin of 2 pi k / 128, k = 0..32 */
-static uint8_t fft_rev[64];
-static int fft_ready;
-static void fft_init(void)
-{
-    for (int m = 0; m < 32; m++) { fft_w[2 * m] = cosf(2.0f * PI_F * (float)m / 64.0f); fft_w[2 * m + 1] = sinf(2.0f * PI_F * (float)m / 64.0f); }
-    for (int k = 0; k <= 32; k++) { rft_c[k] = cosf(2.0f * PI_F * (float)k / 128.0f); rft_s[k] = sinf(2.0f * PI_F * (float)k / 128.0f); }
-    for (int i = 0; i < 64; i++) { int r = 0; for (int b = 0; b < 6; b++) if (i >> b & 1) r |= 1 << (5 - b); fft_rev[i] = (uint8_t)r; }
-    fft_ready = 1;
-}
-static void fft64(float *z, float sg)                  /* in place, 64 complex (re, im): sg -1 forward, +1 inverse (unscaled) */
-{
-    for (int i = 0; i < 64; i++) {
-        const int r = fft_rev[i];
-        if (r > i) { float t = z[2 * i]; z[2 * i] = z[2 * r]; z[2 * r] = t; t = z[2 * i + 1]; z[2 * i + 1] = z[2 * r + 1]; z[2 * r + 1] = t; }
-    }
-    for (int len = 2, tw = 32; len <= 64; len <<= 1, tw >>= 1) {
-        const int h = len >> 1;
-        for (int j = 0; j < h; j++) {
-            const float wr = fft_w[2 * j * tw], wi = sg * fft_w[2 * j * tw + 1];
-            for (int i = j; i < 64; i += len) {
-                float *a = z + 2 * i, *b = z + 2 * (i + h);
-                const float tr = b[0] * wr - b[1] * wi, ti = b[0] * wi + b[1] * wr;
-                b[0] = a[0] - tr; b[1] = a[1] - ti;
-                a[0] += tr; a[1] += ti;
-            }
-        }
-    }
-}
-/* real FFT of 128 in place: x[0..127] -> [0] X0, [1] X64, [2k], [2k+1] Xk (k = 1..63) */
-static void rfft128(float *x)
-{
-    fft64(x, -1.0f);                                   /* Z = FFT of z[n] = x[2n] + i x[2n+1] */
-    const float z0r = x[0], z0i = x[1];
-    for (int k = 1; k < 32; k++) {
-        const int m = 64 - k;
-        const float ar = x[2 * k], ai = x[2 * k + 1], br = x[2 * m], bi = x[2 * m + 1];
-        const float er = 0.5f * (ar + br), ei = 0.5f * (ai - bi);       /* E = (Z[k] + conj Z[64-k]) / 2 */
-        const float orr = 0.5f * (ai + bi), oi = -0.5f * (ar - br);     /* O = (Z[k] - conj Z[64-k]) / 2i */
-        const float cr = rft_c[k], ci = -rft_s[k];                     /* W^k = e^(-2 pi i k / 128) */
-        const float tr = orr * cr - oi * ci, ti = orr * ci + oi * cr;
-        x[2 * k] = er + tr; x[2 * k + 1] = ei + ti;                    /* X[k] = E + W^k O */
-        x[2 * m] = er - tr; x[2 * m + 1] = ti - ei;                    /* X[64-k] = conj(E - W^k O) */
-    }
-    x[65] = -x[65];                                    /* X[32] = conj Z[32] */
-    x[0] = z0r + z0i; x[1] = z0r - z0i;
-}
-/* its inverse, times 128 (the factor is in the partitions' spectra) */
-#include "px_lowest_sub.h"
-static px_lowest_sub pxl_pitch;
-
 static void lowest_pitch_reset(px_engine *e)
 {
-    pxl_reset(&pxl_pitch, e->sr);
+    const float sel = e->erb_pitch.low_sel, down2 = e->erb_pitch.down2;
     memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
+    e->erb_pitch.low_sel = sel; e->erb_pitch.down2 = down2;
 }
 
 static __attribute__((noinline)) float lowest_pitch_run(px_engine *e, float x)
 {
-    const float sub = pxl_run(&pxl_pitch, x);
-    const float up = erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], 0.0f, ERB_FULL);
-    return x * e->ps_dry + e->ps_lvl[0] * sub + up;
+    /* v73: the bank's octave-down of the lowest sounding band (was px_lowest_sub.h's tracked sub) */
+    return x * e->ps_dry + erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], e->ps_lvl[0], ERB_FULL);
 }
 
 static void rc_eq(px_engine *e)
