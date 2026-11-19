@@ -267,3 +267,20 @@ is 20 cents. The recorded bass pairs give 0–20% both-note sustain. A
 replacement tracker must beat 33.6% standard dyads. Extra voices on single
 notes must stay at 37.1% or lower. The pedal smoke-test loads above are the
 CPU baseline: 17–19%, or 21–23% with Smart Gate.
+
+## v58 shared poly tracker
+
+`engine/px_poly_track.h` now holds the tracker and allocator. That covers
+the resonator candidates, phase-difference frequency refinement, bass
+recovery, the two note identities and their gain envelopes. The Poly
+voicings keep only oscillator phase, colour envelope and rendering in
+`engine/px_pulse_poly.h`. The tracker reports `PXP_ACQUIRED` and
+`PXP_RESTRUCK` so a renderer can restart its own state on note events.
+Bench audio and voice traces are bit-identical to v57. That holds for all
+four voicings at four knob settings on loops and a GuitarSet take.
+
+The link leaves 400 bytes of RAM code window, 168 fewer than v57, because
+the note step is now inlined into the RAM-resident voice loop.
+`node tools/poly_pedal_check.mjs BlackBox_958` passed on the BlackBox. Peak
+load was 18–20%, or 22–24% with Smart Gate, with no late blocks, no safety
+bypass and the second core active. The three saved presets kept their hash.
