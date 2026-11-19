@@ -72,6 +72,9 @@ enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, P
        PX_SYN_PULSE_POLY,
 #ifdef PX_POLY_TEST
        PX_SYN_SAW_POLY, PX_SYN_ARCADE_POLY, PX_SYN_FM_POLY,
+#ifdef PX_ENSEMBLE_TEST
+       PX_SYN_STRING_ENS, PX_SYN_BRASS_ENS,            /* v61: one note, a sampled lead and a light support layer */
+#endif
 #endif
 #endif
        PX_SYN_COUNT };
@@ -197,6 +200,11 @@ typedef struct {
     float str_lp, bowv, vib_ph, vib_amt, held_t, noise_lp, kick_p, kick_a; int kick_n;   /* v49: kick, the string set going */
     float lip_y1, lip_y2, lip_a1, lip_g, dc_x, dc_y, breath, out_lp, fb, last_f, amp, lvl_t;
     float mp;                                         /* v49: the brass's blowing pressure for the note's pitch */
+#ifdef PX_ENSEMBLE_TEST
+    /* v61: the ensembles' support layer, rendered beside the lead from the same note (engine/px_acoustic.h) */
+    float ens_ph[2], ens_amp, ens_lp[2], ens_vib, ens_rel, ens_level, ens_k_att, ens_det, ens_tone0, ens_tone1,
+          ens_vib_amt, ens_vib_inc;
+#endif
 } px_acoustic;
 
 #define PX_PS_N 2048                   /* pitch shifter buffer (46 ms) */

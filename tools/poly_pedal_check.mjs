@@ -31,6 +31,10 @@ try {
         ["ARCADE POLY", ["WAVE", "OCTAVE", "CRUSH", "DECAY", "MIX"], [20, 67, 100, 60, 100]],
         ["FM POLY", ["RATIO", "INDEX", "DECAY", "RELEASE", "LEVEL"], [100, 100, 100, 50, 100]],
         ["MONO SYNTH", null, [50, 50, 50, 50, 50]],          // v60: on the note layer in poly-test (load only)
+        ["STRING ENSEMBLE", ["OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"], [50, 50, 100, 50, 0]],   // v61
+        ["BRASS ENSEMBLE", ["OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"], [50, 50, 100, 50, 0]],
+        ["CELLO ENSEMBLE", null, [50, 50, 50, 50, 0]],       // v61: the string ensemble's lead alone (load reference)
+        ["TRUMPET", null, [50, 50, 50, 50, 0]],
     ].map(([name, params, knobs]) => {
         const type = lookup(syn, name);
         if (params) assert.deepEqual(blocks[syn].types[type].params.map(p => p.name), params);

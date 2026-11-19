@@ -39,11 +39,34 @@
 #define PXA_TRP_SOFT 0.25f                             /* v49: the trumpet's soft recording only for picks below this */
 #define PXA_SKIP 0.75f                                 /* v49: the share of a cello recording's attack skipped */
 #define PXA_KICK 1.0f                                  /* v49: the bowed string's start, of the bow's speed */
+#ifdef PX_ENSEMBLE_TEST
+#ifndef PXA_ENS_STRINGS
+#define PXA_ENS_STRINGS 0.364f                         /* the support at LAYER 100: the lead's level (lead loop + arpeggio) */
+#endif
+#ifndef PXA_ENS_BRASS
+#define PXA_ENS_BRASS 0.332f
+#endif
+#endif
 #define PXA_BOW_ATT 0.03f                              /* v49: the bow's attack, its soft-pick part (s) */
 #endif
-static inline int pxa_is(int t) { return t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION; }
-static inline int pxa_instr(int t) { return t == PX_SYN_TRUMPET || t == PX_SYN_TRUMPET_MODEL ? 0 : 1; }   /* 0 trumpet, 1 cello */
-static inline int pxa_sampled(int t) { return PXA_SAMPLES && (t == PX_SYN_TRUMPET || t == PX_SYN_CELLO_SECTION); }
+/* v61 (PX_ENSEMBLE_TEST): an ensemble plays its lead type's voice, plus a support layer */
+static inline int pxa_lead(int t)
+{
+#ifdef PX_ENSEMBLE_TEST
+    if (t == PX_SYN_STRING_ENS) return PX_SYN_CELLO_SECTION;
+    if (t == PX_SYN_BRASS_ENS) return PX_SYN_TRUMPET;
+#endif
+    return t;
+}
+static inline int pxa_is(int t)
+{
+#ifdef PX_ENSEMBLE_TEST
+    if (t == PX_SYN_STRING_ENS || t == PX_SYN_BRASS_ENS) return 1;
+#endif
+    return t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION;
+}
+static inline int pxa_instr(int t) { t = pxa_lead(t); return t == PX_SYN_TRUMPET || t == PX_SYN_TRUMPET_MODEL ? 0 : 1; }   /* 0 trumpet, 1 cello */
+static inline int pxa_sampled(int t) { t = pxa_lead(t); return PXA_SAMPLES && (t == PX_SYN_TRUMPET || t == PX_SYN_CELLO_SECTION); }
 /* within c cents: the ratio a / b in [lo, hi] (no logarithm per sample) */
 static inline int pxa_near(float a, float b, float lo, float hi) { if (b <= 0.0f) return 0; float r = a / b; return r > lo && r < hi; }
 #define PXA_C15 0.991373f, 1.008702f
@@ -79,6 +102,15 @@ static float pxa_brass_cal(float f)
 static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, float f)
 {
     px_acoustic *s = &e->syn_ac;
+#ifdef PX_ENSEMBLE_TEST
+    const int ens = t;
+    if (t != pxa_lead(t)) {
+        /* OCTAVE, TONE, LAYER, RELEASE, DRY: the lead's DYNAMICS stays at noon (21 dB); LAYER is the support's level */
+        s->ens_level = c;
+        c = 0.5f;
+        t = pxa_lead(t);
+    } else s->ens_level = 0.0f;
+#endif
     const float sr = e->sr;
     const int instr = pxa_instr(t);
     /* note layer filters (coefficients only: the states were cleared with the type) */
@@ -129,6 +161,21 @@ static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, f
     if (!pxa_sampled(t) && t == PX_SYN_TRUMPET) s->gain = 7.0f * PXA_G_TMODEL;     /* (no bank: the model) */
     if (!pxa_sampled(t) && t == PX_SYN_CELLO_SECTION) s->gain = 0.25f * PXA_G_CELLO;
     s->sr = sr; s->inv_sr = 1.0f / sr;
+#ifdef PX_ENSEMBLE_TEST
+    /* the support layer: two detuned band-limited saws, a two-pole low-pass that opens with expression, its own
+     * attack and vibrato. Strings: violins an octave above the cello section; brass: a horn an octave below the
+     * trumpet (at the guitar's pitch at OCTAVE 0) */
+    if (ens == PX_SYN_STRING_ENS) {
+        s->ens_rel = 2.0f; s->ens_det = 0.0023f; s->ens_tone0 = 3.0f; s->ens_tone1 = 6.0f;
+        s->ens_k_att = onepole_k(sr, 0.070f); s->ens_vib_amt = 0.0035f;
+        s->ens_level *= PXA_ENS_STRINGS;
+    } else if (ens == PX_SYN_BRASS_ENS) {
+        s->ens_rel = 0.5f; s->ens_det = 0.0009f; s->ens_tone0 = 1.5f; s->ens_tone1 = 9.0f;
+        s->ens_k_att = onepole_k(sr, 0.025f); s->ens_vib_amt = 0.0f;
+        s->ens_level *= PXA_ENS_BRASS;
+    }
+    s->ens_vib_inc = 5.3f / sr;
+#endif
     pxt_prepare(e);
 }
 
@@ -280,8 +327,37 @@ static void pxa_rate_consts(px_acoustic *s)
 }
 
 /* the instrument for one sample, from the note layer's s->f0s, gate, onset, vel, expr (tests drive it directly) */
+#ifdef PX_ENSEMBLE_TEST
+/* v61: one sample of the ensemble's support layer at the lead's note f (Hz, after OCTAVE) */
+static inline float pxa_support(px_acoustic *s, float f)
+{
+    float vib = 0.0f;
+    if (s->ens_vib_amt > 0.0f) {
+        s->ens_vib += s->ens_vib_inc; if (s->ens_vib >= 1.0f) s->ens_vib -= 1.0f;
+        const float depth = s->held_t > 0.25f ? s->ens_vib_amt : s->ens_vib_amt * 4.0f * s->held_t;
+        vib = depth * lfo_sin(s->ens_vib);
+    }
+    float step = f * s->ens_rel * (1.0f + vib) * s->inv_sr;
+    if (step > 0.45f) step = 0.45f;
+    const float s1 = step * (1.0f + s->ens_det), s2 = step * (1.0f - s->ens_det);
+    s->ens_ph[0] += s1; if (s->ens_ph[0] >= 1.0f) s->ens_ph[0] -= 1.0f;
+    s->ens_ph[1] += s2; if (s->ens_ph[1] >= 1.0f) s->ens_ph[1] -= 1.0f;
+    const float y = 0.5f * (syn_saw(s->ens_ph[0], s1) + syn_saw(s->ens_ph[1], s2));
+    float k = PXA_TWO_PI * f * s->ens_rel * (s->ens_tone0 + s->ens_tone1 * s->expr) * s->inv_sr;
+    if (k > 0.9f) k = 0.9f;
+    s->ens_lp[0] += k * (y - s->ens_lp[0]);
+    s->ens_lp[1] += k * (s->ens_lp[0] - s->ens_lp[1]);
+    s->ens_amp += ((s->gate ? s->lvl_t : 0.0f) - s->ens_amp) * (s->gate ? s->ens_k_att : s->rel_k);
+    return s->ens_lp[1] * s->ens_amp * s->ens_level;
+}
+#endif
+
 static inline float pxa_voice(px_engine *e, px_acoustic *s, int t)
 {
+#ifdef PX_ENSEMBLE_TEST
+    const int ens = s->ens_level > 0.0f;
+#endif
+    t = pxa_lead(t);
     const int instr = pxa_instr(t), sampled = pxa_sampled(t);
     const int bowed = !sampled && instr == 1, brass = !sampled && instr == 0;
     s->rnd = s->rnd * 1664525u + 1013904223u;
@@ -320,7 +396,11 @@ static inline float pxa_voice(px_engine *e, px_acoustic *s, int t)
     s->last_f = f;
     if (!sampled) for (int i = 0; i < s->nbody; i++) y = bq_run(&s->body[i], y);
     s->amp += (s->lvl_t - s->amp) * (s->gate ? s->k_att : s->rel_k);
-    return y * s->gain * (bowed ? 1.0f : s->amp);    /* the bowed string's level is its bow; it rings out on its own */
+    y = y * s->gain * (bowed ? 1.0f : s->amp);       /* the bowed string's level is its bow; it rings out on its own */
+#ifdef PX_ENSEMBLE_TEST
+    if (ens) y += pxa_support(s, f);
+#endif
+    return y;
 }
 
 /* one block of the SYN voice (in place), output trimmed by strim */

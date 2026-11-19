@@ -558,11 +558,15 @@ static const char *const PN_CEL[] = {"OCTAVE", "BOW", "VIBRATO", "RELEASE", "DRY
 #ifdef PX_PULSE_TEST
 static const char *const PN_PULSE_POLY[] = {"WIDTH", "PWM", "CUTOFF", "RESO", "RELEASE"};
 #endif
+#ifdef PX_ENSEMBLE_TEST
+static const char *const PN_ENS[] = {"OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"};
+#endif
 #ifdef PX_POLY_TEST
 static const char *const PN_SAW_POLY[] = {"DETUNE", "OCTAVE", "CUTOFF", "SWEEP", "RELEASE"};
 static const char *const PN_ARCADE_POLY[] = {"WAVE", "OCTAVE", "CRUSH", "DECAY", "MIX"};
 static const char *const PN_FM_POLY[] = {"RATIO", "INDEX", "DECAY", "RELEASE", "LEVEL"};
 #endif
+static inline int pxa_is(int t);                       /* v48: px_acoustic.h (TRUMPET .. CELLO SECTION, v61 ensembles) */
 static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ORGAN", 5, PN_ORG}, {"CHURCH ORGAN", 5, PN_CHU}, {"STRINGS", 5, PN_STR}, {"CHOIR", 5, PN_CHO},
     {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM}, {"BASS SYNTH", 5, PN_BSY}, {"12-STRING", 3, PN_12S},
@@ -576,6 +580,9 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
 #endif
 #ifdef PX_POLY_TEST
     {"SAW POLY", 5, PN_SAW_POLY}, {"ARCADE POLY", 5, PN_ARCADE_POLY}, {"FM POLY", 5, PN_FM_POLY},
+#ifdef PX_ENSEMBLE_TEST
+    {"STRING ENSEMBLE", 5, PN_ENS}, {"BRASS ENSEMBLE", 5, PN_ENS},
+#endif
 #endif
 };
 
@@ -947,7 +954,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             put_int(buf, (int)((k == 0 ? syn_att_ms(x) : syn_rel_ms(x)) + 0.5f), 0); return 1;
         }
         if (t == PX_SYN_MONO && k == 1) { put_int(buf, syn_oct(v), 1); return 1; }
-        if (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION && k == 0) { put_int(buf, x < 0.34f ? -1 : (x < 0.67f ? 0 : 1), 1); return 1; }
+        if (pxa_is(t) && k == 0) { put_int(buf, x < 0.34f ? -1 : (x < 0.67f ? 0 : 1), 1); return 1; }
         if (t == PX_SYN_12STR && k == 1) { put_int(buf, (int)(x * 15.0f + 0.5f), 0); return 1; }
         if (t == PX_SYN_SITAR && k == 0) { put_str(buf, NOTE_TXT[syn_key_idx(v)]); return 1; }
         if (t == PX_SYN_BARI && k == 0) { put_int(buf, syn_bari_st(v), 0); return 1; }
@@ -2266,7 +2273,7 @@ static void rc_syn(px_engine *e)
 #ifdef PX_PULSE_TEST
         if (poly_synth_type(t)) pulse_poly_reset(e, 1);
 #endif
-        if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)
+        if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || pxa_is(t)
 #if PX_MONO_LAYER
             || t == PX_SYN_MONO
 #endif
@@ -2355,6 +2362,9 @@ static void rc_syn(px_engine *e)
         e->syn_dry = f;
         break;
     case PX_SYN_TRUMPET: case PX_SYN_CELLO: case PX_SYN_CELLO_SECTION:
+#ifdef PX_ENSEMBLE_TEST
+    case PX_SYN_STRING_ENS: case PX_SYN_BRASS_ENS:
+#endif
         pxa_setup(e, t, a, b, c, d, f);
         break;
     case PX_SYN_OCT_FUZZ: {
