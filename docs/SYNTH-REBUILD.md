@@ -93,3 +93,15 @@ because Playwright is not installed here. They still describe the old layout.
 | Flash image | 323,432 B | 323,768 B |
 | Main RAM free | 44,652 B | 44,828 B |
 | RAM-code window free | 20,424 B | 20,000 B |
+
+## Next round (owner's requests)
+
+- Lights: HOME lit whenever the pedal is not bypassed (it keeps blinking in the tuner). While BYPASS is on, every
+  light is off. Firmware `firmware/px_lights.h`, the simulator's skin `tools/sim/pedal-input.js` `backlights()`,
+  and `tests/lightsim.c`.
+- Remove the three retired SYNTH slots that show no name (BASS SYNTH, PWM SYNTH HQ, TRUMPET MODEL: they play
+  their replacements).
+- Watch Cello Ensemble, Trumpet and the ensembles in a full chain: one late block and 95-105 % peaks with no
+  guitar playing (tools/synth_probe.mjs).
+- Install Playwright and update the browser page tests for the 9-block layout.
+- Stage 5: tracker research and benchmarks.
