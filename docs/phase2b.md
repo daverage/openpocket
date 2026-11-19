@@ -578,3 +578,61 @@ each target memory section before estimating the benefit of a split.
 
 Build numbers after v67 depend on which experiments pass and which features the
 listening checks justify.
+
+## Stage 1 progress
+
+The owner DI check now runs both recordings through the actual host benches via
+`tools/sim/poly_diag.py BENCH --owner-di 'My Audio'`. Add `--mono` for
+`mono_bench`. The scorer uses the left channel at 44.1 kHz and the original gain,
+with PCM16 conversion for the mono bench. It uses fixed note ranges derived from
+the DI pitches and partials. The v66 reference is engine revision `f12462e`,
+with the bench's Poly flags and `PX_MONO_LAYER` for the mono run.
+
+| v66 measurement | Result |
+|---|---:|
+| Scale frames with two sounding voices | 39.24% |
+| Scale frames with two voices including an overtone ghost | 35.15% |
+| Scale frames with the played note absent | 17.13% |
+| First / second open E sustain with an overtone ghost | 25.07% / 9.80% |
+| First / second open E sustain with a neighbouring pitch | 0.18% / 3.08% |
+| Mono scale frames on the correct pitch / upper harmonic / octave below | 86.41% / 2.02% / 5.16% |
+
+The fixed note ranges differ from the exploratory recording analysis above.
+Use the fixed-range v66 numbers when evaluating candidate runs. The v67
+half-ghost limit for this benchmark is 17.575%.
+
+- Eviction within 100 ms cut scale ghosts to 19.17%. Adding the fifth- and
+  sixth-harmonic allocator guard reached 16.82%, but true octave dyad recall
+  fell from 12.7% to 10.4% on the GuitarSet development set. A simple power-ratio
+  limit or narrower frequency tolerance gave back too much of the ghost reduction.
+- The added octave tests found that v66 already misses simultaneous E2/E3 and the
+  upper string starting 20 ms later, even with the upper string slightly detuned.
+  The current vetoes can reject a true second note before allocation. Continue
+  measuring candidate evidence and voice decisions separately.
+- Delaying every mono third- or fourth-harmonic jump reduced GuitarSet held-out
+  accuracy from 91.5% to 91.3% and increased octave errors from 120 to 121. Requiring
+  a strong incumbent pitch candidate made no difference on either owner DI. The
+  scale trace showed that several wrong notes were selected during acquisition
+  after a pick. Checking candidate periods up to 900 Hz with stricter evidence
+  for a lower pitch improved held-out accuracy to 92.0% and cut octave errors to
+  113. Scale upper harmonics fell from 2.02% to 1.70% and the octave-below rate
+  fell from 5.16% to 4.95%. Neither low-E sustain changed.
+- Debouncing nominal bins alone left the open-E slips unchanged and worsened the
+  synthetic bend result. A slew limit on the continuous phase estimate reduced
+  second-sustain slips from 3.08% to 0.37% with the bend result steady at 88.1%
+  within 50 cents.
+- Comparing even and odd partials recovered the five tested synthetic octave
+  entries. Combining that evidence with a short fade after eviction and the
+  low-note slew limit reduced scale ghosts to 17.18%. It improved GuitarSet
+  development octave recall from 12.7% to 17.2%. On the frozen comping holdout,
+  both-note accuracy rose from 40.9% to 41.3% and median second entry improved
+  from 25.3 ms to 23.9 ms. The entry count fell from 129 to 128 out of 270 and
+  extra voices rose from 28.9% to 29.3%, so that candidate still misses the
+  Stage 1 gate. A tighter octave-evidence check with seven-report confirmation
+  cut scale ghosts to 9.22% and comping extras to 27.7%. It retained 39.5%
+  both-note accuracy and a 25.3 ms second-entry median. It had 127 of 270 entries,
+  two fewer than v66. Continue with the same evaluation criteria.
+- The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
+  LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
+  register correction reduced the span of their balance from 3.97 dB to 1.63 dB.
+  The darkest settings still needed a separate low-register trim.
