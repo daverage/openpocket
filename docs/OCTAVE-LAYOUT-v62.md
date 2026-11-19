@@ -44,27 +44,69 @@ wet output within 0.02 dB of the old bank's on the five loops.
 BlackBox v62, idle input: POLY OCT FUZZ with both octaves up peaks at 44%
 (SYN block 41%). STRINGS HQ peaks at 32%. There were no late blocks.
 
-## 2. Second sub-octave (−24): prototype only
+## 2. Second sub-octave (−24): in POLY OCTAVE HQ as OCT −2 (v64)
 
 `tools/sim/sub2_proto.c` counts each band's wraps modulo 4 and plays
 |z| cos((a + 2πk)/4). This is a genuine two-octave-down from the same bank:
-no second bank and no delay line. Its octave-down path reproduces the engine
-at 99.9% on single notes and 95.4% on chords.
+no second bank and no delay line. On synthetic notes 99.9% of the output
+lands on target, and 96.5% on chords. v64 (`PX_SUB2_TEST`) puts it in the
+engine as POLY OCTAVE HQ's fifth control, **OCT −2**, in a slot older
+presets did not use. A band whose −24 would sound under 35 Hz fades out
+over 10 Hz, so a low E keeps its upper partials and drops its 20.6 Hz
+fundamental. The level factor (1.79) brings OCT −2 to OCT −1's wet RMS on
+the loops at the same setting.
 
-| −24 from the 26-band bank | On target |
-| --- | ---: |
-| Single notes E2–E5 | 99.9% |
-| Notes E2–G3 | 99.9% |
-| Chords | 96.5% |
+| GuitarSet, 20 takes, fully wet | OCT −1 | OCT −2 |
+| --- | ---: | ---: |
+| Solo notes: energy on the voice's harmonics | 46.9% | 34.7% |
+| Held chords | 32.1% | 20.7% |
+| Added wobble on the loops (chug riff chords arpeggio lead, dB) | 2.33 1.82 3.69 1.43 3.79 | 3.69 1.99 4.65 2.63 4.82 |
 
-The cost is about two more inverse square roots per band. Before it ships,
-it needs a floor like BASS SYNTH HQ's rule, because E2 two octaves down is
-20.6 Hz. It also needs a control: POLY OCTAVE HQ has no free knob. Wobble
-on recordings and pedal load are not yet measured.
+As expected, two octaves down is less clean than one. BlackBox v64: with
+OCT −1 alone the PITCH block runs at 28% (peak 30%), with OCT −2 alone at
+33% (peak 40%), and with all three voices at 37–38%. There were no late
+blocks.
 
-## 3. Phase coherence and 4. transient handling: not started
+## 3. Phase coherence: tested, not kept
 
-Neighbouring-band phase alignment and onset-aware attacks still need a
-metric for warble and attack clicks. The wobble score only partly captures
-them. Next step: score the octave voice's attack against a dry reference
-octave, a synthetic note an octave away, on the GuitarSet comping takes.
+The host experiment weights each band's octave by its dominance over its
+neighbours, (p_i / max(p_i−1, p_i, p_i+1))^β. This mutes a band that only
+sees the skirt of a partial owned by its neighbour, whose shifted phase
+would beat against it. Results, ENGINE NOW with the v62 bank, wobble
+averaged over the five loops and the owner's two DI recordings:
+
+| β | Up: chords / wobble / click | Down: chords / wobble / click |
+| --- | --- | --- |
+| 0 (v62) | 78.7% / 1.40 / 0.70 dB | 95.4% / 1.97 / 0.44 dB |
+| 0.25 | 77.7% / 1.39 / 0.66 | 94.4% / 1.89 / 0.32 |
+| 0.5 | 76.4% / 1.40 / 0.58 | 93.3% / 1.85 / 0.23 |
+| 1 | 73.8% / 1.43 / 0.43 | 91.5% / 1.81 / 0.11 |
+| 2 | 69.6% / 1.48 / 0.26 | 88.6% / 1.78 / 0.00 |
+
+Each step of β trades chord accuracy for a little less wobble down and less
+click. No setting improves one without costing the other, so the engine
+keeps β = 0. Run `BETA=0.5 build/octave_banks …` to reproduce.
+
+## 4. Transient handling: tested, not kept
+
+The host experiment ducks the octave voices at each detected pick: a 1 ms
+envelope more than twice the 40 ms one. The voices then recover over
+DUCK ms from a depth of DUCKD. The click score is the wet output's energy
+above about 2.5 kHz in the 20 ms after each pick, relative to its average,
+in dB.
+
+A detector that may fire again during the attack mutes the voice for tens
+of milliseconds. Arrival rose from 11 to 42–53 ms and wobble tripled. With
+one duck per pick (60 ms refractory):
+
+| Duck | Up: arrival / wobble / click | Down: arrival / wobble / click |
+| --- | --- | --- |
+| off (v62) | 11.1 ms / 1.40 / 0.70 dB | 9.7 ms / 1.97 / 0.44 dB |
+| 6 ms from 60% | 11.3 / 1.43 / 0.44 | 10.1 / 1.96 / 0.25 |
+| 12 ms from 60% | 11.5 / 1.48 / −0.05 | 10.5 / 1.98 / −0.21 |
+| 12 ms from 0% | 12.4 / 1.98 / −0.70 | 11.9 / 2.34 / −0.32 |
+
+The click falls by at most 0.75 dB. Arrival rises 0.2–2 ms and wobble up to
+0.6 dB. That is not enough to ship. If a listening test finds the pick
+click objectionable, 12 ms from 60% is the setting to try. Reproduce with
+`DUCK=12 DUCKD=0.6 CLICK=1 build/octave_banks …`.
