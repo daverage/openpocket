@@ -71,6 +71,34 @@ classifier assumes an annotated root and a measurable second harmonic.
 See the voice-level results and remaining regressions in the plan.
 [Phase 2b results](phase2b.md#stage-1-progress)
 
+### Cycfi Q on isolated bass notes
+
+The host comparison used Q revision `efe2611` and the existing
+`tools/sim/q_bench.cpp` conditioning. For bass, the bench's lower bound was
+27 Hz (stock 60 Hz), which also changes its input high-pass. Use the native
+Baby Blue forte and Dark Black mezzo-forte takes `rr1`–`rr4` at each pitch
+in the bass bench. Trim and peak-normalise with `bass_di_eval.load_note`,
+place each note at 100 ms at 0.24 peak with a 6 ms release ending at 900 ms,
+and feed both benches identical 44.1 kHz mono PCM16. Count matches within
+50 cents during the note and time the first matching report from placement.
+[Bass sources and filenames](BASS-DI-BENCH.md)
+
+| Played note | v66 MONO SYNTH correct frames and first hits | Q correct frames and first hits | First-hit median, v66 / Q |
+|---|---:|---:|---:|
+| B0 | 0%, 0/8 | 82.8%, 8/8 | — / 126.4 ms |
+| E1 | 0%, 0/8 | 86.5%, 8/8 | — / 109.0 ms |
+| A1 | 0%, 0/8 | 84.2%, 8/8 | — / 126.4 ms |
+| E2 | 92.9%, 8/8 | 85.8%, 8/8 | 55.3 / 126.4 ms |
+
+The experimental 900 Hz mono period-check ceiling matched v66 on these bass
+fixtures. With the standard 60 Hz Q bench on the owner DIs and the same
+50-cent tolerance, v66 / 900 Hz / Q correct frames were 85.6% / 86.2% / 67.1%
+on the scale and 62.9% / 62.9% / 71.0% across the low-E sustains. Q provides
+a working reference for isolated bass pitches below guitar E2. The timing
+includes the bench's conditioning and cold start. Played bass lines,
+legato, bends, string mutes and pedal CPU still need separate measurements
+before considering a bass mode.
+
 The other research notes cover different parts of the audio path. The
 ERB-PS2 octave shifter transforms the mixed guitar waveform and can work
 without individual note events. Smart Gate detects signal versus noise and is

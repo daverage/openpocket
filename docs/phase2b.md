@@ -693,6 +693,14 @@ half-ghost limit for this benchmark is 17.575%.
   sounded after 97.8 ms. The added report left both silent throughout
   their scoring windows. These two cases provide direct checks for any
   subsequent change to octave confirmation.
+- A host comparison with Cycfi Q's BACF detector covered both owner DIs and
+  32 native-pitch bass plucks. With its low bound set to 27 Hz for bass, Q
+  detected all eight B0, E1 and A1 plucks at each pitch where v66 MONO SYNTH
+  detected zero. Q took 109–126 ms median across those pitches. At guitar E2
+  it took 126 ms versus 55 ms on v66, and the stock Q setup followed fewer
+  notes in the owner scale while following more of the low-E sustains.
+  Retain Q as a bass reference and keep the current mono guitar path for v67.
+  [Bass comparison and fixture setup](NOTE-TRACKING-RESEARCH.md#cycfi-q-on-isolated-bass-notes)
   [Method and reproduction](NOTE-TRACKING-RESEARCH.md#octave-evidence-results)
 - The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
   LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
