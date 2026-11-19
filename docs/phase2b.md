@@ -715,6 +715,13 @@ half-ghost limit for this benchmark is 17.575%.
   overlap, but still lost the comping entry and reached 29.1% extras.
   The weak-upper misses and the reappearance of attenuated ghosts remain
   separate checks for the next allocator trial.
+- A phase check compared each harmonic's report-to-report phase advance
+  with the root's advance and required greater disagreement in two even
+  partials than in the odd partials. With a 1 Hz excess referred to the root,
+  it admitted 5.0% of scale control reports, 13.2% of low-E control reports
+  and 6.9–16.2% across the four weak-upper synthetic offsets. This simple
+  phase residual overlaps the low-E control too much to add missing
+  candidates. This was a host trace with the root supplied by the fixture.
 - A host comparison with Cycfi Q's BACF detector covered both owner DIs and
   32 native-pitch bass plucks. With its low bound set to 27 Hz for bass, Q
   detected all eight B0, E1 and A1 plucks at each pitch where v66 MONO SYNTH
