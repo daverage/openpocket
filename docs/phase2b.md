@@ -699,7 +699,10 @@ half-ghost limit for this benchmark is 17.575%.
   misses have the upper string at half the lower string's amplitude and
   arriving at the same time or later. When the softer upper string starts
   first, the frozen build briefly reaches both pitches but keeps both for
-  less than 1% of the overlap in each case.
+  less than 1% of the overlap in each case. In the four misses the picker
+  never listed E3. The octave rescue offered it for at most 1, 1, 3 and 0
+  consecutive reports at offsets 0, +20, +80 and +120 ms respectively.
+  Confirmation alone cannot recover a candidate absent at +120 ms.
 - A host trial used harmonic history only after both voices had held for
   100 ms. Four weak reports attenuated the upper voice by 20 dB while
   preserving its pitch and allocator state. It kept all 2,669 solo entries,
