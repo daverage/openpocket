@@ -61,10 +61,10 @@ def read(path, sr=None):
     return x, r
 
 
-def engine_trace(wav):
+def engine_trace(wav, exe='poly_v70'):
     x, _ = read(wav, 44100)
     with tempfile.NamedTemporaryFile(suffix='.csv', delete=False) as tf: tr = tf.name
-    subprocess.run([os.path.join(ROOT, 'build', 'poly_v70'), tr, 'pulse'], input=x.astype('<f4').tobytes(),
+    subprocess.run([os.path.join(ROOT, 'build', exe), tr, 'pulse'], input=x.astype('<f4').tobytes(),
                    stdout=subprocess.DEVNULL, check=True)
     import csv
     rows = list(csv.DictReader(open(tr))); os.unlink(tr)
@@ -76,8 +76,11 @@ def cand_tracker(wav, _la):
     return [(float(r['t']), [float(r[f'n{k}']) for k in range(1, int(r['nn']) + 1)]) for r in rows]
 
 
-def cand_voices(wav, _la):
-    rows = engine_trace(wav)
+def cand_voices(wav, _la, exe='poly_v70', held=False):
+    rows = engine_trace(wav, exe)
+    if held:                                               # (the allocator's decision: held, whatever the gain)
+        return [(float(r['t']), [float(r[v]) for v, hd in (('v1', 'held1'), ('v2', 'held2')) if int(r[hd]) and float(r[v]) > 0])
+                for r in rows]
     return [(float(r['t']), [float(r[v]) for v, g in (('v1', 'gain1'), ('v2', 'gain2')) if float(r[g]) > 0.065 and float(r[v]) > 0])
             for r in rows]
 
@@ -156,7 +159,8 @@ def run(args):
         for name, wav, _ in tk:
             p = cache(args.set, cand, name)
             if os.path.exists(p): continue
-            rows = RUN[cand](wav, la)
+            rows = (cand_voices(wav, la, 'poly_' + cand[5:], True) if cand.startswith('held_') else
+                    cand_voices(wav, la, 'poly_' + cand[7:]) if cand.startswith('voices_') else RUN[cand](wav, la))
             with open(p, 'w') as f:
                 for t, fs in rows: f.write(','.join([f'{t:.4f}'] + [f'{v:.2f}' for v in fs]) + '\n')
         print(f'{cand}: {len(tk)} takes')

@@ -243,3 +243,19 @@ less certain than their frame scores.
 
 Next: port it to engine/px_poly_track.h as the poly voices' allocator, fed by the shared tracker in place of the
 resonator picker. Then check that the synths render the same, measure the load on the pedal, and listen.
+
+### The minimal allocator in the engine (v70 default, `PXP_SIMPLE 2`, engine/px_poly_track.h)
+
+`pxp_allocate_simple` takes the picker's notes as they are. Fed through `pxp_candidates` instead (`PXP_SIMPLE 1`,
+with its bass rescue, harmonic removal, octave shift and level gate), most of the gain was lost. So the
+candidate rules, not just the allocator's, cost notes. What the synth plays (gain above 0.065):
+
+| Set | v70 allocator (`PXP_SIMPLE 0`) | Minimal, on `pxp_candidates` (1) | Minimal, on the picker's notes (2, default) |
+| --- | --- | --- | --- |
+| GuitarSet development, P / R2 | 74.7 / 68.9 % | 75.0 / 71.7 % | 74.8 / 77.5 % |
+| Guitar-TECHS chords, P / R2 / ghosts | 90.1 / 75.7 / 28.7 % | 90.4 / 82.9 / 32.0 % | 85.8 / 88.0 / 20.4 % |
+| GuitarSet test, frozen, P / R2 / found | 71.0 / 65.4 / 65.0 % | 71.8 / 67.7 / 64.0 % | 71.1 / 74.5 / 66.6 % |
+
+Entry is unchanged (about 30 ms median). The minimal allocator applies to PULSE, SAW, ARCADE and FM POLY and to
+STRING DUO. `PXP_SIMPLE 0` keeps the v66 allocator for an A/B until the owner has listened. After that, the old
+allocator, `pxp_candidates` and their test switches are to be deleted.

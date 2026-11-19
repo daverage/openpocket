@@ -549,13 +549,92 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
     }
 }
 
+/* v70: the minimal allocator (tools/research/poly_alloc.py; docs/SYNTH-REBUILD.md "A minimal two-voice allocator"). A
+ * held voice follows the picker's note within 120 cents of it and lets go after PXP_S_HOLD reports without one; a
+ * note within 120 cents of no held voice takes a free voice (lowest first) after PXP_S_CONFIRM reports running, once
+ * that voice has faded (as before). No harmonic, level or eviction rules. Reports: 2.9 ms. */
+#ifndef PXP_SIMPLE
+#define PXP_SIMPLE 2                                   /* v70 default: 2, on the picker's notes; 1: on pxp_candidates; 0: the v66 allocator */
+#endif
+#ifndef PXP_S_CONFIRM
+#define PXP_S_CONFIRM 5u                               /* 14.5 ms */
+#endif
+#ifndef PXP_S_DIP
+#define PXP_S_DIP 0.025f                               /* a free voice takes a note once faded under this */
+#endif
+#ifndef PXP_S_HOLD
+#define PXP_S_HOLD 8u                                  /* 23 ms */
+#endif
+static inline int pxp_within(float a, float b, float ratio) { return a > 0.0f && b > 0.0f && a < b * ratio && b < a * ratio; }
+static void pxp_allocate_simple(const px_track *track, const pxp_candidate *c, int count)
+{
+    const float R120 = 1.071773f;                      /* 120 cents */
+    pxp_note *const voices = pxp.note;
+    unsigned used = 0;
+    for (int i = 0; i < 2; ++i) {                      /* held voices follow their notes */
+        pxp_note *v = &voices[i];
+        if (!v->held) continue;
+        int best = -1; float bd = 9.0f;
+        for (int j = 0; j < count; ++j) {
+            if (used & (1u << j) || !pxp_within(c[j].hz, v->target, R120)) continue;
+            const float d = c[j].hz > v->target ? c[j].hz / v->target : v->target / c[j].hz;
+            if (d < bd) { bd = d; best = j; }
+        }
+        if (best < 0) { if (++v->missing >= PXP_S_HOLD) { v->held = 0; v->repick = 0; } continue; }
+        used |= 1u << best;
+        if (!v->missing && c[best].power > 3.0f * v->power && c[best].power > 0.12f * track->level && v->gain > 0.18f)
+            v->repick = 1;                             /* (the string picked again: the voice re-attacks) */
+        v->power += 0.21f * (c[best].power - v->power);
+        v->sustain = pxp_sustain(c[best].power);
+        v->target = c[best].hz; v->note = c[best].note; v->missing = 0;
+    }
+    for (int i = 0; i < 2; ++i) {                      /* free voices: the lowest new note each */
+        pxp_note *v = &voices[i];
+        if (v->held) continue;
+        int best = -1;
+        for (int j = 0; j < count; ++j) {
+            if (used & (1u << j)) continue;
+            if (voices[1 - i].held && pxp_within(c[j].hz, voices[1 - i].target, R120)) continue;
+            if (best < 0 || c[j].hz < c[best].hz) best = j;
+        }
+        if (best < 0) { v->stable = 0; continue; }
+        used |= 1u << best;
+        if (v->pending == c[best].note) { if (v->stable < PXP_S_CONFIRM) ++v->stable; }
+        else { v->pending = c[best].note; v->stable = 1; }
+        if (v->stable >= PXP_S_CONFIRM && v->gain < PXP_S_DIP) {
+            v->held = 1; v->missing = v->stable = 0;
+            v->target = v->frequency = c[best].hz;
+            v->power = c[best].power; v->sustain = pxp_sustain(c[best].power); v->note = c[best].note;
+            v->events |= PXP_ACQUIRED;
+#ifdef PXP_TUNE
+            ++v->acquisitions;
+#endif
+        }
+    }
+}
+
 static __attribute__((noinline)) void pxp_frame(const px_track *track)
 {
     pxp_candidate candidates[PXT_NOTES];
 #ifdef PXP_FRAME_HOOK
     PXP_FRAME_HOOK(track);                       /* host benches only: tools/sim/pulse_poly_bench.c */
 #endif
+#if PXP_SIMPLE >= 2
+    /* v70: the picker's notes as they are (none of pxp_candidates' bass, harmonic or octave rules) */
+    int count = 0;
+    for (int i = 0; i < track->nnotes && count < PXT_NOTES; ++i) {
+        const float hz = track->notes[i];
+        if (hz <= 0.0f) continue;
+        int bin = 0;
+        while (bin + 1 < PXR_BANDS && pxp_bank.hz[bin + 1] * pxp_bank.hz[bin] < hz * hz) ++bin;   /* nearest bin */
+        candidates[count++] = (pxp_candidate){pxp_bank.hz[bin], hz, track->sal[i] * track->level, i};
+    }
+    memcpy(pxp.previous, pxp_bank.state, sizeof pxp.previous);
+    pxp.ready = 1;
+#else
     const int count = pxp_candidates(track, candidates);
+#endif
+    if (PXP_SIMPLE) pxp_allocate_simple(track, candidates, count); else
     pxp_allocate(track, candidates, count);
 }
 
