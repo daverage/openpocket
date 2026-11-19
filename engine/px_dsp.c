@@ -666,6 +666,7 @@ static const char *const PN_PULSE_POLY[] = {"WIDTH", "PWM", "CUTOFF", "RESO", "R
 #endif
 #ifdef PX_ENSEMBLE_TEST
 static const char *const PN_ENS[] = {"OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"};
+static const char *const PN_DUO[] = {"CELLO", "VIOLIN", "TONE", "ATTACK", "RELEASE"};
 #endif
 #ifdef PX_POLY_TEST
 static const char *const PN_SAW_POLY[] = {"DETUNE", "OCTAVE", "CUTOFF", "SWEEP", "RELEASE"};
@@ -699,7 +700,7 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
 #ifdef PX_POLY_TEST
     {"SAW POLY", 5, PN_SAW_POLY}, {"ARCADE POLY", 5, PN_ARCADE_POLY}, {"FM POLY", 5, PN_FM_POLY},
 #ifdef PX_ENSEMBLE_TEST
-    {"STRING ENSEMBLE", 5, PN_ENS}, {"BRASS ENSEMBLE", 5, PN_ENS},
+    {"STRING ENSEMBLE", 5, PN_ENS}, {"BRASS ENSEMBLE", 5, PN_ENS}, {"STRING DUO", 5, PN_DUO},
 #endif
 #endif
 };
@@ -2397,6 +2398,9 @@ static void pulse_poly_reset(px_engine *e, int configure);
 static int poly_synth_type(int type)
 {
 #ifdef PX_POLY_TEST
+#ifdef PX_ENSEMBLE_TEST
+    if (type == PX_SYN_STRING_DUO) return 1;
+#endif
     return type >= PX_SYN_PULSE_POLY && type <= PX_SYN_FM_POLY;
 #else
     return type == PX_SYN_PULSE_POLY;
@@ -2554,6 +2558,15 @@ static void rc_syn(px_engine *e)
         e->syn_dry = 1.0f - f;
         e->syn_out = 0.26f * f;
         break;
+#ifdef PX_ENSEMBLE_TEST
+    case PX_SYN_STRING_DUO:                            /* v65: CELLO, VIOLIN levels; TONE; ATTACK; RELEASE */
+        e->syn_wave = 0.60f * a; e->syn_pwd = 0.60f * b;     /* (50 / 50: STRING ENSEMBLE's level on the loops) */
+        e->syn_fenv = 2.0f + 8.0f * c;                 /* the low-pass, in harmonics at full level */
+        e->syn_ka = onepole_k(sr, 0.010f + 0.25f * d * d);
+        e->syn_kr = onepole_k(sr, 0.030f + 0.60f * f * f);
+        e->syn_linc[0] = 5.3f / sr;
+        break;
+#endif
     case PX_SYN_FM_POLY: {
         const float ratios[] = {1.0f, 1.5f, 2.0f, 2.5f, 3.5f, 5.0f};
         e->syn_mul = ratios[poly_ratio(q[0])];

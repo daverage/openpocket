@@ -33,6 +33,7 @@ try {
         ["MONO SYNTH", null, [50, 50, 50, 50, 50]],          // v60: on the note layer in poly-test (load only)
         ["STRING ENSEMBLE", ["OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"], [50, 50, 100, 50, 0]],   // v61
         ["BRASS ENSEMBLE", ["OCTAVE", "TONE", "LAYER", "RELEASE", "DRY"], [50, 50, 100, 50, 0]],
+        ["STRING DUO", ["CELLO", "VIOLIN", "TONE", "ATTACK", "RELEASE"], [50, 50, 50, 30, 40]],   // v65
         ["CELLO ENSEMBLE", null, [50, 50, 50, 50, 0]],       // v61: the string ensemble's lead alone (load reference)
         ["TRUMPET", null, [50, 50, 50, 50, 0]],
         ["POLY OCT FUZZ", null, [100, 100, 50, 50, 50]],     // v62: the HQ octave bank (both voices up)
@@ -57,6 +58,10 @@ try {
     console.log(JSON.stringify({saved: saved.length, savedHash: sha.digest("hex"),
         types: specs.map(({name, type}) => ({name, type}))}));
     original = await editor.state();
+    for (const {slot} of saved) {                       // v64: what each saved preset's PITCH and SYN types read as now
+        const {preset} = await editor.slotGet(slot);
+        console.log(JSON.stringify({slot, pitch: blocks[2].types[preset.type[2]]?.name, syn: blocks[syn].types[preset.type[syn]]?.name}));
+    }
     if (process.argv[3] === "consolidated") {           // v63: BASS SYNTH (type 6) is retired; a preset with it plays HQ
         assert.ok(!blocks[syn].types[6]?.name, "BASS SYNTH hidden");
         const q = structuredClone(original.preset); q.type[syn] = 6; q.on[syn] = 1;
@@ -65,27 +70,28 @@ try {
         const got = (await editor.state()).preset.type[syn];
         assert.equal(blocks[syn].types[got]?.name, "BASS SYNTH HQ");
         console.log(JSON.stringify({migrated: "BASS SYNTH (6) -> " + blocks[syn].types[got].name + " (" + got + ")"}));
+        const pit = 2;                                   // the PITCH block
         // v64: PWM SYNTH HQ (17) -> PWM SYNTH; PITCH POLY OCTAVE (1) -> POLY OCTAVE HQ with RANGE 0
-        assert.ok(!blocks[syn].types[17]?.name && !blocks[1].types[1]?.name, "PWM SYNTH HQ and POLY OCTAVE hidden");
-        q.type[syn] = 17; q.type[1] = 1; q.on[1] = 1; q.p[1] = [40, 70, 30, 88, 50];
+        assert.ok(!blocks[syn].types[17]?.name && !blocks[pit].types[1]?.name, "PWM SYNTH HQ and POLY OCTAVE hidden");
+        q.type[syn] = 17; q.type[pit] = 1; q.on[pit] = 1; q.p[pit] = [40, 70, 30, 88, 50];
         assert.equal(await editor.put(q), 0);
         await pause(300);
         const st = (await editor.state()).preset;
         assert.equal(blocks[syn].types[st.type[syn]]?.name, "PWM SYNTH");
-        assert.equal(blocks[1].types[st.type[1]]?.name, "POLY OCTAVE HQ");
-        assert.deepEqual(st.p[1].slice(0, 4), [40, 70, 30, 0]);
+        assert.equal(blocks[pit].types[st.type[pit]]?.name, "POLY OCTAVE HQ");
+        assert.deepEqual(st.p[pit].slice(0, 4), [40, 70, 30, 0]);
         console.log(JSON.stringify({migrated: ["PWM SYNTH HQ -> PWM SYNTH", "POLY OCTAVE -> POLY OCTAVE HQ, RANGE 0"]}));
-        const hq = blocks[1].types.findIndex(t => t?.name === "POLY OCTAVE HQ");
-        assert.deepEqual(blocks[1].types[hq].params.map(p => p.name), ["DRY", "OCT -1", "OCT +1", "RANGE", "OCT -2"]);
+        const hq = blocks[pit].types.findIndex(t => t?.name === "POLY OCTAVE HQ");
+        assert.deepEqual(blocks[pit].types[hq].params.map(p => p.name), ["DRY", "OCT -1", "OCT +1", "RANGE", "OCT -2"]);
         for (const knobs of [[50, 100, 0, 0, 0], [50, 0, 0, 0, 100], [50, 100, 100, 0, 100]]) {
             const r = structuredClone(original.preset); r.on.fill(0); r.order = r.order.map((_, i) => i);
-            r.on[1] = 1; r.type[1] = hq; r.p[1] = knobs; r.p[0][2] = 50;
+            r.on[pit] = 1; r.type[pit] = hq; r.p[pit] = knobs; r.p[0][2] = 50;
             assert.equal(await editor.put(r), 0);
             await pause(650);
             const a = await ping(); let peak = a.peak, b = a, core = a.secondCore, safe = a.bypass;
             for (let i = 0; i < 10; i++) { await pause(500); b = await ping(); peak = Math.max(peak, b.peak); core &&= b.secondCore; safe ||= b.bypass; }
             const late = (b.xrun - a.xrun + 16384) % 16384;
-            console.log(JSON.stringify({name: "POLY OCTAVE HQ " + knobs.join(","), peak, pitch: b.prof?.[1], secondCore: core, safety: safe, late}));
+            console.log(JSON.stringify({name: "POLY OCTAVE HQ " + knobs.join(","), peak, pitch: b.prof?.[pit], secondCore: core, safety: safe, late}));
             assert.ok(core && !safe && late === 0);
         }
     }

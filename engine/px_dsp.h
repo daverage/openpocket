@@ -74,6 +74,7 @@ enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, P
        PX_SYN_SAW_POLY, PX_SYN_ARCADE_POLY, PX_SYN_FM_POLY,
 #ifdef PX_ENSEMBLE_TEST
        PX_SYN_STRING_ENS, PX_SYN_BRASS_ENS,            /* v61: one note, a sampled lead and a light support layer */
+       PX_SYN_STRING_DUO,                              /* v65: two tracked notes, a cello on the lower, a violin on the upper */
 #endif
 #endif
 #endif

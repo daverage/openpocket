@@ -44,7 +44,7 @@ if [ -n "$CHAN" ]; then
   DEFAULT_TESTVER=42
   [ "$CHAN" = lowest-test ] && DEFAULT_TESTVER=54
   [ "$CHAN" = pulse-test ] && DEFAULT_TESTVER=56
-  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=64
+  [ "$CHAN" = poly-test ] && DEFAULT_TESTVER=65
   TESTVER="${OP_TEST_VERSION:-$DEFAULT_TESTVER}"
   printf '#define OP_VERSION_NUM "%s"\n#define OP_TAG " %s"\n' "$TESTVER" "$(echo "$CHAN" | tr a-z- A-Z' ')" > "$O/channel.h"
   APP="$HERE/openpocket-$CHAN.bin"; PKG="$HERE/../docs/firmware/$CHAN"

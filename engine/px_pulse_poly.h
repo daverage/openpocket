@@ -11,6 +11,9 @@ typedef struct {
     float phase2, color, triangle;
     uint32_t noise;
 #endif
+#ifdef PX_ENSEMBLE_TEST
+    float lp[2], held;                                 /* v65 STRING DUO: its low-pass, seconds since the note started */
+#endif
 } px_poly_voice;
 
 static px_poly_voice poly_osc[PXP_NOTES];
@@ -99,6 +102,30 @@ static __attribute__((noinline)) float poly_synth_oscillator(const px_engine *e,
 }
 #endif
 
+#ifdef PX_ENSEMBLE_TEST
+/* v65 STRING DUO: each tracked note is its own instrument. The lower sounding note plays a cello (its pitch, a darker
+ * low-pass, no vibrato for 0.4 s then a slow one), the upper a violin an octave above (brighter, vibrato after
+ * 0.25 s). Both are two detuned band-limited saws through a two-pole low-pass whose cutoff follows the note's level.
+ * The roles follow the two notes' pitches at every sample, so a crossing swaps the timbres, not the notes. */
+static __attribute__((noinline)) float duo_voice(const px_engine *e, px_poly_voice *v, const pxp_note *n, int upper, float step)
+{
+    v->held += pxp.inv_rate;
+    const float onset = upper ? 0.25f : 0.40f, depth = upper ? 0.0045f : 0.0025f;
+    const float vib = v->held > onset ? depth * lfo_sin(e->syn_lfo[0] + (upper ? 0.37f : 0.0f)) : 0.0f;
+    float s = step * (upper ? 2.0f : 1.0f) * (1.0f + vib);
+    if (s > 0.45f) s = 0.45f;
+    const float s1 = s * 1.0021f, s2 = s * 0.9979f;
+    v->phase = wrap1(v->phase + s1);
+    v->phase2 = wrap1(v->phase2 + s2);
+    const float y = 0.5f * (syn_saw(v->phase, s1) + syn_saw(v->phase2, s2));
+    float k = 2.0f * PI_F * s * (upper ? 1.4f : 1.0f) * e->syn_fenv * (0.35f + 0.65f * n->gain);
+    if (k > 0.9f) k = 0.9f;
+    v->lp[0] += k * (y - v->lp[0]);
+    v->lp[1] += k * (v->lp[0] - v->lp[1]);
+    return v->lp[1] * (upper ? e->syn_pwd : e->syn_wave);
+}
+#endif
+
 /* Full-rate PolyBLEP phase. A releasing oscillator keeps its phase and
  * frequency until its gain reaches silence or the slot can be reused. */
 static __attribute__((noinline)) float pulse_poly_voice_sample(int index, float width,
@@ -121,8 +148,18 @@ static __attribute__((noinline)) float pulse_poly_voice_sample(int index, float 
         v->color = 1.0f;
     }
 #endif
+#ifdef PX_ENSEMBLE_TEST
+    if (n->events & PXP_ACQUIRED) { v->held = 0.0f; v->lp[0] = v->lp[1] = 0.0f; }
+#endif
     n->events = 0;
     if (step == 0.0f) return 0.0f;
+#ifdef PX_ENSEMBLE_TEST
+    if (type == PX_SYN_STRING_DUO) {
+        const pxp_note *other = &pxp.note[1 - index];
+        const int upper = other->gain > 1e-5f && other->frequency > 0.0f && n->frequency > other->frequency;
+        return n->gain * duo_voice(e, v, n, upper, step);
+    }
+#endif
 #ifdef PX_POLY_TEST
     if (type != PX_SYN_PULSE_POLY) return n->gain * poly_synth_oscillator(e, v, n, type, step);
 #endif
@@ -157,6 +194,9 @@ static __attribute__((noinline)) void pulse_poly_block(px_engine *e, float *samp
             width = e->syn_pw0 + e->syn_pwd * lfo_sin(e->syn_lfo[0]);
             width = width < 0.08f ? 0.08f : (width > 0.92f ? 0.92f : width);
         }
+#ifdef PX_ENSEMBLE_TEST
+        if (type == PX_SYN_STRING_DUO) e->syn_lfo[0] = wrap1(e->syn_lfo[0] + e->syn_linc[0]);
+#endif
         float sum = 0.0f;
         for (int v = 0; v < PXP_NOTES; ++v) {
             sum += pulse_poly_voice_sample(v, width, e->syn_ka, e->syn_kr
@@ -174,6 +214,9 @@ static __attribute__((noinline)) void pulse_poly_block(px_engine *e, float *samp
             samples[i] = e->syn_out * 0.5f * sum * trim;
             continue;
         }
+#ifdef PX_ENSEMBLE_TEST
+        if (type == PX_SYN_STRING_DUO) { samples[i] = sum * trim; continue; }
+#endif
 #endif
         const float dn = (i & 1) ? 1e-15f : -1e-15f;
         samples[i] = 0.29f * syn_ladder_step(e, sum * 0.48f + dn, cutoff) * trim;
