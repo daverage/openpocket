@@ -14,7 +14,9 @@ Candidates (each writes t, f0 rows to build/stage5/<set>/<cand>/<take>.csv; f0 0
   pesto    PESTO 2.0 (mir-1k_g7) run as published; stamped late by its measured look-ahead
 
 Data sets (docs/phase2b.md "Evaluation standard"): dev = GuitarSet solo takes of players 00-01; test = players 02-05,
-frozen, scored once per finished candidate; owner = the owner's electric DI takes in "My Audio" with pYIN references.
+frozen, scored once per finished candidate; gtechs = Guitar-TECHS electric DI (scales, single notes, techniques,
+music); bass = IDMT bass lines; bassnotes = IDMT single bass notes (tools/research/prep_sets.py). YIN, pYIN and
+SwiftF0 get a 35 Hz floor on the bass sets (60 Hz otherwise); the engine keeps its own.
 GuitarSet is an acoustic guitar's pickup mix, not an electric DI.
 
 Scores per candidate: notes right (the voice within 50 cents for most of the middle half of the note), octave errors,
@@ -30,6 +32,7 @@ sys.path.insert(0, os.path.join(ROOT, 'tools', 'sim'))
 from track_eval import jams_notes, mono_score  # noqa: E402
 
 OUT = os.path.join(ROOT, 'build', 'stage5')
+FMIN = 60.0                                            # (the bass sets: 35 Hz, set in run())
 LOOK = os.path.join(OUT, 'lookahead.json')
 CANDS = ['engine', 'q', 'yin', 'pyin', 'swiftf0', 'pesto']
 CAUSAL = {'engine', 'q', 'yin'}
@@ -45,6 +48,9 @@ def takes(name):
                 j = os.path.join(ROOT, 'build', 'guitarset', 'annotation', b.replace('_mix.wav', '.jams'))
                 out.append((b[:-4], w, ('jams', j)))
         return out
+    if name in ('gtechs', 'bass', 'bassnotes'):            # tools/research/prep_sets.py
+        d = os.path.join(OUT, 'sets', name)
+        return [(os.path.basename(w)[:-4], w, ('csv', w[:-4] + '.csv')) for w in sorted(glob.glob(os.path.join(d, '*.wav')))]
     if name == 'owner':
         out = []
         for w in sorted(glob.glob(os.path.join(ROOT, 'build', 'mono_eval', '*-16.wav'))):
@@ -97,7 +103,7 @@ def cand_yin(wav, _la):
     import librosa
     x, sr = read_wav(wav, 22050)
     n, hop = 1024, 128
-    f = librosa.yin(x, fmin=60, fmax=1400, sr=sr, frame_length=n, hop_length=hop, center=False, trough_threshold=0.1)
+    f = librosa.yin(x, fmin=FMIN, fmax=1400, sr=sr, frame_length=n, hop_length=hop, center=False, trough_threshold=0.1)
     rms = librosa.feature.rms(y=x, frame_length=n, hop_length=hop, center=False)[0][:len(f)]
     f = np.where(rms > 10 ** (-50 / 20), f, 0.0)
     return (np.arange(len(f)) * hop + n) / sr, f
@@ -107,14 +113,14 @@ def cand_pyin(wav, _la):
     import librosa
     x, sr = read_wav(wav, 22050)
     n, hop = 2048, 256
-    f, voiced, _ = librosa.pyin(x, fmin=60, fmax=1400, sr=sr, frame_length=n, hop_length=hop, center=False)
+    f, voiced, _ = librosa.pyin(x, fmin=FMIN, fmax=1400, sr=sr, frame_length=n, hop_length=hop, center=False)
     f = np.where(voiced, np.nan_to_num(f), 0.0)
     return (np.arange(len(f)) * hop + n) / sr, f
 
 
 def swift_raw(x, sr):
     import swift_f0
-    r = swift_f0.SwiftF0().detect(x, sr, fmin=60, fmax=1400)
+    r = swift_f0.SwiftF0().detect(x, sr, fmin=max(46.875, FMIN), fmax=1400)
     return np.asarray(r.timestamps), np.where(np.asarray(r.confidence) >= 0.5, np.asarray(r.pitch_hz), 0.0)
 
 
@@ -178,6 +184,8 @@ def cache_path(sname, cand, take): return os.path.join(OUT, sname, cand, take + 
 
 
 def run(args):
+    global FMIN
+    FMIN = 35.0 if args.set.startswith('bass') else 60.0
     la = json.load(open(LOOK)) if os.path.exists(LOOK) else {}
     only = args.only.split(',') if args.only else CANDS
     tk = takes(args.set)[: args.limit or None]

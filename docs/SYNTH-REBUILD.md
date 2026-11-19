@@ -134,3 +134,43 @@ What it shows:
   Bass-Single-Track, CC BY-NC-ND 4.0, kept in build/ and never committed) sets are next.
 - Range: the engine's tracker covers 60 Hz to 1.4 kHz (B1 to F6) without a semitone grid, so detuned and dropped
   tunings track. Bass E1 (41 Hz) and A1 (55 Hz) are below its floor.
+
+### Mono trackers on electric guitar and bass
+
+Sets (tools/research/prep_sets.py): Guitar-TECHS electric DI, 48 takes and 9,069 notes from E2 to A6 (scales,
+single notes, bends, vibrato, palm mutes, harmonics, music); its Triple Play MIDI runs 8 to 26 ms late and is
+re-aligned per take. IDMT bass lines: 17 lines, 948 notes. IDMT single bass notes: 960, from all playing and
+expression styles. Notes right / octave errors / median and 90th-percentile latency / voicing false alarm:
+
+| Candidate | Electric guitar | Bass lines | Single bass notes |
+| --- | --- | --- | --- |
+| Engine v70 | **89.5 %** / 1.4 % / **4, 19 ms** / 58 % | 62.8 % / 12.9 % / 43, 83 ms / 80 % | 55.4 % / 4.9 % / 62 ms |
+| YIN (causal) | 85.7 % / 1.7 % / 11, 21 ms / 38 % | **85.3 %** / 2.4 % / 34, 73 ms / 32 % | 65.1 % / 0.8 % / 58 ms |
+| Cycfi Q | 66.1 % / 1.6 % / 34, 50 ms / 36 % | 40.8 % / 5.2 % / 55, 99 ms | 55.5 % / 2.0 % / 81 ms |
+| SwiftF0 | 81.2 % / 0.9 % / 144, 155 ms / 43 % | 30.2 % / 2.2 % / 169 ms | 68.9 % / 0.1 % / 192 ms |
+| PESTO | 98.4 % (3 takes only) / 0 % / 52, 59 ms / 20 % | 14.0 % / 0.1 % / 97 ms | 45.4 % / 4.0 % / 107 ms |
+
+Bass split at the engine's 60 Hz floor (notes right / octave errors):
+
+| | E1 to A#1 (under 60 Hz) | B1 and up |
+| --- | --- | --- |
+| Engine, bass lines | 1 % / 39 % | 90 % / 2 % |
+| YIN, bass lines | 82 % / 0 % | 87 % / 3 % |
+| Engine, single notes | 5 % / 26 % | 65 % / 1 % |
+| YIN, single notes | 64 % / 1 % | 65 % / 1 % |
+
+### Mono decision (development data; the frozen test set is still unscored)
+
+1. Keep the engine's own tracker. It is the most accurate and the fastest on electric guitar (89.5 % of notes,
+   4 ms median) and on acoustic guitar. No published candidate beats it at pedal latency.
+2. Lower its floor below 60 Hz. Under 60 Hz it fails, getting 5 % of single notes right or fewer and playing an
+   octave up instead. Above 60 Hz it matches YIN on bass. The target is 38 Hz (E1 with room for a
+   down-tuned bass) without losing the guitar figures.
+3. Fix its release. It keeps sounding through 58 % of the gaps after the Guitar-TECHS players' own note-offs,
+   against 38 % for YIN and 20 % for PESTO.
+4. Neural trackers are not the mono tracker. SwiftF0 needs 152 ms of look-ahead. PESTO is accurate on electric
+   guitar with the fewest octave errors, but it adds 62 ms, fails on bass (14 %) and is slow to run. It stays a
+   possible offline reference only.
+5. Cycfi Q trails everywhere.
+6. Single bass notes cap every tracker near 65 %: the set includes dead notes and harmonics, whose labelled pitch
+   is not what sounds.
