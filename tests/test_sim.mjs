@@ -170,10 +170,10 @@ await act("/api/press/home");
   ok((await state()).preset.on[3] === 1 - amp0 && (await state()).slot === slot0, "the left footswitch: SYNTH on / off, the preset stays");
   await act("/api/press/fs_dn");
   await act("/api/down/fs_up");
-  for (let i = 0; i < 5; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // GT CMP SFX EQ BYP
+  for (let i = 0; i < 10; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // the 9 blocks, then BYP
   await act("/api/up/fs_up");
   t = await state();
-  ok(t.fs[1] === 12, "hold the right footswitch + FX five times: BYPASS");
+  ok(t.fs[1] === 12, "hold the right footswitch + FX ten times: every block, then BYPASS");
   await act("/api/press/fs_up");
   ok((await state()).bypass === 1 && (await state()).dsp.bypass === 0, "the right footswitch: BYPASS on (the user's, not the overload's)");
   await act("/api/press/fs_up");

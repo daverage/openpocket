@@ -1055,16 +1055,18 @@ static void ui_stomp_toggle(void)
     ui_stomp ^= 1u;
     if (!ui_stomp) ui_byp = 0;                     /* PATCH mode never leaves the sound bypassed */
 }
-/* holding footswitch i, a block button or FX assigns it (FX steps GT CMP SFX EQ, BYPASS, nothing) */
+/* holding footswitch i, a block button or FX assigns it (FX steps through every block, BYPASS, nothing) */
 static void ui_fs_assign(int i, int b)
 {
     static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_SYN, PX_B_PITCH, PX_B_DELAY, PX_B_REVERB};   /* MOD AMP CAB DLY REV */
     uint32_t t;
     if (b == UB_FX) {
-        static const uint8_t STEP[6] = {PX_B_GATE, PX_B_COMP, PX_B_SFX, PX_B_EQ, UI_FS_BYP, UI_FS_NONE};
+        /* v70: every block in signal order, then BYPASS, then nothing */
+        static const uint8_t STEP[PX_NBLK + 2] = {PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
+                                                  PX_B_DELAY, PX_B_REVERB, UI_FS_BYP, UI_FS_NONE};
         uint32_t cur = ui_fs_get(i); int k = 0;
-        for (int q = 0; q < 6; q++) if (STEP[q] == cur) { k = q + 1; break; }
-        t = STEP[k % 6];
+        for (int q = 0; q < PX_NBLK + 2; q++) if (STEP[q] == cur) { k = q + 1; break; }
+        t = STEP[k % (PX_NBLK + 2)];
     } else t = BLK_OF[b - UB_MOD];
     ui_fs_put(i, t);
 }
