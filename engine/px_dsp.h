@@ -4,10 +4,8 @@
  * px_dsp.h — v3: a preset = 11 blocks; each block has a TYPE, an ON/OFF state and 5 settings 0..100.
  * The UI and the engine share exactly this structure.
  *
- *   default order: IN -> GATE -> COMP -> PITCH -> SFX -> SYN -> EQ -> MOD -> DELAY -> REVERB -> OUT
- *   v29: each preset carries its own block order (order[]).
- *   OpenPocket Synth (v70): no amp, cabinet, drive or NAM. Their block slots (PX_B_DRIVE, PX_B_AMP, PX_B_CAB) stay in
- *   the enum until the new block layout replaces it; they have one type and pass the signal through.
+ *   default order: IN -> GATE -> COMP -> OCTAVE (PITCH) -> SYNTH -> SFX -> EQ -> MOD -> DELAY -> REVERB -> OUT
+ *   v29: each preset carries its own block order (order[]). v70: 9 blocks, no amp, cabinet, drive or NAM.
  *
  * Models are voiced from published circuit analyses (ElectroSmash, Electric Druid, Rob Robinette,
  * Duncan Amps, Celestion/Jensen datasheets, Boss/Roland/Ampeg manuals...) — see docs/SOUNDS-AND-CONTROLS.md.
@@ -32,8 +30,9 @@ extern "C" {
 #define PX_MAX_BLOCK 64
 
 /* --------------------------------------------------------------- blocks --- */
-enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_DRIVE, PX_B_AMP, PX_B_CAB, PX_B_EQ, PX_B_MOD,
-       PX_B_DELAY, PX_B_REVERB, PX_B_SYN, PX_NBLK };   /* SYN appended (v29): older presets keep their indices */
+/* v70 (OpenPocket Synth): 9 blocks in signal order. The pedal groups them: INPUT (GATE, COMP), OCTAVE (PITCH),
+ * SYNTH (SYN), TONE (SFX, EQ), MOD, DELAY, REVERB. */
+enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD, PX_B_DELAY, PX_B_REVERB, PX_NBLK };
 #define PX_NPAR 5
 
 enum { PX_GATE_NORMAL, PX_GATE_SMART, PX_GATE_COUNT };
@@ -243,7 +242,7 @@ typedef struct {
     float gl_t[PX_GL_MAX]; int gl_left;
     float bf[PX_NBLK], bfa[PX_NBLK]; int8_t bfd[PX_NBLK];
     px_preset_t run;
-    uint32_t pf[PX_NBLK + 1];                          /* v38: time spent per block, [PX_NBLK] the NAM network (px_clock ticks) */
+    uint32_t pf[PX_NBLK];                              /* v38: time spent per block (px_clock ticks) */
     /* v39: the wet lanes (px_wet_mode below): lane 0 the delay, 1 the reverb, two buffers each (px_dsp.c: px_wl), used
      * in turn. wl_b: the buffer the chain uses this block (it reads its wet out and writes its sends in); wl_n: how many
      * samples a buffer holds, wl_w: 1 once they are wet; wl_rd: wet samples the chain may read this block, wl_p: where

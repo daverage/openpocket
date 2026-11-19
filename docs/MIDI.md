@@ -45,32 +45,28 @@ last model.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | GATE | 20 | 52 | 33 | 34 | 35 | 36 | 37 |
 | COMP | 21 | 53 | 39 | 40 | 41 | 42 | 43 |
-| PITCH | 22 | 54 | 44 | 45 | 46 | 47 | 48 |
-| SFX | 23 | 55 | 49 | 50 | 51 | 70 | 71 |
-| DRIVE | 24 | 56 | 72 | 73 | 74 | 75 | 76 |
-| AMP | 25 | 57 | 77 | 78 | 79 | 80 | 81 |
-| CAB | 26 | 58 | 82 | 83 | 84 | 85 | 86 |
-| EQ | 27 | 59 | 87 | 88 | 89 | 90 | 91 |
-| MOD | 28 | 60 | 92 | 93 | 94 | 95 | 96 |
-| DELAY | 29 | 61 | 97 | 102 | 103 | 104 | 105 |
-| REVERB | 30 | 62 | 106 | 107 | 108 | 109 | 110 |
-| SYN | 31 | 63 | 111 | 112 | 113 | 114 | 115 |
+| OCTAVE | 22 | 54 | 44 | 45 | 46 | 47 | 48 |
+| SYNTH | 23 | 55 | 49 | 50 | 51 | 70 | 71 |
+| SFX | 24 | 56 | 72 | 73 | 74 | 75 | 76 |
+| EQ | 25 | 57 | 77 | 78 | 79 | 80 | 81 |
+| MOD | 26 | 58 | 82 | 83 | 84 | 85 | 86 |
+| DELAY | 27 | 59 | 87 | 88 | 89 | 90 | 91 |
+| REVERB | 28 | 60 | 92 | 93 | 94 | 95 | 96 |
 
-**Toggles (footswitches).** CC 8 to 19 flip a block with **value 0** and ignore every other value, so a footswitch that sends
+**Toggles (footswitches).** CC 8 to 16 flip a block with **value 0** and ignore every other value, so a footswitch that sends
 127 then 0 for a tap flips it once. The pedal holds the state, so a preset change cannot put the footswitch out of step, as
 it can with the on/off numbers above.
 
-| CC | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Block | GATE | COMP | PITCH | SFX | DRIVE | AMP | CAB | EQ | MOD | DELAY | REVERB | SYN |
+| CC | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Block | GATE | COMP | OCTAVE | SYNTH | SFX | EQ | MOD | DELAY | REVERB |
 
 The order is the order of the blocks above: CC 8 + n flips what CC 20 + n switches. The pedal never sends these numbers: it reports a
 block with its on/off number.
 
 CC **7** (volume) sets the MASTER volume, 0 to 127 to 0 to 100, like the MASTER knob (turning the knob takes over again).
 
-What the "setting" numbers mean depends on the model (the screen shows the names): for the AMP they are GAIN, BASS, MID,
-TREBLE, PRESENCE; setting 3 of GATE is the preset LEVEL (50 = 0 dB); setting 1 of DELAY is TIME. Only the settings the model
+What the "setting" numbers mean depends on the model (the screen shows the names): for SYNTH they are the synth's own controls; setting 3 of GATE is the preset LEVEL (50 = 0 dB); setting 1 of DELAY is TIME. Only the settings the model
 has do anything; the others are stored and ignored. See [SOUNDS-AND-CONTROLS.md](SOUNDS-AND-CONTROLS.md) and
 [EDITOR-PROTOCOL.md](EDITOR-PROTOCOL.md).
 

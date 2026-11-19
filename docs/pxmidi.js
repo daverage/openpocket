@@ -3,7 +3,7 @@
 // numbers and the same scaling), a decoder for the messages a port delivers, and the editor's learned mappings: a control
 // of another MIDI device (a foot controller plugged into the computer) -> something on the pedal. No DOM, no port here.
 
-export const NBLK = 12, NPAR = 5;
+export const NBLK = 9, NPAR = 5;                 // v70: 9 blocks
 export const CC_MASTER = 7, CC_TOGGLE0 = 8, CC_ON0 = 20, CC_TYPE0 = 52;
 
 // 60 settings over three runs of free numbers (px_cc_param)

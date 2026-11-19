@@ -13,7 +13,7 @@ const info = await ed.connect();
 if (!info) { access.close(); throw new Error("No OpenPocket MIDI pedal found"); }
 console.log(`${info.identity} firmware ${info.version}`);
 const cat = await ed.catalog();
-const SYN = 11, syn = cat.blocks[SYN];
+const SYN = 3, syn = cat.blocks[SYN];   // (v70: SYNTH is block 3)
 const want = (process.env.TYPES || "TRUMPET,BOWED CELLO,CELLO ENSEMBLE,BASS SYNTH HQ,PWM SYNTH HQ,STRINGS HQ,POLY OCT FUZZ,POLY BRASS,PITCH:POLY OCTAVE HQ").split(",");   // (PITCH:name: a PITCH type)
 const st = await ed.state(), was = st.preset;
 const sleep = (s) => new Promise((r) => setTimeout(r, s * 1000));
@@ -52,9 +52,7 @@ try {
     }
     const late = start.xrun == null || p.xrun == null ? null : (p.xrun - start.xrun + 16384) % 16384;
     console.log(JSON.stringify({ block: name, secondCore: p.secondCore, peak, bypass, late,
-      pitch: p.prof?.[2], syn: p.prof?.[SYN], gate: p.prof?.[0],
-      splitCpu0Peak: p.split == null ? undefined : p.cpu0Peak,
-      splitCpu1Peak: p.split == null ? undefined : p.cpu1Peak }));
+      pitch: p.prof?.[2], syn: p.prof?.[SYN], gate: p.prof?.[0] }));
     if (!p.secondCore) break;
   }
 } finally { await ed.put(was); console.log("your sound is back"); ed.close(); access.close?.(); }

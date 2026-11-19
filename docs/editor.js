@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // OpenPocket web editor: the start. Finding the pedal and every way that can fail, the sections and the way between
-// them, the DSP load, the keyboard. The sections themselves: edsound.js, edpresets.js, edmodels.js, edmidi.js.
+// them, the DSP load, the keyboard. The sections themselves: edsound.js, edpresets.js, edmidi.js.
 
 import { app, $, h, icon, on, emit, say, busy } from "./edcore.js";
 import { Editor } from "./pxedit.js";
 import { initPresets, loadBank, refreshSlots, refreshBank, stepPreset, save, comparing, compareSlotChanged, compareBeforeUnload } from "./edpresets.js";
 import { initSound } from "./edsound.js";
-import { initModels, loadAssets } from "./edmodels.js";
 import { initMidi } from "./edmidi.js";
 
 let pingTimer = null, connecting = false, progress = 0;
@@ -44,7 +43,6 @@ async function connect() {
     app.st = await e.state();
     app.focus = app.st.focus;
     app.slots = await e.list();
-    await loadAssets();
     e.onState = onPush;
     await e.watch(true);
     $("status").textContent = `${info.identity.replace(/_9?\d+$/, "")} · OpenPocket ${info.version}`;
@@ -113,7 +111,6 @@ const GATE = {
     h("ul", { class: "what" },
       h("li", {}, h("b", { text: "Presets" }), "Browse, rename, reorder, copy and back up the 52 presets."),
       h("li", {}, h("b", { text: "Sound" }), "The signal chain and every block's settings, live."),
-      h("li", {}, h("b", { text: "Models" }), "Amp captures from TONE3000 or your files, and cabinet IRs."),
       h("li", {}, h("b", { text: "MIDI" }), "The pedal's control numbers, and your own controller.")),
   ],
   unsupported: () => [
@@ -160,7 +157,7 @@ function renderGate() {
 }
 
 // ---- the sections ----
-const VIEWS = ["presets", "sound", "models", "midi"];
+const VIEWS = ["presets", "sound", "midi"];
 function setView(v, push = true) {
   if (!VIEWS.includes(v)) v = "sound";
   app.view = v;
@@ -197,7 +194,6 @@ function renderLoadPop() {
         h("dt", { text: "Blocks at the clipper" }), h("dd", { text: p.clip ? `${p.clip} since power-on: lower the preset LEVEL` : "none" })]));
   if (p.prof && app.st) {
     const rows = app.st.preset.order.filter((b) => p.prof[b]).map((b) => ({ name: app.cat.blocks[b].label, v: p.prof[b], c: app.cat.blocks[b].color }));
-    if (p.profNam) rows.push({ name: "NAM network", v: p.profNam, c: "var(--acc)" });
     if (rows.length) pop.append(h("h3", { text: "Where it goes" }), h("div", { class: "prof" }, rows.map((r) =>
       h("div", { class: "prof-r" }, h("span", { text: r.name }), h("span", { class: "prof-b" }, h("i", { style: `width:${Math.min(100, r.v)}%;background:${r.c}` })), h("span", { text: `${r.v} %` })))));
   }
@@ -217,7 +213,6 @@ function renderConnPop() {
 
 // ---- start ----
 initPresets(); initSound(); initMidi();
-await initModels();
 on("view-go", (v) => setView(v));
 $("reconnect").onclick = connect;
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setView(b.dataset.go); };

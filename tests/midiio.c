@@ -47,7 +47,7 @@ static px_preset_t PRESET;
 static uint32_t cur_preset, master_vol = 80, ui_mode = M_CHAIN, ui_item;
 static uint8_t st_midi, st_usb, st_ok = 1;
 static int commits;
-static int ui_nitems(void) { return 2 + px_nparams(PX_B_AMP, PRESET.type[PX_B_AMP]); }
+static int ui_nitems(void) { return 2 + px_nparams(PX_B_SYN, PRESET.type[PX_B_SYN]); }
 static void load_preset(uint32_t i) { px_preset_factory(&PRESET, (int)i); }
 static int st_commit(void) { commits++; return 0; }
 typedef struct { int dummy; } op_font;
@@ -89,10 +89,10 @@ int main(void)
     ok(cur_preset == 5, "Program Change 60 (there are 52 slots) is ignored");
 
     reset();
-    midi_enqueue(cc(0, 20 + PX_B_AMP, 0), 1);
+    midi_enqueue(cc(0, 20 + PX_B_SYN, 0), 1);
     midi_enqueue(cc(0, 7, 127), 2);
     px_midi_service();
-    ok(PRESET.on[PX_B_AMP] == 0 && master_vol == 100, "CC 25 = 0 switches the amp off; CC 7 = 127 sets MASTER to 100");
+    ok(PRESET.on[PX_B_SYN] == 0 && master_vol == 100, "CC 23 = 0 switches the synth off; CC 7 = 127 sets MASTER to 100");
     ok(pop_out() == 0, "the host's changes are not echoed");
 
     reset();
@@ -201,29 +201,29 @@ int main(void)
     reset();
     {
         uint8_t on[] = {0x80, 0x80, 0xB0, 24, 127}, off[] = {0x80, 0x80, 0xB0, 24, 0}, pc[] = {0x80, 0x80, 0xC0, 7};
-        PRESET.on[PX_B_DRIVE] = 0;
+        PRESET.on[PX_B_SFX] = 0;
         px_midi_ble_write(on, sizeof on);
         px_midi_service();
-        ok(PRESET.on[PX_B_DRIVE] == 1 && mid_last[0] == PXM_CC && mid_last[1] == 24 && mid_last[2] == 127, "a Bluetooth write switches a block as USB does, and the page shows it");
+        ok(PRESET.on[PX_B_SFX] == 1 && mid_last[0] == PXM_CC && mid_last[1] == 24 && mid_last[2] == 127, "a Bluetooth write switches a block as USB does, and the page shows it");
         ok(pop_out() == 0, "what came over Bluetooth is not sent back");
         ui_mode = M_SAVE;
         px_midi_ble_write(off, sizeof off);
         px_midi_service();
-        ok(PRESET.on[PX_B_DRIVE] == 1 && ble_in_r == ble_in_w, "the SAVE page ignores Bluetooth too, and the ring is emptied");
+        ok(PRESET.on[PX_B_SFX] == 1 && ble_in_r == ble_in_w, "the SAVE page ignores Bluetooth too, and the ring is emptied");
         ui_mode = M_CHAIN;
         px_midi_ble_write(pc, sizeof pc);
         px_midi_service();
         ok(cur_preset == 7, "a Bluetooth Program Change loads the preset");
         uint8_t tap[] = {0x80, 0x8E, 0xB1, 12, 0x7F}, tap0[] = {0x80, 0x8E, 0xB1, 12, 0x00};
-        uint32_t was = PRESET.on[PX_B_DRIVE];
+        uint32_t was = PRESET.on[PX_B_SFX];
         px_midi_ble_write(tap, sizeof tap); px_midi_ble_write(tap0, sizeof tap0);
         px_midi_service();
-        ok(PRESET.on[PX_B_DRIVE] == !was, "a Chocolate tap on CC 12 over Bluetooth flips DRIVE once");
+        ok(PRESET.on[PX_B_SFX] == !was, "a Chocolate tap on CC 12 over Bluetooth flips SFX once");
         load_preset(cur_preset);
-        was = PRESET.on[PX_B_DRIVE];
+        was = PRESET.on[PX_B_SFX];
         px_midi_ble_write(tap0, sizeof tap0);
         px_midi_service();
-        ok(PRESET.on[PX_B_DRIVE] == !was, "after a preset change the toggle flips what the new preset has");
+        ok(PRESET.on[PX_B_SFX] == !was, "after a preset change the toggle flips what the new preset has");
     }
     printf("\n%s\n", failed ? "MIDI glue tests FAILED" : "all MIDI glue tests passed");
     return failed ? 1 : 0;

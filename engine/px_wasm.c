@@ -8,7 +8,7 @@
 #include "px_dsp.h"
 
 #define A_FR 128u
-_Static_assert(sizeof(px_preset_t) == 110, "tools/sim/px-engine.js writes the preset byte by byte");
+_Static_assert(sizeof(px_preset_t) == 86, "tools/sim/px-engine.js writes the preset byte by byte");
 
 static px_engine g_eng;
 static px_preset_t preset;

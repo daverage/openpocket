@@ -75,7 +75,7 @@ int main(void)
                 for (k = 0; k < sizeof RESERVED; k++) if (RESERVED[k] == cs[i]) bad++;
             }
         }
-        ok(n == 96 && !dup, "96 settings and toggles, each on its own Control Change number");
+        ok(n == PX_NBLK * (3 + PX_NPAR) && !dup, "72 settings and toggles, each on its own Control Change number");
         ok(!bad, "none above 119 (120..127 are channel-mode messages) or on a reserved number (bank, data entry, pedals, RPN)");
         ok(!used[PXM_CC_MASTER], "7 (volume) is not used by a block");
         bad = 0;
@@ -103,14 +103,14 @@ int main(void)
         uint32_t master = 77;
         int mset = 0, ch;
         px_preset_factory(&p, 0);
-        p.on[PX_B_AMP] = 1;
-        ch = px_midi_cc_apply(&p, 20 + PX_B_AMP, 0, &master, &mset);
-        ok(ch == 1 && p.on[PX_B_AMP] == 0, "CC 25 = 0 switches the amp off");
-        ch = px_midi_cc_apply(&p, 20 + PX_B_AMP, 63, &master, &mset);
-        ok(ch == 0 && p.on[PX_B_AMP] == 0, "63 is still off (the threshold is 64)");
-        ch = px_midi_cc_apply(&p, 20 + PX_B_AMP, 64, &master, &mset);
-        ok(ch == 1 && p.on[PX_B_AMP] == 1, "64 switches it on");
-        ch = px_midi_cc_apply(&p, 20 + PX_B_AMP, 127, &master, &mset);
+        p.on[PX_B_SYN] = 1;
+        ch = px_midi_cc_apply(&p, 20 + PX_B_SYN, 0, &master, &mset);
+        ok(ch == 1 && p.on[PX_B_SYN] == 0, "CC 23 = 0 switches the synth off");
+        ch = px_midi_cc_apply(&p, 20 + PX_B_SYN, 63, &master, &mset);
+        ok(ch == 0 && p.on[PX_B_SYN] == 0, "63 is still off (the threshold is 64)");
+        ch = px_midi_cc_apply(&p, 20 + PX_B_SYN, 64, &master, &mset);
+        ok(ch == 1 && p.on[PX_B_SYN] == 1, "64 switches it on");
+        ch = px_midi_cc_apply(&p, 20 + PX_B_SYN, 127, &master, &mset);
         ok(ch == 0, "the same state again reports no change");
         {
             px_cc_t t = {PXM_PARAM, PX_B_SYN, 1};
@@ -172,12 +172,12 @@ int main(void)
             ok(sent == n, "12 changed settings are 12 messages, then silence");
         }
         px_midi_tx_sync(&tx, &cur, 7);
-        cur.p[PX_B_AMP][0] ^= 1;
+        cur.p[PX_B_SYN][0] ^= 1;
         px_midi_tx_sync(&tx, &cur, 7);
         ok(px_midi_tx_next(&tx, &cfg, &cur, 7) == 0, "a change made by the host (synced) is not sent back");
         pkt = px_midi_tx_next(&tx, &c5, &cur, 9);
         ok(pkt == pc_pkt(4, 9), "channel 5 setting: Program Change goes out on channel 5");
-        cur.p[PX_B_AMP][0] ^= 1;
+        cur.p[PX_B_SYN][0] ^= 1;
         ok(px_midi_tx_next(&tx, &off, &cur, 9) == 0 && px_midi_tx_next(&tx, &cfg, &cur, 9) == 0,
            "SEND off: nothing goes out, and the changes made meanwhile are not sent when it is switched on again");
     }
@@ -285,16 +285,16 @@ int main(void)
             if (!px_midi_cc_apply(&p, 8u + b, 0, &mv, &ms) || p.on[b] != was) same = 0;
             px_midi_cc_apply(&q, 20u + b, was ? 127u : 0u, &mv, &ms);
         }
-        ok(same, "CC 8 to 19, value 0: each flips the same block as CC 20 to 31, there and back");
+        ok(same, "CC 8 to 16, value 0: each flips the same block as CC 20 to 28, there and back");
         ok(px_midi_cc_apply(&p, 12, 127, &mv, &ms) == 0 && px_midi_cc_apply(&p, 12, 1, &mv, &ms) == 0 && !memcmp(&p, &q, sizeof p),
            "a toggle fires on value 0 only: a 127 then 0 tap flips once");
         p.on[PX_B_DELAY] = 0;
-        px_midi_cc_apply(&p, 17, 0, &mv, &ms);
-        ok(p.on[PX_B_DELAY] == 1, "CC 17 is DELAY");
-        p.on[PX_B_REVERB] = 0; p.on[PX_B_MOD] = 0; p.on[PX_B_DRIVE] = 0; p.on[PX_B_PITCH] = 0; p.on[PX_B_SFX] = 0;
-        px_midi_cc_apply(&p, 18, 0, &mv, &ms); px_midi_cc_apply(&p, 16, 0, &mv, &ms); px_midi_cc_apply(&p, 12, 0, &mv, &ms);
-        px_midi_cc_apply(&p, 10, 0, &mv, &ms); px_midi_cc_apply(&p, 11, 0, &mv, &ms);
-        ok(p.on[PX_B_REVERB] && p.on[PX_B_MOD] && p.on[PX_B_DRIVE] && p.on[PX_B_PITCH] && p.on[PX_B_SFX], "CC 18 REVERB, 16 MOD, 12 DRIVE, 10 PITCH, 11 SFX");
+        px_midi_cc_apply(&p, 15, 0, &mv, &ms);
+        ok(p.on[PX_B_DELAY] == 1, "CC 15 is DELAY");
+        p.on[PX_B_REVERB] = 0; p.on[PX_B_MOD] = 0; p.on[PX_B_SYN] = 0; p.on[PX_B_PITCH] = 0; p.on[PX_B_SFX] = 0;
+        px_midi_cc_apply(&p, 16, 0, &mv, &ms); px_midi_cc_apply(&p, 14, 0, &mv, &ms); px_midi_cc_apply(&p, 11, 0, &mv, &ms);
+        px_midi_cc_apply(&p, 10, 0, &mv, &ms); px_midi_cc_apply(&p, 12, 0, &mv, &ms);
+        ok(p.on[PX_B_REVERB] && p.on[PX_B_MOD] && p.on[PX_B_SYN] && p.on[PX_B_PITCH] && p.on[PX_B_SFX], "CC 16 REVERB, 14 MOD, 11 SYNTH, 10 OCTAVE, 12 SFX");
         q = p;
         ok(px_midi_cc_apply(&p, 0, 0, &mv, &ms) == 0 && px_midi_cc_apply(&p, 7 + 0, 0, &mv, &ms) == 0 && !memcmp(&p, &q, sizeof p), "CC 0 (bank select) still does nothing");
     }

@@ -24,27 +24,21 @@ function parse(argv) {
   return a;
 }
 
-// the engine's blocks (engine/px_dsp.h PX_B_*), then the NAM network
-const PROF = ["GATE", "COMP", "PITCH", "SFX", "DRIVE", "AMP", "CAB", "EQ", "MOD", "DELAY", "REVERB", "SYN", "NAM"];
+// the engine's blocks (engine/px_dsp.h PX_B_*, v70)
+const PROF = ["GATE", "COMP", "OCTAVE", "SYNTH", "SFX", "EQ", "MOD", "DELAY", "REVERB"];
 
 // PING's reply: load, flags, then (v40.1) peak, peak since boot, late blocks and clips (14 bits each, wrapping)
 export function parsePing(r) {
   const p = { load: r[0], bypass: !!(r[1] & 1), secondCore: !!(r[1] & 2) };
   if (r.length >= 8) Object.assign(p, { peak: r[2], peakAll: r[3], xrun: r[4] | r[5] << 7, clip: r[6] | r[7] << 7 });
   if (r.length >= 12) Object.assign(p, { stackFree: (r[8] | r[9] << 7) * 4, irqStackFree: (r[10] | r[11] << 7) * 4 });
-  // v40.2: then a count and that many bytes: each block's share of the block time (%, in the engine's block order) and
-  // the NAM network's, then the network's way of running (its mode)
+  // then a count and that many 2-byte figures: each block's share of the block time (%, in the engine's block order)
   const base = [12, 16].find((b) => r.length > b && r.length === b + 1 + 2 * r[b]);
   if ((base ?? r.length) >= 16) Object.assign(p, { bleHeapFree: (r[12] | r[13] << 7) * 4, bleTaskStackFree: (r[14] | r[15] << 7) * 4 });
   if (base) {
     const f = []; for (let i = base + 1; i + 1 < r.length; i += 2) f.push(r[i] | r[i + 1] << 7);
-    p.prof = f.slice(0, PROF.length); p.namMode = f[PROF.length];
-    p.namModes = f.slice(PROF.length + 1, PROF.length + 12).map((v) => v / 10);
-    p.namParts = f.slice(PROF.length + 12, PROF.length + 21).map((v) => v / 10);
-    if (f.length > PROF.length + 21) p.split = f[PROF.length + 21] ? f[PROF.length + 21] - 1 : null;   // v40.2: CPU0's last layer
-    if (f.length > PROF.length + 25) [p.cpu0, p.cpu1, p.cpu0Peak, p.cpu1Peak] = f.slice(PROF.length + 22, PROF.length + 26);
-    if (f.length > PROF.length + 29) [p.switchMs, p.setMs, p.loadingMs, p.loadings] = [f[PROF.length + 26] / 10, f[PROF.length + 27] / 10, f[PROF.length + 28], f[PROF.length + 29]];   // v40.3
-    p.extra = f.slice(f.length > PROF.length + 29 ? PROF.length + 30 : f.length > PROF.length + 25 ? PROF.length + 26 : PROF.length + 22);   // (a development build's own)
+    p.prof = f.slice(0, PROF.length);
+    p.extra = f.slice(PROF.length);                    // (a development build's own)
   }
   return p;
 }
@@ -68,7 +62,7 @@ export async function run(ed, args, sleep) {
   try {
     for (const p of presets) {
       await ed.select(p.slot);
-      await sleep(1.5);                                  // the preset's load (a NAM model, an IR) and its first blocks
+      await sleep(1.5);                                  // the preset's first blocks
       const a = parsePing(await ed.request(C.PING));
       let max = a.load, b = a;
       for (let t = 0; t < args.seconds; t += 0.5) { await sleep(0.5); b = parsePing(await ed.request(C.PING)); max = Math.max(max, b.load); }
@@ -76,9 +70,7 @@ export async function run(ed, args, sleep) {
                  xrun: b.xrun === undefined ? null : wrap14(a.xrun, b.xrun), clip: b.clip === undefined ? null : wrap14(a.clip, b.clip),
                  stackFree: b.stackFree ?? null, irqStackFree: b.irqStackFree ?? null,
                  bleHeapFree: b.bleHeapFree ?? null, bleTaskStackFree: b.bleTaskStackFree ?? null,
-                 prof: b.prof ?? null, namMode: b.namMode ?? null, namModes: b.namModes ?? null, namParts: b.namParts ?? null,
-                 split: b.split ?? null, cpu0: b.cpu0 ?? null, cpu1: b.cpu1 ?? null, cpu0Peak: b.cpu0Peak ?? null,
-                 cpu1Peak: b.cpu1Peak ?? null, switchMs: a.switchMs ?? null, setMs: a.setMs ?? null, extra: b.extra ?? null });
+                 prof: b.prof ?? null, extra: b.extra ?? null });
     }
   } finally { await ed.select(was).catch(() => {}); }
   return out;
@@ -110,13 +102,8 @@ export async function main(argv, { access, say = console.log } = {}) {
         say("where the time goes (% of a block, last second):");
         for (const r of rows) if (r.prof) {
           const parts = r.prof.map((v, i) => [PROF[i] ?? `#${i}`, v]).filter(([, v]) => v);
-          say(`${String(r.slot).padStart(4)} ${r.name.padEnd(14)} ${parts.map(([n, v]) => `${n} ${v}`).join("  ")}  (mode ${r.namMode})` +
-              `${r.split === null ? "" : `  CPU0 ${r.cpu0}/${r.cpu0Peak} %, CPU1 ${r.cpu1}/${r.cpu1Peak} % (layers 0..${r.split} on CPU0)`}`);
+          say(`${String(r.slot).padStart(4)} ${r.name.padEnd(14)} ${parts.map(([n, v]) => `${n} ${v}`).join("  ")}`);
         }
-      }
-      if (rows.some((r) => r.switchMs !== null)) {          // v40.3: the selection is a full change when the type, order or model differs
-        say("the switch to it (from the selection to the sound back, ms; the engine's set in it):");
-        for (const r of rows) if (r.switchMs !== null) say(`${String(r.slot).padStart(4)} ${r.name.padEnd(14)} ${r.switchMs}  (set ${r.setMs})`);
       }
       const last = rows[rows.length - 1];
       if (last && last.namModes) {

@@ -37,7 +37,7 @@ let info = await get("/api/info");
 ok(info.kind === "pedal" && info.port === "OpenPocket" && info.controls.includes("fs_up"), `info: ${info.kind} on port "${info.port}"`);
 let s = await state();
 ok(s.slot === 0 && s.name === "PRESET 01" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
-ok(s.preset.p.length === 12 && s.preset.order.length === 12 && s.dsp.load === 42 && s.writes_ok === 1, "state: 12 blocks, the DSP load, flash writes allowed");
+ok(s.preset.p.length === 9 && s.preset.order.length === 9 && s.dsp.load === 42 && s.writes_ok === 1, "state: 9 blocks, the DSP load, flash writes allowed");
 
 // ---- 2. footswitches and the screen ----
 const shot0 = await png("/api/screen.rgb565"), f0 = s.frame;
@@ -55,17 +55,17 @@ ok((await state()).slot === 0, "footswitch down: back to slot 1");
 // ---- 3. block buttons, the knob, the pages ----
 await act("/api/press/mod");
 s = await state();
-ok(s.mode === "block" && s.block === 8, "MOD button: the MOD page");
+ok(s.mode === "block" && s.block === 6, "MOD button: the MOD page");
 await act("/api/knob/1");                    // (down the page from MODEL: the first setting)
 await act("/api/press/push");
 s = await state();
 ok(s.mode === "edit", "knob + PUSH: editing the MOD's first setting");
-const gain = s.preset.p[8][0];
+const gain = s.preset.p[6][0];
 await act("/api/knob/8");
 s = await state();
-ok(s.preset.p[8][0] === Math.min(100, gain + 8) && s.dirty === 1, `knob x8: RATE ${gain} -> ${s.preset.p[8][0]}, the sound is edited`);
+ok(s.preset.p[6][0] === Math.min(100, gain + 8) && s.dirty === 1, `knob x8: RATE ${gain} -> ${s.preset.p[6][0]}, the sound is edited`);
 await act("/api/knob/-3?fast");
-ok((await state()).preset.p[8][0] === Math.max(0, s.preset.p[8][0] - 15), "knob counterclockwise, fast: steps of 5");
+ok((await state()).preset.p[6][0] === Math.max(0, s.preset.p[6][0] - 15), "knob counterclockwise, fast: steps of 5");
 await act("/api/press/home");
 ok((await state()).mode === "chain", "HOME: back to the chain");
 await act("/api/press/dpush");
@@ -122,8 +122,11 @@ ok((await state()).mode === "block", "HOME does nothing yet while it is down");
 await act("/api/up/home");
 ok((await state()).mode === "chain", "HOME acts at a short release");
 await act("/api/down/home");
-await sleep(760);
-ok((await state()).mode === "tuner", "HOME held 0.7 s: the tuner, before the release");
+{   // (polled: the tuner comes at 0.7 s, the diagnostics 0.7 s after it; a fixed sleep missed that window under load)
+  let m = "chain";
+  for (let t = 0; t < 1300 && m !== "tuner"; t += 25) { await sleep(25); m = (await state()).mode; }
+  ok(m === "tuner", `HOME held 0.7 s: the tuner, before the release (${m})`);
+}
 await act("/api/up/home");
 s = await state();
 ok(s.mode === "tuner" && s.held.length === 0, "the release of that hold leaves the tuner open");
@@ -156,28 +159,28 @@ await act("/api/press/home");
   let t = await state();
   ok(t.stomp === 1 && t.mode === "chain", "CAB held 0.8 s: STOMP mode, still on PLAY");
   await act("/api/down/cab"); await act("/api/up/cab");
-  ok((await state()).mode === "block" && (await state()).block === 6, "a short CAB press still opens the CAB page (at its release)");
+  ok((await state()).mode === "block" && (await state()).block === 2, "a short CAB press still opens its page, OCTAVE (at its release)");
   await act("/api/press/home");
-  const amp0 = (await state()).preset.on[5];
+  const amp0 = (await state()).preset.on[3];   // (v70: the AMP button is SYNTH)
   await act("/api/down/fs_dn"); await act("/api/down/amp"); await act("/api/up/amp"); await act("/api/up/fs_dn");
   t = await state();
-  ok(t.fs[0] === 5 && t.preset.on[5] === amp0 && t.slot === slot0, "hold the left footswitch + AMP: it switches the AMP (its own press taken back, no preset change)");
+  ok(t.fs[0] === 3 && t.preset.on[3] === amp0 && t.slot === slot0, "hold the left footswitch + AMP: it switches SYNTH (its own press taken back, no preset change)");
   ok(t.dirty === 1, "an assignment is an edit of the preset");
   await act("/api/press/fs_dn");
-  ok((await state()).preset.on[5] === 1 - amp0 && (await state()).slot === slot0, "the left footswitch: AMP on / off, the preset stays");
+  ok((await state()).preset.on[3] === 1 - amp0 && (await state()).slot === slot0, "the left footswitch: SYNTH on / off, the preset stays");
   await act("/api/press/fs_dn");
   await act("/api/down/fs_up");
-  for (let i = 0; i < 8; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // DRV SFX SYN PIT CMP GT EQ BYP
+  for (let i = 0; i < 5; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // GT CMP SFX EQ BYP
   await act("/api/up/fs_up");
   t = await state();
-  ok(t.fs[1] === 12, "hold the right footswitch + FX eight times: BYPASS");
+  ok(t.fs[1] === 12, "hold the right footswitch + FX five times: BYPASS");
   await act("/api/press/fs_up");
   ok((await state()).bypass === 1 && (await state()).dsp.bypass === 0, "the right footswitch: BYPASS on (the user's, not the overload's)");
   await act("/api/press/fs_up");
   ok((await state()).bypass === 0, "and off again");
   await act("/api/down/fs_dn"); await act("/api/down/fs_up"); await act("/api/up/fs_dn"); await act("/api/up/fs_up");
   t = await state();
-  ok(t.mode === "tuner" && t.preset.on[5] === amp0, "both footswitches in STOMP mode: the tuner, the first one's toggle taken back");
+  ok(t.mode === "tuner" && t.preset.on[3] === amp0, "both footswitches in STOMP mode: the tuner, the first one's toggle taken back");
   await act("/api/press/home");
   await act("/api/press/cab_long");
   ok((await state()).stomp === 0, "CAB held again: PATCH mode");
@@ -229,9 +232,9 @@ const b = Buffer.from(r.reply, "hex");
 ok(b[4] === 1 && b.toString("latin1").includes(`v${VER}`) && b.toString("latin1").includes(`PocketX_9${VER}`), `sysex INFO: the editor protocol answers (v${VER}, PocketX_9${VER})`);
 r = await act("/api/sysex?timeout=100", "f0 7d 4f 50 7e f7");
 ok(r.reply === null, "sysex: a request the pedal does not understand gets no reply");
-r = await act("/api/sysex", JSON.stringify([0xF0, 0x7D, 0x4F, 0x50, 0x06, 5, 0, 0, 91, 0xF7]));   // SET AMP parameter 0 = 91
+r = await act("/api/sysex", JSON.stringify([0xF0, 0x7D, 0x4F, 0x50, 0x06, 3, 0, 0, 91, 0xF7]));   // SET SYNTH parameter 0 = 91
 s = await state();
-ok(s.preset.p[5][0] === 91 && s.dirty === 1, "sysex SET (a JSON array body): AMP's first setting = 91, seen in /api/state");
+ok(s.preset.p[3][0] === 91 && s.dirty === 1, "sysex SET (a JSON array body): SYNTH's first setting = 91, seen in /api/state");
 
 // ---- 7. the virtual Web MIDI: the shim, then the real editor code on it ----
 async function openShim(url) {
@@ -267,10 +270,10 @@ const ed = new Editor(access);
 const inf = await ed.connect();
 ok(inf && inf.version === `v${VER}` && inf.identity === `PocketX_9${VER}`, "editor (pxedit.js) over the shim: INFO");
 const cat = await ed.catalog();
-ok(cat.blocks.length === 12 && cat.blocks[5].label === "AMP", "editor: the catalogue");
-await ed.setParam(5, 1, 33);
+ok(cat.blocks.length === 9 && cat.blocks[3].label === "SYN", "editor: the catalogue");
+await ed.setParam(3, 1, 33);
 s = await state();
-ok(s.preset.p[5][1] === 33, "editor: SET reaches the simulated pedal (seen in /api/state)");
+ok(s.preset.p[3][1] === 33, "editor: SET reaches the simulated pedal (seen in /api/state)");
 await act("/api/press/fs_up");
 const st = await ed.state();
 ok(st.slot === s.slot + 1, "editor: STATE follows a footswitch pressed over HTTP");

@@ -58,3 +58,38 @@ placeholders named PRESET 01 to PRESET 52, with the gate on, everything else off
 - `tests/test_sim.mjs` "HOME held 0.7 s" fails about one run in three under load. It holds the button
   for 760 ms against a 700 ms threshold.
 - Playwright is not installed here, so the page tests were skipped.
+
+## Stage 3: the synth layout and the buttons
+
+Nine blocks in signal order, numbered as the engine runs them: 0 GATE, 1 COMP, 2 OCTAVE (the pitch block), 3 SYNTH,
+4 SFX, 5 EQ, 6 MOD, 7 DELAY, 8 REVERB. A preset is 86 bytes now, down from 110. The store slot keeps its 112
+bytes and the footswitch byte stays in its place.
+
+| Button | Opens | Light |
+| --- | --- | --- |
+| AMP | SYNTH | on while SYNTH is on |
+| CAB | OCTAVE (hold: STOMP mode, as before) | on while OCTAVE is on |
+| FX | INPUT and TONE in chain order: GATE, COMP, SFX, EQ (hold: MIDI page) | on while any of them is on |
+| MOD, DLY, REV | MOD, DELAY, REVERB | as before |
+
+The play screen shows the SYNTH type and the OCTAVE type under the preset number. The tiles are 5 + 4. In
+STOMP mode, holding a footswitch and pressing FX steps through GT, CMP, SFX, EQ, BYPASS and nothing.
+
+MIDI keeps its scheme by block index: on/off 20..28, type 52..60, toggles 8..16, and the settings in the same
+runs as before (`docs/MIDI.md` is regenerated from `docs/pxmidi.js`).
+
+Editor: protocol 6, 9 blocks. The Models section (NAM captures, cabinet IRs, TONE3000) is gone, along with
+`pxlib.js`, `pxnam.js`, `pxir.js`, `pxt3k.js` and `edmodels.js`. Preset files no longer convert v33 types or
+v34 delay times. PING carries one load figure per block.
+
+Fixed along the way: `engine/wasm.sh` wrote nothing to `px_engine.wasm.sources`, because a comment sat inside
+its pipeline (stage 2). The hosted-simulator test now polls for the tuner instead of sleeping for a fixed time.
+
+`tests/run_tests.sh` passes. The browser page tests (editor page, pedal skin, installer page) were not run,
+because Playwright is not installed here. They still describe the old layout.
+
+| | v70 stage 2 | v70 stage 3 |
+| --- | ---: | ---: |
+| Flash image | 323,432 B | 323,768 B |
+| Main RAM free | 44,652 B | 44,828 B |
+| RAM-code window free | 20,424 B | 20,000 B |

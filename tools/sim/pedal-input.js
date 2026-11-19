@@ -4,8 +4,8 @@
 // tests/edsim.c times a held button as firmware/openpocket.c does.
 
 export const BUTTONS = ["home", "fx", "amp", "mod", "dly", "rev", "cab", "fs_dn", "fs_up"];
-export const BLOCK = { amp: 5, cab: 6, mod: 8, dly: 9, rev: 10 };
-export const FX_BLOCKS = [4, 3, 11, 2, 1, 0, 7];        // ui_fx_cycle: DRV SFX SYN PIT CMP GT EQ
+export const BLOCK = { amp: 3, cab: 2, mod: 6, dly: 7, rev: 8 };   // v70: AMP is SYNTH, CAB is OCTAVE
+export const FX_BLOCKS = [0, 1, 4, 5];                  // ui_fx_cycle (v70): GT CMP SFX EQ
 
 export const FAST_MS = 45;                              // openpocket.c: detents closer than this are a fast turn
 export const MASTER_STEP = 2;                           // openpocket.c: the volume's hysteresis, the smallest move it follows

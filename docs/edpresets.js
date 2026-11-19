@@ -5,7 +5,6 @@
 import { app, $, h, icon, on, emit, slotName, say, task, act, busy, confirmDialog, promptDialog, pickDialog, menu, download,
   fileSafe, blk, typeOf, blockIndex, plural, dropTarget } from "./edcore.js";
 import { presetToJSON, presetFromJSON, filePresets, parsePresetFile, clonePreset, cleanName } from "./pxedit.js";
-import { knobIndex } from "./pxlib.js";
 
 // ---- reading the pedal ----
 export async function refreshState() { app.st = await app.ed.state(); emit("state", {}); }
@@ -257,11 +256,11 @@ async function importOne(o, fileName) {
 
 // ---- the list ----
 let filter = "all", query = "", active = -1;     // active: the slot the keyboard is on
-// what a preset is made of, in a few words: its amp, then the effects that are on
+// what a preset is made of, in a few words: its synth, then the other blocks that are on (v70)
 function summary(e) {
-  const p = e.preset, A = blockIndex("AMP"), out = [];
-  if (A >= 0 && p.on[A]) { const T = typeOf(p, A), m = app.nam && app.nam.models; out.push(T.name === "NAM" && m ? m[knobIndex(p.p[A][0], m.length)].name : T.name); }
-  const fx = p.order.filter((b) => p.on[b] && !["AMP", "CAB", "GT"].includes(blk(b).label)).map((b) => blk(b).label);
+  const p = e.preset, S = blockIndex("SYN"), out = [];
+  if (S >= 0 && p.on[S]) out.push(typeOf(p, S).name);
+  const fx = p.order.filter((b) => p.on[b] && !["SYN", "GT"].includes(blk(b).label)).map((b) => blk(b).label);
   if (fx.length) out.push(fx.join(" "));
   return out.join(" · ");
 }
@@ -320,7 +319,6 @@ export function initPresets() {
   on("state", () => { renderList(); if (app.st && app.st.slot !== lastSlot) { lastSlot = app.st.slot; active = app.st.slot; renderList(); reveal(lastSlot); } });
   on("slots", renderList);
   on("bank", renderList);
-  on("assets", renderList);                     // (a summary names the preset's capture)
   $("psearch").oninput = () => { query = $("psearch").value.trim().toLowerCase(); renderList(); };
   $("psearch").onkeydown = (e) => {
     if (e.key === "ArrowDown" || e.key === "Enter") { const v = visible(); if (v.length) { e.preventDefault(); active = v[0].slot; renderList(); $("list").focus(); if (e.key === "Enter") selectPreset(active); } }

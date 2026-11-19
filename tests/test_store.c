@@ -75,7 +75,7 @@ int main(void)
 
     /* save, reboot, the sound is there and the pedal starts on it */
     px_preset_factory(&p, 5);
-    p.p[PX_B_AMP][0] = 99; strcpy(p.name, "MY LEAD");
+    p.p[PX_B_SYN][0] = 99; strcpy(p.name, "MY LEAD");
     CHECK(st_save(5, &p) == 0, "save slot 6");
     reboot();
     st_get(5, &q);
@@ -87,7 +87,7 @@ int main(void)
     /* many saves: the copies alternate, the newest wins; the last slot (in sector 1) works too */
     for (int i = 0; i < 25; i++) {
         p.p[PX_B_DELAY][0] = (uint8_t)i;
-        p.order[0] = (uint8_t)(i % 2 ? PX_B_SYN : PX_B_GATE); p.order[4] = (uint8_t)(i % 2 ? PX_B_GATE : PX_B_SYN);
+        p.order[0] = (uint8_t)(i % 2 ? PX_B_SYN : PX_B_GATE); p.order[PX_B_SYN] = (uint8_t)(i % 2 ? PX_B_GATE : PX_B_SYN);
         CHECK(st_save((uint32_t)(i % 2 ? ST_NSLOT - 1u : 0), &p) == 0, "repeated save");
     }
     reboot();
@@ -98,7 +98,7 @@ int main(void)
 
     /* v48: a slot's footswitch assignment and the STOMP setting come back after a reboot; an earlier save has none */
     CHECK(st_fs_of(5) == 0xFFu, "a slot saved without footswitches: nothing assigned");
-    CHECK(st_save_fs(5, &p, 0xC5u) == 0, "save slot 6 with its footswitches (left AMP, right BYPASS)");
+    CHECK(st_save_fs(5, &p, 0xC5u) == 0, "save slot 6 with its footswitches (left SFX, right BYPASS)");
     st_ui = 1u; CHECK(st_save_fs(5, &p, 0xC5u) == 0, "and with STOMP mode on");
     reboot();
     st_get(5, &q);

@@ -5,7 +5,7 @@ export const ENGINE_RATE = 44100;
 export const BLOCK = 128;
 // tools/calib_levels.py: a guitar at the pedal's level, which a full-scale DI recording reaches at this gain
 export const GUITAR_LEVEL = 0.15;
-const NAME = 14, NBLK = 12, NPAR = 5;
+const NAME = 14, NBLK = 9, NPAR = 5;                     // v70: 9 blocks
 
 // `preset` is the sound as `GET /api/state` reports it; the bytes are px_preset_t (engine/px_dsp.h)
 export function presetBytes(preset) {

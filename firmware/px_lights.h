@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * OpenPocket — what the button lights show (issue #8). px_leds.h drives them; this decides them, once per main-loop
  * pass, from the preset being played:
- *   FX                          lit while any block of the FX button's group is on (UI_FXB: drive, SFX, synth,
- *                               pitch, comp, gate, EQ)
- *   AMP, MOD, DLY, REV, CAB     lit while their block is on
+ *   FX                          lit while any block of the FX button's group is on (UI_FXB: gate, comp, SFX, EQ)
+ *   AMP, CAB                    v70: lit while SYNTH (AMP) or OCTAVE (CAB) is on
+ *   MOD, DLY, REV               lit while their block is on
  *   HOME                        blinks (2 Hz) while the tuner is open, dark otherwise
  * The bits are the LED map's, read on a BlackBox (2026-11-06): 0 HOME, 1 FX, 2 AMP, 3 MOD, 4 DLY, 5 REV, 6 CAB,
  * 7 none: the panel's order (a Pocket X may differ: not checked there yet). On the wire a 0 lights, so the byte
@@ -21,13 +21,13 @@ enum { LT_HOME, LT_FX, LT_AMP, LT_MOD, LT_DLY, LT_REV, LT_CAB };      /* the lig
 static uint8_t lights_of(const px_preset_t *p, int tuner, uint32_t now)   /* the lit lights, 1 = lit */
 {
     uint8_t v = 0;
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < UI_NFX; i++)
         if (p->on[UI_FXB[i]]) v |= 1u << LT_FX;
-    if (p->on[PX_B_AMP]) v |= 1u << LT_AMP;
+    if (p->on[PX_B_SYN]) v |= 1u << LT_AMP;           /* v70: the AMP button is SYNTH, CAB is OCTAVE */
     if (p->on[PX_B_MOD]) v |= 1u << LT_MOD;
     if (p->on[PX_B_DELAY]) v |= 1u << LT_DLY;
     if (p->on[PX_B_REVERB]) v |= 1u << LT_REV;
-    if (p->on[PX_B_CAB]) v |= 1u << LT_CAB;
+    if (p->on[PX_B_PITCH]) v |= 1u << LT_CAB;
     if (tuner && !((now / LT_BLINK_MS) & 1u)) v |= 1u << LT_HOME;
     return v;
 }

@@ -125,10 +125,9 @@ int main(void){
    for (int t = 0; t < px_ntypes(blk); t++)
     for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) for (int c = 0; c < 3; c++) {
       px_preset_t p; px_preset_factory(&p, (blk*7+t) % px_preset_count());
-      for (int z = 0; z < PX_NBLK; z++) p.on[z] = (z == PX_B_AMP || z == PX_B_CAB || z == blk);
+      for (int z = 0; z < PX_NBLK; z++) p.on[z] = (z == PX_B_GATE || z == blk);
       p.type[blk] = (uint8_t)t;
       p.p[blk][0] = V[a]; p.p[blk][1] = V[b]; p.p[blk][2] = V[c]; p.p[blk][3] = V[(a+c)%3]; p.p[blk][4] = V[(b+c)%3];
-      p.p[PX_B_AMP][0] = V[(a+b)%3];
       px_engine_set(&e, &p); n++;
       if (run(30, 1.0f) | run(10, 0.0f) | run(10, 3.0f)) {   /* signal, silence, very loud */
         bad++; if (bad < 15) printf("PROBLEM: %s / %s  p=%d %d %d\n", px_block_name(blk), px_type_name(blk,t), V[a],V[b],V[c]);

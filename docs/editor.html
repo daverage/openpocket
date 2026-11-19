@@ -1,9 +1,9 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only
-     OpenPocket web editor: the pedal's presets, its current sound, its NAM models and cabinet IRs, and MIDI control,
+     OpenPocket web editor: the pedal's presets, its current sound and MIDI control,
      live over USB-MIDI (Chrome / Edge). Protocol: EDITOR-PROTOCOL.md; transport: pxedit.js. No library, no build step:
      editor.css, editor.js (start, connection, sections) and one module per section (edsound.js, edpresets.js,
-     edmodels.js, edmidi.js) on edcore.js. -->
+     edmidi.js) on edcore.js. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -24,7 +24,6 @@
   <nav class="tabs" id="tabs" aria-label="Sections">
     <button type="button" data-go="presets" class="narrow-only"><svg class="ic"><use href="#i-list"/></svg><span>Presets</span></button>
     <button type="button" data-go="sound"><svg class="ic"><use href="#i-sliders"/></svg><span>Sound</span></button>
-    <button type="button" data-go="models"><svg class="ic"><use href="#i-wave"/></svg><span>Models</span></button>
     <button type="button" data-go="midi"><svg class="ic"><use href="#i-midi"/></svg><span>MIDI</span></button>
   </nav>
   <div class="bar-end">
@@ -112,19 +111,6 @@
         <div class="params" id="params"></div>
         <div class="blocknote" id="blocknote" hidden></div>
       </div>
-    </section>
-
-    <section class="view" id="view-models" aria-labelledby="models-h">
-      <h1 class="vh" id="models-h">Models and cabinets</h1>
-      <div class="mgrid">
-        <div class="mcol">
-          <section class="card bank" id="nam" data-kind="nam"></section>
-          <section class="card bank" id="ir" data-kind="ir"></section>
-        </div>
-        <section class="card t3k" id="t3k" aria-label="TONE3000"></section>
-      </div>
-      <input type="file" id="namfile" accept=".nam,application/json" multiple hidden>
-      <input type="file" id="irfile" accept=".wav,audio/wav,audio/x-wav,audio/wave" multiple hidden>
     </section>
 
     <section class="view" id="view-midi" aria-labelledby="midi-h">

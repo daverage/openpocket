@@ -33,7 +33,7 @@ static uint8_t st_fs_of(uint32_t k) { return saved_ok[k] ? saved_fs[k] : 0xFFu; 
 static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs) { st_save(k, p); saved_fs[k] = fs; return 0; }
 static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); }
 static int a_level_db(int ch) { return ch ? -84 : -62; }
-static uint8_t a_pf[PX_NBLK] = {0, 0, 0, 0, 0, 0, 0, 3, 0, 5, 7, 64};   /* v38: CPU per block (the tuner's footer) */
+static uint8_t a_pf[PX_NBLK] = {0, 0, 0, 64, 0, 3, 0, 5, 7};   /* v38: CPU per block (the tuner's footer) */
 static uint32_t a_wcut = 2;                            /* v39: wet blocks cut short */
 static volatile uint8_t a_tmute;
 static int bat_mv = 3920, bat_usb_mv = 0;
@@ -242,7 +242,8 @@ static int overhaul(const char *d)
     tap(UB_PUSH); CHECK(cur_preset == 12 && ui_mode == M_CHAIN, "F8: PUSH loads the preset shown and returns to PLAY");
     tap(UB_HOME); ui_turn(-1, 0); tap(UB_HOME); CHECK(ui_mode == M_CHAIN && cur_preset == 12, "F8: HOME leaves the list without loading");
     tap(UB_HOME); tap(UB_FSUP); CHECK(ui_mode == M_CHAIN && cur_preset == 13, "F8: a footswitch on the list steps and shows PLAY");
-    { const int was = PRESET.on[PX_B_AMP]; tap(UB_HOME); tap(UB_AMP); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_AMP && PRESET.on[PX_B_AMP] == was, "F8: a block button on the list opens it, without switching it"); }
+    { const int was = PRESET.on[PX_B_SYN]; tap(UB_HOME); tap(UB_AMP); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_SYN && PRESET.on[PX_B_SYN] == was, "F8: the AMP button opens SYNTH, without switching it"); }
+    { tap(UB_HOME); tap(UB_CAB); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_PITCH, "F8: the CAB button opens OCTAVE"); }
     ui_home(); full();
     /* F4: one unsaved edit survives a preset change and comes back with its slot */
     load_preset(9); cur_preset = 9; full();
@@ -268,7 +269,7 @@ static int overhaul(const char *d)
     ui_turn(1, 0); CHECK(ui_item == 1u, "F9: on from the last setting: ON");
     /* F10: FX steps through its blocks in the preset's chain order, as the tiles read */
     load_preset(9); cur_preset = 9; ui_home(); ui_blk = PX_B_MOD;   /* (from a block outside the FX group) */
-    for (int i = 0, last = -1; i < 7; i++) {
+    for (int i = 0, last = -1; i < UI_NFX; i++) {
         tap(UB_FX);
         int pos = ui_pos_of(ui_blk);
         CHECK(ui_mode == M_BLOCK && ui_is_fx(ui_blk) && pos > last, "F10: FX goes on along the chain");

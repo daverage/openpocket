@@ -21,7 +21,7 @@
 #define ED_H2 0x50u
 #define ED_PROTO 6u                             /* 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
 #define ED_NAME_MAX 13u
-#define ED_P_SIZE 110u
+#define ED_P_SIZE 86u                           /* v70: 9 blocks (14 + 9 x 3 + 9 x 5) */
 #if OP_UADEV
 #define ED_UA_STATS 40u                         /* (the measurement option's figures after the 20, px_uaudio.h) */
 #else

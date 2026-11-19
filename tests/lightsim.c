@@ -11,9 +11,9 @@
 #include <string.h>
 #include "px_dsp.h"
 
-/* the FX button's group, written out again here (ui.h's UI_FXB is the firmware's): drive, SFX, synth, pitch, comp,
- * gate, EQ */
-static const uint8_t UI_FXB[7] = { PX_B_DRIVE, PX_B_SFX, PX_B_SYN, PX_B_PITCH, PX_B_COMP, PX_B_GATE, PX_B_EQ };
+/* the FX button's group, written out again here (ui.h's UI_FXB is the firmware's): gate, comp, SFX, EQ (v70) */
+#define UI_NFX 4
+static const uint8_t UI_FXB[UI_NFX] = { PX_B_GATE, PX_B_COMP, PX_B_SFX, PX_B_EQ };
 
 /* ---- port C and the 595: DS PC8, SHCP PC5, STCP PC6, OE PC7 (low = outputs on); a 0 on an output lights it */
 enum { R_OUT = 0, R_DIR = 2, R_PU = 4, R_PD = 5 };
@@ -43,13 +43,13 @@ static void ok(int c, const char *what) { printf("%-66s %s\n", what, c ? "ok" : 
 enum { W_HOME = 0, W_FX = 1, W_AMP = 2, W_MOD = 3, W_DLY = 4, W_REV = 5, W_CAB = 6 };
 static uint8_t want_of(int b)                   /* the light a block alone should light */
 {
-    for (int i = 0; i < 7; i++) if (UI_FXB[i] == b) return 1u << W_FX;
+    for (int i = 0; i < UI_NFX; i++) if (UI_FXB[i] == b) return 1u << W_FX;
     switch (b) {
-    case PX_B_AMP: return 1u << W_AMP;
+    case PX_B_SYN: return 1u << W_AMP;            /* v70: AMP is SYNTH, CAB is OCTAVE */
     case PX_B_MOD: return 1u << W_MOD;
     case PX_B_DELAY: return 1u << W_DLY;
     case PX_B_REVERB: return 1u << W_REV;
-    case PX_B_CAB: return 1u << W_CAB;
+    case PX_B_PITCH: return 1u << W_CAB;
     }
     return 0u;
 }

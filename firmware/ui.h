@@ -40,7 +40,7 @@ static int st_saved(uint32_t k);
 static void save_draw(void);
 static void midi_draw(void);
 static void list_draw(void);
-static uint32_t ui_mode = M_CHAIN, ui_blk = PX_B_AMP, ui_item = 0;
+static uint32_t ui_mode = M_CHAIN, ui_blk = PX_B_SYN, ui_item = 0;
 #define UI_PAGE (ui_mode == M_BLOCK || ui_mode == M_EDIT)   /* the block page has the focus */
 
 #define C_OFF  0x2124                  /* a block switched off */
@@ -55,9 +55,9 @@ static uint32_t ui_mode = M_CHAIN, ui_blk = PX_B_AMP, ui_item = 0;
 #define P_NAME_Y 76u                   /* PLAY: preset name */
 #define T_Y0     122u                  /* PLAY: 1st row of tiles */
 #define T_DY     30u
-#define T_COLS   6
-#define T_PITCH  39u
-#define T_W      35u
+#define T_COLS   5                     /* v70: 9 blocks, 5 + 4 */
+#define T_PITCH  47u
+#define T_W      43u
 #define T_H      24u
 #define P_INFO_Y 186u                  /* PLAY: the selected block */
 #define F_Y      222u                  /* footer (both screens) */
@@ -302,6 +302,8 @@ static void draw_tiles(int force)
         int b = PRESET.order[i], on = PRESET.on[b] != 0, sel = (b == (int)ui_blk), mv = sel && ui_mode == M_MOVE;
         if (force || uc.tile_blk[i] != b || uc.tile_on[i] != on || uc.tile_sel[i] != sel || uc.tile_mv[i] != mv) draw_tile(i);
     }
+    if (force)                                         /* v70: the grid's cells after the last block, empty */
+        for (int i = PX_NBLK; i % T_COLS; i++) lcd_rect(tile_x(i) - 2u, tile_y(i) - 2u, T_W + 4u, T_H + 4u, UI_BG);
 }
 static void draw_info(int force)       /* the selected block: label, model, on/off */
 {
@@ -710,8 +712,10 @@ static void ui_preset_step(int dd)
     if (UI_PAGE || ui_mode == M_LIST) { ui_mode = M_CHAIN; ui_item = 0; }   /* a footswitch on a block page goes back to PLAY, where the preset shows */
 }
 /* the FX button's blocks (the FX light follows them: px_lights.h) */
-static const uint8_t UI_FXB[7] = {PX_B_DRIVE, PX_B_SFX, PX_B_SYN, PX_B_PITCH, PX_B_COMP, PX_B_GATE, PX_B_EQ};
-static int ui_is_fx(uint32_t b) { for (int i = 0; i < 7; i++) if (UI_FXB[i] == b) return 1; return 0; }
+/* v70: FX is INPUT / TONE / UTILITY: the gate, the compressor, the special effects and the EQ */
+#define UI_NFX 4
+static const uint8_t UI_FXB[UI_NFX] = {PX_B_GATE, PX_B_COMP, PX_B_SFX, PX_B_EQ};
+static int ui_is_fx(uint32_t b) { for (int i = 0; i < UI_NFX; i++) if (UI_FXB[i] == b) return 1; return 0; }
 static void ui_fx_cycle(void)          /* FX: the next of its blocks along the preset's chain, as the tiles read (v42), else the first */
 {
     ui_order_fix();
@@ -1036,7 +1040,7 @@ static struct {
     int8_t fs_b;                       /* v48: that footswitch */
 } ug = {.fs = -1, .fs_b = -1};
 /* ---- v48: STOMP mode. ui_fs (the edit buffer's assignment, beside PRESET): low 4 bits the left footswitch (UB_FSDN),
- * high 4 the right one (UB_FSUP); 0..11 a block, UI_FS_BYP BYPASS, anything else nothing (px_store.h keeps it per slot) */
+ * high 4 the right one (UB_FSUP); 0..8 a block, UI_FS_BYP BYPASS, anything else nothing (px_store.h keeps it per slot) */
 static int ui_fs_idx(int b) { return b == UB_FSUP ? 1 : 0; }
 static void ui_fs_put(int i, uint32_t t) { ui_fs = (uint8_t)((ui_fs & ~(15u << (4 * i))) | ((t & 15u) << (4 * i))); }
 static void ui_fs_toggle(int i)        /* a footswitch in STOMP mode: what it is assigned, on / off */
@@ -1051,22 +1055,22 @@ static void ui_stomp_toggle(void)
     ui_stomp ^= 1u;
     if (!ui_stomp) ui_byp = 0;                     /* PATCH mode never leaves the sound bypassed */
 }
-/* holding footswitch i, a block button or FX assigns it (FX steps DRV SFX SYN PIT CMP GT EQ, BYPASS, nothing) */
+/* holding footswitch i, a block button or FX assigns it (FX steps GT CMP SFX EQ, BYPASS, nothing) */
 static void ui_fs_assign(int i, int b)
 {
-    static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_AMP, PX_B_CAB, PX_B_DELAY, PX_B_REVERB};
+    static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_SYN, PX_B_PITCH, PX_B_DELAY, PX_B_REVERB};   /* MOD AMP CAB DLY REV */
     uint32_t t;
     if (b == UB_FX) {
-        static const uint8_t STEP[9] = {PX_B_DRIVE, PX_B_SFX, PX_B_SYN, PX_B_PITCH, PX_B_COMP, PX_B_GATE, PX_B_EQ, UI_FS_BYP, UI_FS_NONE};
+        static const uint8_t STEP[6] = {PX_B_GATE, PX_B_COMP, PX_B_SFX, PX_B_EQ, UI_FS_BYP, UI_FS_NONE};
         uint32_t cur = ui_fs_get(i); int k = 0;
-        for (int q = 0; q < 9; q++) if (STEP[q] == cur) { k = q + 1; break; }
-        t = STEP[k % 9];
+        for (int q = 0; q < 6; q++) if (STEP[q] == cur) { k = q + 1; break; }
+        t = STEP[k % 6];
     } else t = BLK_OF[b - UB_MOD];
     ui_fs_put(i, t);
 }
 static void ui_action(int a)
 {
-    static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_AMP, PX_B_CAB, PX_B_DELAY, PX_B_REVERB};
+    static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_SYN, PX_B_PITCH, PX_B_DELAY, PX_B_REVERB};
     switch (ui_mode) {
     case M_SAVE: if (a == UB_PUSH) save_confirm(); else if (a == UB_HOME) save_close(); return;
     case M_MIDI: if (a == UB_PUSH) midi_push(); else if (a == UB_HOME) midi_close(); return;

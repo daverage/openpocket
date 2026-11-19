@@ -9,7 +9,7 @@ static void mksig(void){ int pos=0; float f0s[3]={82.4f,110.0f,196.0f}; unsigned
     for(int i=0;i<44100;i++){ sig[pos++]=0.35f*buf[i%N]; int j=i%N; buf[j]=0.996f*0.5f*(buf[j]+buf[(j+1)%N]); } } }
 int main(void){ mksig(); int bad=0, n=0; static const int V[3]={0,50,100};
   for(int blk=0;blk<PX_NBLK;blk++) for(int t=0;t<px_ntypes(blk);t++) for(int a=0;a<3;a++){
-    px_preset_t p; px_preset_factory(&p,7); for(int z=0;z<PX_NBLK;z++) p.on[z]=(z==PX_B_AMP||z==PX_B_CAB||z==blk);
+    px_preset_t p; px_preset_factory(&p,7); for(int z=0;z<PX_NBLK;z++) p.on[z]=(z==PX_B_GATE||z==blk);
     p.type[blk]=t; for(int k=0;k<5;k++) p.p[blk][k]=(a==2)?100:V[(a+k)%3];
     px_engine_init(&e,44100.0f); px_engine_set(&e,&p); n++;
     float out[64], in[64]={0}; double pk=0, last=0; long cnt=0; int nan=0;

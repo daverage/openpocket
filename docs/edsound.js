@@ -4,8 +4,6 @@
 
 import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName } from "./edcore.js";
 import { save, saveAs, revert, exportOne, setCompare, comparing, duplicate, moveTo, restoreFactory } from "./edpresets.js";
-import { knobIndex, indexKnob, KINDS } from "./pxlib.js";
-import { t3kLink } from "./pxt3k.js";
 
 let dragging = null;
 
@@ -157,21 +155,9 @@ function startDrag(e, el, b) {
 }
 
 // ---- the block editor ----
-// the options of a setting that is a choice; the MODEL and IR settings count the pedal's slots (two can share a name)
-function paramChoices(b, t, k, param) {
-  for (const kind of ["nam", "ir"]) {
-    const ref = app.refs[kind];
-    if (ref && b === ref.b && t === ref.t && k === 0 && param.texts) {
-      return Array.from({ length: ref.n }, (_, i) => {
-        const value = indexKnob(i, ref.n), slot = i - ref.base, list = kind === "nam" ? app.nam.models : app.irs;
-        const it = kind === "nam" ? list[i] : list[slot];
-        return { label: it ? it.name : param.texts[value], value, index: i, slot, kind, empty: slot >= 0 && it && !it.used, tag: slot >= 0 ? KINDS[kind].tag(slot) : "" };
-      });
-    }
-  }
-  return choices(param);
-}
-const optionOf = (opts, v) => opts.find((o) => o.index !== undefined ? knobIndex(v, opts.length) === o.index : v >= o.lo && v <= o.hi) || opts[0];
+// the options of a setting that is a choice
+const paramChoices = (b, t, k, param) => choices(param);
+const optionOf = (opts, v) => opts.find((o) => v >= o.lo && v <= o.hi) || opts[0];
 
 function renderPage(fromPush) {
   const b = app.focus, B = blk(b), p = app.st.preset, T = typeOf(p, b), is = !!p.on[b];
@@ -209,10 +195,7 @@ function renderPage(fromPush) {
           h("button", { type: "button", role: "radio", "data-v": o.value, text: o.label, onclick: () => { sendParam(b, k, o.value); showVal(k); } })));
       } else if (opts) {
         ctl = h("select", { id, class: "choice", onchange: () => { sendParam(b, k, +ctl.value); showVal(k); renderNote(); } });
-        const groups = opts[0].index === undefined ? null : [["Factory", opts.filter((o) => o.slot < 0)], [opts[0].kind === "nam" ? "Your captures" : "Your IRs", opts.filter((o) => o.slot >= 0)]];
-        const opt = (o) => h("option", { value: o.value, text: o.tag ? `${o.tag}  ${o.empty ? "empty" : o.label}` : o.label, disabled: !!o.empty });
-        if (groups) for (const [name, list] of groups) { if (list.length) ctl.append(h("optgroup", { label: name }, list.map(opt))); }
-        else ctl.append(...opts.map(opt));
+        ctl.append(...opts.map((o) => h("option", { value: o.value, text: o.label })));
       } else {
         ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1 });
         ctl.oninput = () => { showVal(k); sendParam(b, k, +ctl.value); };
@@ -252,32 +235,12 @@ function showVal(k) {
     for (const r of c.children) { const is = +r.dataset.v === cur.value; r.setAttribute("aria-checked", is ? "true" : "false"); r.tabIndex = is ? 0 : -1; }
   }
 }
-// under the settings of a NAM amp or a user IR: where its file comes from, and the way to the Models section
-function renderNote() {
-  const box = $("blocknote"), b = app.focus, p = app.st.preset;
-  box.textContent = "";
-  const kind = ["nam", "ir"].find((k) => app.refs[k] && app.refs[k].b === b && app.refs[k].t === p.type[b]);
-  box.hidden = !kind;
-  if (!kind) return;
-  const ref = app.refs[kind], K = KINDS[kind], slot = knobIndex(p.p[b][0], ref.n) - ref.base;
-  const list = kind === "nam" ? app.nam.models.filter((m) => m.user) : app.irs;
-  const e = slot >= 0 ? app.held[kind].get(slot) : null, src = e && e.source;
-  if (slot >= 0 && list[slot] && !list[slot].used) {
-    box.append(h("p", { class: "warn" }, icon("alert"), ` ${K.tag(slot)} is empty: this preset plays without ${K.without}. Choose another ${K.thing} above, or load one into ${K.tag(slot)}.`));
-  } else if (src && src.from === "tone3000") {
-    box.append(h("p", { class: "src" }, h("span", { class: "t3k-mark", text: "T3K" }), " ",
-      t3kLink(src.url) ? h("a", { href: t3kLink(src.url), target: "_blank", rel: "noopener", text: src.title }) : src.title, src.creator ? ` by ${src.creator}` : "", src.gear ? ` · ${src.gear.toUpperCase()} · NAM` : ""));
-  } else if (src && src.from === "file") {
-    box.append(h("p", { class: "src dim", text: `From the file ${src.file}.` }));
-  }
-  box.append(h("button", { type: "button", class: "btn small", onclick: () => emit("view-go", "models"),
-    text: kind === "nam" ? "Get or manage captures" : "Load or manage IRs" }));
-}
+// (v70: the note under a NAM amp's or a user IR's settings is gone; the box stays hidden)
+function renderNote() { $("blocknote").hidden = true; }
 
 export function initSound() {
   on("state", (o) => { if (!app.st) return; renderHeader(); if (!o.own) { renderTiles(); renderPage(o.push); } });
   on("compare", () => { renderHeader(); renderTiles(); renderPage(); });
-  on("assets", () => { if (app.st && app.conn === "ready") { $("params").dataset.sig = ""; renderPage(); } });
   on("ping", renderShares);
   $("onoff").onclick = () => toggle(app.focus);
   $("type").onchange = () => setType(app.focus, +$("type").value);

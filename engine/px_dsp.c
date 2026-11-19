@@ -405,14 +405,12 @@ static void bq_hp1(px_bq *b, float fs, float f)          /* first order (RC coup
 }
 
 /* ============================================================ catalog ===== */
-static const char *const BLK_LABEL[PX_NBLK] = {"GT", "CMP", "PIT", "SFX", "DRV", "AMP", "CAB", "EQ", "MOD", "DLY", "REV",
-                                               "SYN"};
-static const char *const BLK_NAME[PX_NBLK] = {"NOISE GATE", "COMPRESSOR", "PITCH", "SPECIAL FX", "DRIVE",
-                                              "AMP", "CABINET", "EQUALIZER", "MODULATION", "DELAY", "REVERB",
-                                              "INSTRUMENT"};
-/* default processing order (v29: each preset carries its own) */
-static const uint8_t ORDER_DEF[PX_NBLK] = {PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_SYN, PX_B_DRIVE, PX_B_AMP,
-                                           PX_B_CAB, PX_B_EQ, PX_B_MOD, PX_B_DELAY, PX_B_REVERB};
+static const char *const BLK_LABEL[PX_NBLK] = {"GT", "CMP", "OCT", "SYN", "SFX", "EQ", "MOD", "DLY", "REV"};
+static const char *const BLK_NAME[PX_NBLK] = {"NOISE GATE", "COMPRESSOR", "OCTAVE", "SYNTH", "SPECIAL FX", "EQUALIZER",
+                                              "MODULATION", "DELAY", "REVERB"};
+/* default processing order (v29: each preset carries its own): the enum's, the signal order */
+static const uint8_t ORDER_DEF[PX_NBLK] = {PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
+                                           PX_B_DELAY, PX_B_REVERB};
 void px_order_default(uint8_t *o) { for (int i = 0; i < PX_NBLK; i++) o[i] = ORDER_DEF[i]; }
 int px_order_valid(const uint8_t *o)
 {
@@ -567,9 +565,8 @@ const char *px_block_label(int b) { return (b >= 0 && b < PX_NBLK) ? BLK_LABEL[b
 const char *px_block_name(int b)  { return (b >= 0 && b < PX_NBLK) ? BLK_NAME[b] : "?"; }
 int px_ntypes(int b)
 {
-    static const uint8_t N[PX_NBLK] = {PX_GATE_COUNT, PX_CMP_COUNT, PX_PIT_COUNT, PX_SFX_COUNT, 1, 1,
-                                       1, PX_EQ_COUNT, PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT,
-                                       PX_SYN_COUNT};
+    static const uint8_t N[PX_NBLK] = {PX_GATE_COUNT, PX_CMP_COUNT, PX_PIT_COUNT, PX_SYN_COUNT, PX_SFX_COUNT,
+                                       PX_EQ_COUNT, PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT};
     return (b >= 0 && b < PX_NBLK) ? N[b] : 1;
 }
 int px_type_canonical(int b, int t)
@@ -1620,9 +1617,9 @@ static void px_recalc(px_engine *e)
     rc_syn(e);
     /* v36: each type's level at noon, measured (px_trim.h): switching a block on keeps the loudness */
     const px_preset_t *p = &e->cur;
-    static const float *const DB[PX_NBLK] = {0, CMP_DB, PIT_DB, SFX_DB, 0, 0, 0, 0, MOD_DB, DLY_DB, REV_DB, SYN_DB};
-    static const uint8_t NT[PX_NBLK] = {1, PX_CMP_COUNT, PX_PIT_COUNT, PX_SFX_COUNT, 1, 1, 1, 1,
-                                        PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT, PX_SYN_COUNT};
+    static const float *const DB[PX_NBLK] = {0, CMP_DB, PIT_DB, SYN_DB, SFX_DB, 0, MOD_DB, DLY_DB, REV_DB};
+    static const uint8_t NT[PX_NBLK] = {1, PX_CMP_COUNT, PX_PIT_COUNT, PX_SYN_COUNT, PX_SFX_COUNT, 1,
+                                        PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT};
     for (int b = 0; b < PX_NBLK; b++)
         e->btr[b] = DB[b] ? powf(10.0f, DB[b][p->type[b] % NT[b]] * 0.05f) : 1.0f;
     /* preset LEVEL (v36): -15..+15 dB, 0.3 dB a step, kept in the gate block's spare 5th setting */
@@ -1708,7 +1705,6 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         case PX_B_GATE: case PX_B_COMP: rc_dyn(e); break;
         case PX_B_PITCH: rc_pitch(e); break;
         case PX_B_SFX: rc_sfx(e); break;
-        case PX_B_DRIVE: case PX_B_AMP: case PX_B_CAB: break;
         case PX_B_EQ: rc_eq(e); break;
         case PX_B_MOD: rc_mod(e); break;
         case PX_B_DELAY: rc_delay(e); break;

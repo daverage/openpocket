@@ -328,7 +328,7 @@ static void command(const char *l)
         printf("#state %u|%s|%d|%u|", cur_preset, PRESET.name, writes_ok, ui_blk);
         for (i = 0; i < PX_NBLK; i++) printf("%d%s", PRESET.on[i], i < PX_NBLK - 1 ? "," : "|");
         for (i = 0; i < PX_NBLK; i++) printf("%d%s", PRESET.type[i], i < PX_NBLK - 1 ? "," : "|");
-        for (i = 0; i < PX_NPAR; i++) printf("%d%s", PRESET.p[PX_B_AMP][i], i < PX_NPAR - 1 ? "," : "|");
+        for (i = 0; i < PX_NPAR; i++) printf("%d%s", PRESET.p[PX_B_SYN][i], i < PX_NPAR - 1 ? "," : "|");
         for (i = 0; i < PX_NBLK; i++) printf("%d%s", PRESET.order[i], i < PX_NBLK - 1 ? "," : "\n");
         fflush(stdout);
     } else if (sscanf(l, "#press %31s", name) == 1) {

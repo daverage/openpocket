@@ -58,7 +58,11 @@ check("bypass passes the dry input, at MASTER", () => {
   out.forEach((v, i) => assert.ok(Math.abs(v - IN[i] * 0.64) < 1e-6));
 });
 check("a preset change changes the spectrum", () => {
-  const clean = harmonics(tail(run(engine(0), IN)), 220), metal = harmonics(tail(run(engine(15), IN)), 220);
+  // v70: the factory slots are placeholders (the gate only); the other sound is POLY OCT FUZZ on the SYNTH block
+  const fuzz = engine(0), on = [1, 0, 0, 1, 0, 0, 0, 0, 0], type = [0, 0, 0, 18, 0, 0, 0, 0, 0];
+  const p = Array.from({ length: 9 }, () => [10, 20, 50, 0, 0]); p[3] = [0, 0, 80, 50, 60];
+  fuzz.preset(presetBytes({ name: "FUZZ", on, type, p, order: [0, 1, 2, 3, 4, 5, 6, 7, 8] }));
+  const clean = harmonics(tail(run(engine(0), IN)), 220), metal = harmonics(tail(run(fuzz, IN)), 220);
   const share = (h) => h.slice(1).reduce((a, b) => a + b) / h[0];
   assert.ok(share(metal) > 3 * share(clean), `harmonics over fundamental: ${share(clean)} ${share(metal)}`);
 });
@@ -123,7 +127,7 @@ try {
   const state = await (await fetch(sim.url + "/api/state")).json();
   check("the pedal's preset, as the simulator reports it, is the engine's", () => {
     const e = engine(state.slot);
-    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 110);
+    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 86);   // px_preset_t (v70: 9 blocks)
     assert.deepEqual([...presetBytes(state.preset)], [...memory]);
   });
   const served = await fetch(sim.url + "/sim/px_engine.wasm");
