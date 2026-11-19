@@ -254,7 +254,6 @@ static void lcd_text(uint32_t x, uint32_t y, const char *str, uint16_t fg, uint1
 }
 /* ---- preset: the v2 engine's struct (engine/px_dsp.h), edited directly by the UI ---- */
 #include "px_dsp.h"
-#include "px_nam.h"           /* v37: NAM A2-Lite (the engine includes px_nam.c) */
 #include "px_midi.h"                    /* MIDI map and settings (docs/MIDI.md) */
 static px_preset_t PRESET;
 static uint32_t cur_preset = 0;
@@ -533,7 +532,7 @@ static const int8_t QDEC[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
 #if AUDIO_PROBE
 #include "audio_probe.h"
 #else
-#include "px_cacheram.h"     /* v37: data-cache ways as RAM (melodee's routine): the NAM network's vector-unit buffers */
+#include "px_cacheram.h"     /* v37: data-cache ways as RAM (melodee's routine): the tuner's buffers (app.ld .cram) */
 #include "px_audio.h"
 #endif
 
@@ -543,8 +542,6 @@ static const int8_t QDEC[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
 #define PX_LIGHTS_OFF() lights_off()
 #include "px_usb.h"         /* USB-MIDI + update entry (web installer) */
 #include "px_store.h"       /* the user's presets in flash */
-#include "px_models.h"      /* v37: the NAM user models in flash */
-#include "px_irs.h"         /* v38: the user cabinet IRs in flash */
 #if !AUDIO_PROBE
 static uint32_t ed_load(void) { return a_bypass ? a_peak : a_load; }   /* PING: the DSP load, as at the bottom right */
 static uint32_t ed_flags(void) { return (a_bypass ? 1u : 0u) | (a_c1 ? 2u : 0u); }
@@ -571,44 +568,9 @@ static uint32_t ed_stat(uint32_t k)                    /* PING, after the flags 
          : 0u;
 #endif
 }
-/* v40.2: PING's profile (14 bits each): each block's and the NAM network's share of an audio block's time over the last
- * second (%, a_pf), the network's way of running (pxn_mode), then from its start-up timing (0.1 % of real time, the
- * network alone): each way of running (px_nam_tuned), and where one core's time goes (pxn_prof_ticks); then the layer
- * split: 0 off, else 1 + the last layer CPU0 runs; then with it CPU0's and CPU1's load and their peaks since the preset
- * was set (%); v40.3: then the last full change: from the change to the sound back (0.1 ms, 0 while it fades in), the
- * engine's set in it (0.1 ms), how long the last LOADING was shown (ms) and how many were since boot */
-#define ED_PROF (PX_NBLK + 2u + PXN_MODES + 9u + 5u + 4u)
-static uint32_t ed_prof(uint32_t k)
-{
-    if (k <= PX_NBLK) return a_pf[k];
-    if (k == PX_NBLK + 1u) return (uint32_t)pxn_mode();
-    k -= PX_NBLK + 2u;
-    if (k == PXN_MODES + 9u) return g_eng.nam_lp ? 1u + (uint32_t)px_nam_lp_split_used() : 0u;   /* v40.2 (v40.4: the last block's) */
-    if (k > PXN_MODES + 9u && k <= PXN_MODES + 13u) {  /* each core's load and peak (%), the layer split only */
-        const uint32_t j = k - PXN_MODES - 10u;
-        return g_eng.nam_lp ? (j < 2u ? a_cl[j] : a_cpk[j - 2u]) : 0u;
-    }
-    if (k >= PXN_MODES + 14u) {                        /* v40.3: the last full change (0.1 ms) and LOADING (ms, count) */
-        const uint32_t d = FM1_TICKS_PER_US * 100u;
-        const uint32_t v = k == PXN_MODES + 14u ? (a_swin ? 0u : (a_sw1 - a_swc) / d) : k == PXN_MODES + 15u ? a_swset / d
-                         : k == PXN_MODES + 16u ? a_ldms : a_ldn;
-        return v > 16383u ? 16383u : v;
-    }
-    const uint32_t t = k < PXN_MODES ? px_nam_tuned((int)k) : pxn_prof_ticks((int)(k - PXN_MODES));
-    return t * 10u / (A_BUDGET * 2u / 100u);           /* (ticks for 256 frames: two audio blocks) */
-}
-static void nm_changed(uint32_t s)   /* v37: a user model was written or erased: the engine reloads it if it plays it */
-{
-    if (g_eng.nam_idx == (int)(PX_NAM_NFACT + s)) g_eng.nam_idx = -1;
-    a_full = 1;                                        /* v38: the same knobs, another network: a full apply */
-    audio_apply();
-}
-static void ir_changed(uint32_t s)   /* v38: a user IR was written or erased: the engine reloads it if it plays it */
-{
-    if (g_eng.ir_slot == (int)s) g_eng.ir_slot = -1;
-    a_full = 1;
-    audio_apply();
-}
+/* PING's profile (14 bits each): each block's share of an audio block's time over the last second (%, a_pf) */
+#define ED_PROF ((uint32_t)PX_NBLK)
+static uint32_t ed_prof(uint32_t k) { return a_pf[k]; }
 #if OP_BLE_TEST             /* the log channel (firmware/ble/ble_diag.h): only this image answers DIAG, the normal firmware does not change */
 #define ED_STATS 8u         /* PING also gives the Bluetooth heap's and tasks' lowest free bytes */
 #define ED_DIAG_LINES 5u
@@ -768,32 +730,6 @@ static void app_main(void)
     px_store_boot();                     /* the saved presets and the settings; start on the last one saved */
     ui_stomp = st_ui & 1u;               /* v48: STOMP mode as last saved */
     px_usb_start();                      /* USB-MIDI device + update entry (web installer); v42: USB audio when set */
-    nm_scan();                           /* v37: the NAM user models (names, levels) */
-    ir_scan();                           /* v38: the user cabinet IRs (names) */
-#if DSP_CPU1
-    px_nam_helper(a_hrun, a_hwait);      /* v37: CPU1 can take a part of the NAM network */
-#endif
-#if OP_BLE_TEST
-    {   /* the vector unit's inputs: what the cache RAM has left after the tuner's buffers (app.ld .cram) */
-        extern char _cram_hi[];
-        uint32_t lo = (uint32_t)(uintptr_t)_cram_hi;
-        if (pxc_status == PXC_READY && lo < PXC_END) px_nam_fast((void *)(uintptr_t)lo, PXC_END - lo);
-        if (pxc_status == PXC_READY && lo + PXN_FAST_BYTES + PX_NAM_LP_BYTES <= PXC_END)   /* v40.2: then the layer split's */
-            px_nam_lp_mem((void *)(uintptr_t)(lo + PXN_FAST_BYTES), PX_NAM_LP_BYTES);
-    }
-#else
-    if (pxc_status == PXC_READY) {
-        px_nam_fast((void *)PXC_BEGIN, PXC_END - PXC_BEGIN);   /* the vector unit's inputs */
-        px_nam_lp_mem((void *)(PXC_BEGIN + PXN_FAST_BYTES), PX_NAM_LP_BYTES);   /* v40.2: then the layer split's queue */
-    }
-#endif
-    /* v37: the NAM routines by hand checked, its fastest way to run chosen. v40.2: not after a failed boot (safe mode,
-     * the DSP off anyway): a hand routine that faults in its check then costs one boot, not every one, and the pedal
-     * comes up with USB-MIDI for the installer's rescue (it ran C until the next boot) */
-    if (!safe) px_nam_check(b_ticks);
-    /* v40.5: from here (after the start-up check), CPU0's waits for CPU1 inside the network end as fm1_cpu1_wait's
-     * do (px_audio.h dsp_lp_run: retired, LATE) */
-    px_nam_lp_clock(b_ticks, FM1_CPU1_TIMEOUT_US * FM1_TICKS_PER_US);
     audio_start();                       /* guitar -> DSP engine -> output, amp enabled */
     leds_init();                         /* the button lights: all off loaded, then on (PC7 low), as stock */
     op_stage(ST_UI, "SCREEN...");
@@ -827,9 +763,9 @@ static void app_main(void)
                 char c[16];
                 int late = a_xrun && a_blocks - a_xrun_at < 700u;   /* a block ran late in the last 2 s: "DSP 88%!" in red */
                 uint32_t ld = a_bypass ? a_peak : a_load;
-                ui_dg.load = ld; ui_dg.peak = a_peak; ui_dg.cl[0] = a_cl[0]; ui_dg.cl[1] = a_cl[1];   /* (v42: the diagnostics page) */
-                ui_dg.cores = (uint8_t)(a_c1 ? (px_nam_dual(&g_eng) ? 2u : 1u) : 0u);
-                ui_dg.split = (uint8_t)(g_eng.nam_lp != 0); ui_dg.guard = (uint8_t)(a_c1 ? 93u : 85u);   /* (px_audio.h's dsp_load limits) */
+                ui_dg.load = ld; ui_dg.peak = a_peak; ui_dg.cl[0] = ui_dg.cl[1] = 0u;   /* (v42: the diagnostics page) */
+                ui_dg.cores = (uint8_t)(a_c1 ? 1u : 0u);
+                ui_dg.split = 0u; ui_dg.guard = (uint8_t)(a_c1 ? 93u : 85u);   /* (px_audio.h's dsp_load limits) */
                 ui_dg.late = (uint8_t)late; ui_dg.bypass = a_bypass;
                 ui_load_text(c, ld, safe, a_bypass, late);
                 int kind = ui_load_kind(ld, safe, a_bypass, late, a_ld);   /* v40.3: LOADING a NAM model; v42: amber when high */

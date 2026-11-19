@@ -1,27 +1,17 @@
 /* v40.4: the engine's output hashed bit for bit over a wide set of runs, to compare two versions of the engine
  * (tests/equiv.sh REF builds this file against the engine of commit REF and against this tree's, and compares the lists):
- *  A  every block x type x 8 settings, the block alone (no amp, no cabinet): the block's own arithmetic
- *  B  every block x type x 2 settings with a fitted amp and a cabinet (the oversampled pair paths)
+ *  A  every block x type x 8 settings, the block alone: the block's own arithmetic
  *  C  60 random chains (types, settings, order, on/off), with knob changes and blocks switched while playing (the
  *     glides and fades: px_engine_knobs), in blocks of 64, 48, 16 and 1 frames
- *  D  12 random chains with a NAM amp through the two-core pipeline's parts (PRE, NAM, POST) and the wet lanes
- * 852 runs. Two engines give the same output if and only if their lists are identical. ARG: the sections (default ABCD).
+ *  D  12 random chains with knob changes while playing, with and without the wet lanes
+ * 852 runs. Two engines give the same output if and only if their lists are identical. ARG: the sections (default ACD).
  * Build it as the pedal builds the engine, -fno-builtin -ffp-contract=off: the pedal has no square-root instruction
  * (px_math.c's sqrtf is used) and does not fuse a multiply with an add; a PC compiler left to itself does both. */
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
-#define PX_IR_USER_GIVEN
 #include "px_dsp.c"
-static float IRS[PX_IR_LEN];
-int px_ir_user(int slot, char *name12, float *h)
-{
-    if (slot > 1) return 0;
-    strcpy(name12, "GOLD");
-    if (h) { memcpy(h, IRS, sizeof IRS); if (slot) for (int i = 0; i < PX_IR_LEN; i++) h[i] = -h[PX_IR_LEN - 1 - i] * 0.5f; }
-    return 1;
-}
 static px_engine e;
 #define NS (44100 * 2)
 static float sig[NS];
@@ -69,36 +59,25 @@ static void rnd_preset(px_preset_t *p, int nam)
         p->type[z] = (uint8_t)(rnd() % (unsigned)px_ntypes(z));
         for (int k = 0; k < 5; k++) { const uint32_t r = rnd() % 8; p->p[z][k] = (uint8_t)(r == 0 ? 0 : r == 1 ? 100 : rnd() % 101); }
     }
-    if (nam) { p->on[PX_B_AMP] = 1; p->type[PX_B_AMP] = PX_AMP_NAM; }
-    else if (p->type[PX_B_AMP] == PX_AMP_NAM) p->type[PX_B_AMP] = (uint8_t)(rnd() % PX_AMP_COUNT);
+    (void)nam;
     for (int i = PX_NBLK - 1; i > 0; i--) { const int j = (int)(rnd() % (unsigned)(i + 1)); const uint8_t t = p->order[i]; p->order[i] = p->order[j]; p->order[j] = t; }
     if (rnd() & 1) px_order_default(p->order);
 }
 int main(int argc, char **argv)
 {
-    const char *sec = argc > 1 ? argv[1] : "ABCD";
+    const char *sec = argc > 1 ? argv[1] : "ACD";
     mksig();
-    for (int i = 0; i < PX_IR_LEN; i++) IRS[i] = ((float)rnd() / 16777216.0f - 0.5f) * expf(-(float)i / 200.0f) * (i ? 1.0f : 4.0f);
     static const uint8_t V[8][5] = {{0, 0, 0, 0, 0}, {100, 100, 100, 100, 100}, {50, 50, 50, 50, 50}, {0, 50, 100, 0, 50},
                                     {100, 0, 50, 100, 0}, {30, 70, 10, 90, 60}, {80, 20, 95, 5, 40}, {65, 100, 0, 75, 100}};
     int n = 0;
     if (strchr(sec, 'A'))
     for (int blk = 0; blk < PX_NBLK; blk++) for (int t = 0; t < px_ntypes(blk); t++) {
-        if (blk == PX_B_AMP && t == PX_AMP_NAM) continue;
         for (int a = 0; a < 8; a++) {
             px_preset_t p; px_preset_factory(&p, 7);
             for (int z = 0; z < PX_NBLK; z++) p.on[z] = (z == blk);
             p.type[blk] = (uint8_t)t; memcpy(p.p[blk], V[a], 5);
             printf("A blk %d type %d set %d %016llx\n", blk, t, a, (unsigned long long)run(&p, a & 1, NS, 64)); n++;
         }
-    }
-    if (strchr(sec, 'B'))
-    for (int blk = 0; blk < PX_NBLK; blk++) for (int t = 0; t < px_ntypes(blk); t++) for (int a = 0; a < 2; a++) {
-        px_preset_t p; px_preset_factory(&p, 9);          /* BRIT CRUNCH: a fitted amp, a drive before it */
-        for (int z = 0; z < PX_NBLK; z++) p.on[z] = (z == PX_B_AMP || z == PX_B_CAB || z == PX_B_DRIVE || z == blk);
-        if (blk == PX_B_AMP && t == PX_AMP_NAM) continue;
-        p.type[blk] = (uint8_t)t; memcpy(p.p[blk], V[5 + a], 5);
-        printf("B blk %d type %d set %d %016llx\n", blk, t, a, (unsigned long long)run(&p, a, NS / 2, 64)); n++;
     }
     if (strchr(sec, 'C'))
     for (int c = 0; c < 60; c++) {
@@ -126,22 +105,18 @@ int main(int argc, char **argv)
         uint64_t h = 1469598103934665603ull;
         px_engine_init(&e, 44100.0f); px_engine_set(&e, &p);
         px_wet_mode(&e, c & 1, 128);
-        static float nb[2][128], out[128];
-        int cur = 0;
+        static float out[128];
         for (int b = 0; b < 120; b++) {
             if (b == 50 || b == 90) {
                 px_preset_t q = e.cur;
-                const int z = (int)(rnd() % PX_NBLK); if (z != PX_B_AMP) q.on[z] ^= 1;
+                const int z = (int)(rnd() % PX_NBLK); q.on[z] ^= 1;
                 q.p[rnd() % PX_NBLK][rnd() % 5] = (uint8_t)(rnd() % 101);
                 if (px_engine_change(&e, &q) == PX_CH_KNOBS) { px_engine_prepare(&e, &q); px_engine_knobs(&e, &q); }
             }
             if (e.wl_on) px_wet_swap(&e);
             if (e.wl_on) px_wet_run(&e, 0, 0);
-            if (b) for (int o = 0; o < 128; o += 64) px_engine_part(&e, nb[cur ^ 1] + o, out + o, 64, PX_PART_POST);
-            for (int o = 0; o < 128; o += 64) px_engine_part(&e, sig + 128 * b + o, nb[cur] + o, 64, PX_PART_PRE);
-            for (int o = 0; o < 128; o += 64) px_engine_part(&e, nb[cur] + o, nb[cur] + o, 64, PX_PART_NAM);
-            if (b) h = H(h, out, 128);
-            cur ^= 1;
+            for (int o = 0; o < 128; o += 64) px_engine_process(&e, sig + 128 * b + o, out + o, 64);
+            h = H(h, out, 128);
         }
         printf("D chain %d %016llx\n", c, (unsigned long long)h); n++;
     }

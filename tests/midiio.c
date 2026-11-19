@@ -118,9 +118,9 @@ int main(void)
     reset();
     ui_mode = M_SAVE;
     midi_enqueue(pc(0, 20), 1);
-    midi_enqueue(cc(0, 20 + PX_B_AMP, 0), 2);
+    midi_enqueue(cc(0, 20 + PX_B_GATE, 0), 2);
     px_midi_service();
-    ok(cur_preset == 5 && PRESET.on[PX_B_AMP] == 1, "the SAVE page is open: Program and Control Change are ignored");
+    ok(cur_preset == 5 && PRESET.on[PX_B_GATE] == 1, "the SAVE page is open: Program and Control Change are ignored");
     ok(mi_r == mi_w, "...but the ring is emptied");
     ui_mode = M_TUNER;
     midi_enqueue(pc(0, 20), 1);

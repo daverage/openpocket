@@ -50,7 +50,6 @@
 #include <unistd.h>
 #include <math.h>
 #include "../engine/px_dsp.h"
-#include "../engine/px_nam.h"
 #include "simlcd.h"
 
 static uint8_t nor[0x100000];
@@ -153,10 +152,6 @@ static int ota_wire_send(const uint8_t *p, uint32_t n)
 
 #include "../firmware/px_midi.h"
 #include "../firmware/px_store.h"
-#include "../firmware/px_models.h"
-static void nm_changed(uint32_t s) { (void)s; }
-#include "../firmware/px_irs.h"
-static void ir_changed(uint32_t s) { (void)s; }
 #if OP_BLE_TEST
 #include "../firmware/ble/ble_diag.h"
 #define ED_DIAG_LINES 4u
@@ -429,8 +424,6 @@ int main(int argc, char **argv)
         }
     }
     px_store_boot();                                    /* the slots, the last one saved, the settings (as the pedal boots) */
-    nm_scan();
-    ir_scan();
     uc.screen = -1;
     ui_invalidate();
     printf("#port OpenPocket\n");

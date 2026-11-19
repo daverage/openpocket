@@ -51,7 +51,7 @@ fi
 FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
 # OpenPocket Synth (v70): one engine recipe. The v66 poly-test flags are part of the engine source now (engine/).
-[ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
+[ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPX_LEAN=1 -DPX_RUNS=0"   # the test image's flash is full (engine/px_acoustic.h; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
     -I"$BSP/chip" -I"$BSP/boards/fm1" -include "$O/channel.h" -c "$HERE/openpocket.c" -o "$O/openpocket.o"
@@ -77,19 +77,11 @@ $CC -Os -c -x ir "$HERE/sdk/iis.bc" -o "$O/iis.o"
 # v40: the audio path runs from RAM, as the stock firmware's does (no flash fetches through the cache, which the two cores
 # share): its functions' sections are renamed .ram_text.dsp.* (tools/ramcode.py; the code itself is unchanged), and the
 # linker puts them in the RAM code window (firmware/app.ld). --plain: px_dsp.o's hand-written routines (NAM, filters).
-RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_block rv_front clip_run os_up os_down
-  ir_run fft64 rfft128 cab_detail ps_voice_al ps_align amp_stage bq_block bq_block2 drive_block drive_buffer nam_run fq_loop_c px_nam_dual
-  pxn_process pxn_block pxn_direct pxn_post_part pxn_rows pxn_rows_cpu pxn_gather pxn_range_cpu pxn_dual
-  px_nam_lp_b px_nam_lp_queued px_nam_lp_split px_nam_lp_split_now pxn_lp_a pxn_lp_b pxn_lp_queued pxn_lp_split
-  pxn_lp_split_now pxn_frame_ticks px_nam_lp_handed px_nam_lp_before pxn_lp_handed pxn_lp_before
-  px_nam_lp_split_used px_nam_lp_force pxn_lp_split_used pxn_lp_force px_nam_lp_gave_up pxn_lp_gave_up
-  ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run synth_hq_track cab_detail_run gate_run comp_run bq_chain"
-RAM_DSP="$RAM_DSP lowest_pitch_run pxl_run pxr_advance lf_run lf_pick pulse_poly_block pulse_poly_voice_sample"   # (the per-report picker stays in flash)
-# v40.2: the layer split's path (pxn_lp_*, lp_job, dsp_lp_run) in RAM; out of it, to make the room: the frame split's serving
-# (now the fallback when the layer split cannot run), the vector unit's paths (never chosen: slower) and the C versions
-# of the hand routines (used only if a hand one fails its start-up check: the network is then too slow anyway)
-RAM_FW="a_enc a_dec a_block a_send a_collect a_commit dsp_block dsp_out dsp_load dsp_job post_job post_run dsp_pipe lp_job dsp_lp_run a_lp_post lp_split
-  fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire a_hrun a_hwait b_ticks memcpy memset"
+RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_block rv_front ps_voice_al ps_align
+  bq_block bq_block2 drive_buffer ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run
+  gate_run comp_run bq_chain lowest_pitch_run pxl_run pxr_advance lf_run lf_pick pulse_poly_block pulse_poly_voice_sample"
+RAM_FW="a_enc a_dec a_block a_send a_collect a_commit dsp_block dsp_out dsp_load dsp_job
+  fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire b_ticks memcpy memset"
 python3 "$HERE/../tools/ramcode.py" "$O/px_dsp.o" --plain $RAM_DSP
 python3 "$HERE/../tools/ramcode.py" "$O/openpocket.o" $RAM_FW
 # a direct call between the flash code and the RAM code is out of the CPU's call range: refuse it with its name
@@ -118,7 +110,7 @@ if ps_ and pe: print(f"pool tail : {pe-ps_} bytes, {rs-pe} left before the RAM c
 if re_ and he: print(f"hi RAM    : RAM code {re_-rs}, data {he-hs}, free {hi_limit-he} of {hi_limit-rs} bytes (the RAM code window)")
 if be: print(f"RAM       : {be-0x01C08000} of 98304 bytes ({98304-(be-0x01C08000)} free)")
 if nb and nb >= 0x01C7C000 and nb > sym("_ble_stack_lo"): print(f"NOINIT    : {nb-0x01C7C000} of 15696 bytes up to the BLE task stacks' end")
-if cl is not None and ch is not None: print(f"cache RAM : {ch-cl} of 28672 bytes (the rest, {28672-(ch-cl)}, to the NAM network's vector unit)")
+if cl is not None and ch is not None: print(f"cache RAM : {ch-cl} of 28672 bytes ({28672-(ch-cl)} free)")
 assert start==0x02000120,hex(start or 0)
 img=bytearray(open(f"{out}/text.bin","rb").read())
 for at,part in sorted([(rt_load,open(f"{out}/rt.bin","rb").read()),(load,open(f"{out}/data.bin","rb").read())]):

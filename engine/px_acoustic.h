@@ -17,14 +17,17 @@
  * Memory: no new engine field. The state (px_acoustic) shares the SYN ensemble buffer (syn_cb, a union in px_dsp.h)
  * and the delay lines use the SYN shifter buffer (syn_buf); both are cleared on a change of SYN type. The code is
  * left in the flash (not in firmware/build.sh's RAM list): one call per block.
- * The Bluetooth test image (PXN_LEAN, its flash is full) has no sample bank: TRUMPET and CELLO SECTION play the
+ * The Bluetooth test image (PX_LEAN, its flash is full) has no sample bank: TRUMPET and CELLO SECTION play the
  * waveguides there.
  */
 #ifndef PX_ACOUSTIC_H
 #define PX_ACOUSTIC_H
 
 #ifndef PXA_SAMPLES
-#define PXA_SAMPLES (!PXN_LEAN)
+#ifndef PX_LEAN
+#define PX_LEAN 0
+#endif
+#define PXA_SAMPLES (!PX_LEAN)
 #endif
 #if PXA_SAMPLES
 #ifdef PXA_BANK_FILE                                   /* (host experiments: another bank, tools/sim/trumpet_compare.c) */

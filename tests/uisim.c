@@ -33,7 +33,7 @@ static uint8_t st_fs_of(uint32_t k) { return saved_ok[k] ? saved_fs[k] : 0xFFu; 
 static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs) { st_save(k, p); saved_fs[k] = fs; return 0; }
 static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); }
 static int a_level_db(int ch) { return ch ? -84 : -62; }
-static uint8_t a_pf[PX_NBLK + 1] = {0, 0, 0, 0, 0, 0, 3, 0, 0, 5, 7, 0, 64};   /* v38: CPU per block (the tuner's footer) */
+static uint8_t a_pf[PX_NBLK] = {0, 0, 0, 0, 0, 0, 0, 3, 0, 5, 7, 64};   /* v38: CPU per block (the tuner's footer) */
 static uint32_t a_wcut = 2;                            /* v39: wet blocks cut short */
 static volatile uint8_t a_tmute;
 static int bat_mv = 3920, bat_usb_mv = 0;
@@ -44,9 +44,6 @@ static void b_num(char *d, uint32_t v) { char t[12]; int n = 0; while (*d) d++; 
 static void b_str(char *d, const char *s) { while (*d) d++; while (*s) *d++ = *s++; *d = 0; }
 static int midi_saved;
 static void midi_persist(void) { midi_saved++; }
-/* user slots for the list settings (F7): NAM slot 3 and IR slots 2 and 5 hold something, the others are empty */
-int px_nam_user(int slot, char *name12, float *level_db, float *w) { (void)w; if (slot != 2) return 0; strcpy(name12, "MY AMP"); if (level_db) *level_db = 0; return 1; }
-int px_ir_user(int slot, char *name12, float *h) { (void)h; if (slot != 1 && slot != 4) return 0; strcpy(name12, slot == 1 ? "V30 4X12" : "GREENBACK"); return 1; }
 #include "ui_text.h"
 #include "ui.h"
 
@@ -98,7 +95,7 @@ static int quick_wins(const char *d)
     if (strcmp(c, "DSP 88%!")) { printf("F11: a late block reads \"%s\"\n", c); return 1; }
     if (ft_width(&FT_SM, "KNOB: SELECT  PUSH: EDIT") > ST_X - 2u) { printf("F1: the longest hint no longer fits beside the load figure\n"); return 1; }
     /* F1: overload is a red banner with an instruction, on PLAY (top bar) and on a block page (footer) */
-    load_preset(9); cur_preset = 9; ui_blk = PX_B_AMP; ui_home(); play_again(); ui_status("DSP 42%", UI_ST_NORM);
+    load_preset(9); cur_preset = 9; ui_blk = PX_B_SYN; ui_home(); play_again(); ui_status("DSP 42%", UI_ST_NORM);
     if (count_col(0, 0, 240, 3, C_ALERT)) { printf("F1: PLAY shows the banner without an overload\n"); return 1; }
     ui_status("PEAK 150%", UI_ST_BYPASS); ui_render(); shot(d, "play_overload_banner");
     if (count_col(0, 0, 240, S_H, C_ALERT) < 240 * 5 || count_col(0, F_Y + 3u, 240, 15, WHT) == 0) { printf("F1: PLAY overload: no red bar, or no instruction in the footer\n"); return 1; }
@@ -108,30 +105,13 @@ static int quick_wins(const char *d)
     if (count_col(0, F_Y, 240, 18, C_ALERT)) { printf("F1: the footer stays red after the overload ends\n"); return 1; }
     ui_home(); play_again(); ui_status("DSP 42%", UI_ST_NORM);
     if (count_col(0, 0, 240, S_H, C_ALERT)) { printf("F1: the top bar stays red after the overload ends\n"); return 1; }
-    /* F2: LOADING shows amber on the MODEL row being edited (the name greys), and amber in the corner on PLAY (the amp name greys) */
-    {
-        play_again(); ui_status("DSP 61%", UI_ST_NORM);
-        int amp = count_col(94, P_NUM_Y + 4u, 142, 23, BLK_COL[PX_B_AMP]);
-        ui_status("DSP 61%", UI_ST_LOADING); ui_render(); shot(d, "play_loading");
-        if (!amp || count_col(94, P_NUM_Y + 4u, 142, 23, BLK_COL[PX_B_AMP]) || !count_col(ST_X, 3, ST_W, 15, UI_ACC)) { printf("F2: PLAY: the amp name must grey and the corner read LOADING in amber\n"); return 1; }
-        ui_status("DSP 61%", UI_ST_NORM); ui_render();
-        if (count_col(94, P_NUM_Y + 4u, 142, 23, BLK_COL[PX_B_AMP]) != amp) { printf("F2: PLAY: the amp name must come back when the model plays\n"); return 1; }
-        ui_push(); poison(); ui_render(); ui_status("DSP 61%", UI_ST_NORM);
-        int row = count_col(BAR_X, E_P0 + 5u, 130, 15, UI_ACC);
-        ui_status("DSP 61%", UI_ST_LOADING); ui_render(); shot(d, "edit_model_loading");
-        if (count_col(BAR_X, E_P0 + 5u, 130, 15, UI_ACC) <= row || count_col(140, E_P0 + 1u, 90, 23, UI_TXT)) { printf("F2: block page: the MODEL row must read LOADING in amber, the name in grey\n"); return 1; }
-        if (count_col(ST_X, F_Y + 3u, ST_W, 15, UI_ACC)) { printf("F2: block page: the corner keeps the load figure\n"); return 1; }
-        ui_status("DSP 61%", UI_ST_NORM); ui_render();
-        if (count_col(BAR_X, E_P0 + 5u, 130, 15, UI_ACC) != row) { printf("F2: block page: the MODEL row must come back\n"); return 1; }
-        ui_home(); play_again(); ui_status("DSP 42%", UI_ST_NORM);
-    }
     /* F3: a footswitch on a block page goes back to PLAY (on the block it was on); the band carries the preset number */
-    ui_blk = PX_B_AMP; ui_mode = M_EDIT; ui_item = 2;
+    ui_blk = PX_B_SYN; ui_mode = M_EDIT; ui_item = 2;
     ui_preset_step(1);
-    if (ui_mode != M_CHAIN || ui_item != 0 || ui_blk != PX_B_AMP || cur_preset != 10) { printf("F3: a footswitch on a block page must return to PLAY\n"); return 1; }
+    if (ui_mode != M_CHAIN || ui_item != 0 || ui_blk != PX_B_SYN || cur_preset != 10) { printf("F3: a footswitch on a block page must return to PLAY\n"); return 1; }
     ui_preset_step(-1);
     if (cur_preset != 9) { printf("F3: the footswitch must still change the preset\n"); return 1; }
-    ui_enter_block(PX_B_AMP); poison(); uc.screen = -1; ui_invalidate(); ui_render();
+    ui_enter_block(PX_B_SYN); poison(); uc.screen = -1; ui_invalidate(); ui_render();
     int band = count_col(8, 6, 24, 19, BLK);
     cur_preset = 11; load_preset(11); ui_render(); shot(d, "edit_band_after_midi_change");   /* (a Program Change keeps the page) */
     if (!band || count_col(8, 6, 24, 19, BLK) == band) { printf("F3: the band must show the new preset number after a MIDI change\n"); return 1; }
@@ -139,7 +119,7 @@ static int quick_wins(const char *d)
     /* F4: while EDITED shows, the footer names SAVE */
     play_again(); ui_status("DSP 42%", UI_ST_NORM);
     if (count_col(0, F_Y + 3u, 240, 15, UI_ACC)) { printf("F4: SAVE is named without an edit\n"); return 1; }
-    PRESET.p[PX_B_AMP][1] ^= 7u; ui_render(); shot(d, "play_edited_save_hint");
+    PRESET.p[PX_B_SYN][1] ^= 7u; ui_render(); shot(d, "play_edited_save_hint");
     if (!count_col(0, F_Y + 3u, 240, 15, UI_ACC)) { printf("F4: EDITED shows, but the footer does not name SAVE\n"); return 1; }
     load_preset(9); ui_render();
     if (count_col(0, F_Y + 3u, 240, 15, UI_ACC)) { printf("F4: the SAVE hint stays after the edit is gone\n"); return 1; }
@@ -170,7 +150,7 @@ static int diagnostics(const char *d)
     {
         uint8_t top[DG_BLK];
         int n = dg_top(top, DG_BLK);
-        CHECK(n == 4 && top[0] == PX_NBLK && top[1] == PX_B_REVERB && top[2] == PX_B_DELAY && top[3] == PX_B_CAB, "diag: CPU per block, costliest first");
+        CHECK(n == 4 && top[0] == PX_B_SYN && top[1] == PX_B_REVERB && top[2] == PX_B_DELAY && top[3] == PX_B_EQ, "diag: CPU per block, costliest first");
         CHECK(count_col(52, 165, 148, 5, UI_ACC) && !count_col(52, 180, 148, 5, UI_ACC), "diag: the heaviest block highlighted, the others not");
     }
     CHECK(count_col(2, 122, 76, 18, GRN) && !count_col(2, 122, 76, 18, RED), "diag: no late block: a green chip");
@@ -205,11 +185,11 @@ static int diagnostics(const char *d)
 static int overhaul(const char *d)
 {
     char c[16];
-    load_preset(9); cur_preset = 9; ui_blk = PX_B_AMP; ui_mode = M_CHAIN; ui_item = 0; full();
+    load_preset(9); cur_preset = 9; ui_blk = PX_B_SYN; ui_mode = M_CHAIN; ui_item = 0; full();
     /* F6: a click of PUSH on PLAY opens the block at its release, no wait; a 2nd one within 350 ms makes it MOVE */
     hold(1u << UB_PUSH, 60); CHECK(ui_mode == M_CHAIN, "F6: PUSH acts at its release");
-    hold(0, 5); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_AMP, "F6: one click opens the block at once");
-    hold(1u << UB_PUSH, 60); hold(0, 5); CHECK(ui_mode == M_MOVE && ui_blk == PX_B_AMP, "F6: a 2nd click within 350 ms: MOVE");
+    hold(0, 5); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_SYN, "F6: one click opens the block at once");
+    hold(1u << UB_PUSH, 60); hold(0, 5); CHECK(ui_mode == M_MOVE && ui_blk == PX_B_SYN, "F6: a 2nd click within 350 ms: MOVE");
     tap(UB_HOME); CHECK(ui_mode == M_CHAIN, "MOVE: HOME puts the block back");
     tap(UB_PUSH); hold(0, 400); tap(UB_PUSH); CHECK(ui_mode == M_EDIT, "F6: a 2nd click after 350 ms edits the model, as on any block page");
     tap(UB_HOME);
@@ -262,62 +242,32 @@ static int overhaul(const char *d)
     tap(UB_PUSH); CHECK(cur_preset == 12 && ui_mode == M_CHAIN, "F8: PUSH loads the preset shown and returns to PLAY");
     tap(UB_HOME); ui_turn(-1, 0); tap(UB_HOME); CHECK(ui_mode == M_CHAIN && cur_preset == 12, "F8: HOME leaves the list without loading");
     tap(UB_HOME); tap(UB_FSUP); CHECK(ui_mode == M_CHAIN && cur_preset == 13, "F8: a footswitch on the list steps and shows PLAY");
-    tap(UB_HOME); tap(UB_AMP); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_AMP && PRESET.on[PX_B_AMP], "F8: a block button on the list opens it, without switching it");
+    { const int was = PRESET.on[PX_B_AMP]; tap(UB_HOME); tap(UB_AMP); CHECK(ui_mode == M_BLOCK && ui_blk == PX_B_AMP && PRESET.on[PX_B_AMP] == was, "F8: a block button on the list opens it, without switching it"); }
     ui_home(); full();
     /* F4: one unsaved edit survives a preset change and comes back with its slot */
     load_preset(9); cur_preset = 9; full();
-    PRESET.p[PX_B_AMP][1] ^= 7u;
-    uint8_t ed = PRESET.p[PX_B_AMP][1];
+    PRESET.p[PX_B_SYN][1] ^= 7u;
+    uint8_t ed = PRESET.p[PX_B_SYN][1];
     ui_preset_step(1); CHECK(cur_preset == 10 && !ui_dirty(), "F4: the next preset plays as saved");
     ui_preset_step(-1); ui_render(); shot(d, "play_edit_kept");
-    CHECK(ui_dirty() && PRESET.p[PX_B_AMP][1] == ed, "F4: back on the edited preset: the edit is back, EDITED");
+    CHECK(ui_dirty() && PRESET.p[PX_B_SYN][1] == ed, "F4: back on the edited preset: the edit is back, EDITED");
     ui_preset_step(1); ui_preset_step(1); ui_preset_step(-1); ui_preset_step(-1);
-    CHECK(ui_dirty() && PRESET.p[PX_B_AMP][1] == ed, "F4: the edit waits while other presets play");
-    ui_preset_step(1); PRESET.p[PX_B_AMP][2] ^= 3u; ui_preset_step(-1);
+    CHECK(ui_dirty() && PRESET.p[PX_B_SYN][1] == ed, "F4: the edit waits while other presets play");
+    ui_preset_step(1); PRESET.p[PX_B_SYN][2] ^= 3u; ui_preset_step(-1);
     CHECK(!ui_dirty(), "F4: an edit elsewhere takes the place of the first");
     ui_preset_step(1); CHECK(ui_dirty(), "F4: that edit is kept in turn");
-    load_preset(10); PRESET.p[PX_B_AMP][1] ^= 5u; { px_preset_t q = PRESET; ui_preset_step(1); st_save(10, &q); st_gen++; } ui_preset_step(-1);
+    load_preset(10); PRESET.p[PX_B_SYN][1] ^= 5u; { px_preset_t q = PRESET; ui_preset_step(1); st_save(10, &q); st_gen++; } ui_preset_step(-1);
     CHECK(!ui_dirty() && st_saved(10), "F4: a slot saved over meanwhile: the kept edit is dropped");
     st_reset(10); st_gen++; load_preset(9); cur_preset = 9;
-    /* F7: a list setting steps one filled item a detent, fast or not, skips empty slots, stops at the last; it shows its place */
-    PRESET.type[PX_B_AMP] = PX_AMP_NAM; PRESET.on[PX_B_AMP] = 1; PRESET.p[PX_B_AMP][0] = (uint8_t)px_nam_knob(0);
-    ui_blk = PX_B_AMP; ui_mode = M_EDIT; ui_item = 2; full();
-    for (int i = 1; i < PX_NAM_NFACT; i++) { ui_turn(1, i & 1); CHECK(px_nam_model(PRESET.p[PX_B_AMP][0]) == i, "F7: one model a detent, fast or not"); }
-    ui_turn(1, 0); CHECK(px_nam_model(PRESET.p[PX_B_AMP][0]) == PX_NAM_NFACT + 2, "F7: the empty user slots are skipped");
-    ui_turn(1, 0); CHECK(px_nam_model(PRESET.p[PX_B_AMP][0]) == PX_NAM_NFACT + 2, "F7: it stops at the last filled one");
-    ui_render(); shot(d, "edit_nam_model_list");
-    { int n, at = ui_list_place(PX_B_AMP, PX_NAM_N, PX_NAM_NFACT + 2, &n); CHECK(n == 13 && at == 13, "F7: its place: 13 of 13"); }
-    for (int i = 0; i < 40; i++) ui_turn(-1, 1);
-    CHECK(px_nam_model(PRESET.p[PX_B_AMP][0]) == 0, "F7: back to the first model, and no further");
-    PRESET.type[PX_B_CAB] = PX_CAB_IR; PRESET.on[PX_B_CAB] = 1; PRESET.p[PX_B_CAB][0] = (uint8_t)px_ir_knob(1); PRESET.p[PX_B_CAB][1] = 30; PRESET.p[PX_B_CAB][2] = 0;
-    ui_blk = PX_B_CAB; ui_mode = M_EDIT; ui_item = 2; full(); shot(d, "edit_user_ir_list");
-    ui_turn(1, 0); CHECK(px_ir_slot(PRESET.p[PX_B_CAB][0]) == 4, "F7: USER IR: the next filled slot");
-    ui_turn(1, 0); CHECK(px_ir_slot(PRESET.p[PX_B_CAB][0]) == 4, "F7: USER IR: stops at the last filled slot");
-    {   /* F17: the cut frequencies with their unit */
-        char b[16];
-        strcpy(b, "89"); ui_hz_text(b, 0); CHECK(!strcmp(b, "89 HZ"), "F17: Hz");
-        strcpy(b, "6325"); ui_hz_text(b, 0); CHECK(!strcmp(b, "6.3 KHZ"), "F17: kHz");
-        strcpy(b, "20000"); ui_hz_text(b, 1); CHECK(!strcmp(b, "OFF"), "F17: HIGH CUT at 0 is off");
-        for (int v = 0; v <= 100; v++)
-            for (int k = 1; k <= 2; k++) {
-                px_param_text(PX_B_CAB, PX_CAB_IR, k, v, b); ui_hz_text(b, k == 2 && v == 0);
-                CHECK(ft_width(&FT_MD, b) <= 90u, "F17: a cut frequency does not fit its box");
-            }
-    }
-    /* F14: on PLAY, the line under the tiles names a NAM amp's model and a user IR */
-    ui_home(); ui_blk = PX_B_AMP; full();
-    int m0 = count_col(62, P_INFO_Y, 132, 23, UI_TXT);
-    PRESET.p[PX_B_AMP][0] = (uint8_t)px_nam_knob(5); ui_render(); shot(d, "play_info_nam_model");
-    CHECK(count_col(62, P_INFO_Y, 132, 23, UI_TXT) != m0, "F14: the line under the tiles follows the NAM model");
     /* F9: the block page's selection goes in the order drawn: ON at the top, MODEL, the settings */
-    ui_blk = PX_B_AMP; ui_mode = M_BLOCK; ui_item = 0;
+    ui_blk = PX_B_SYN; ui_mode = M_BLOCK; ui_item = 0;
     ui_turn(-1, 0); CHECK(ui_item == 1u, "F9: back from MODEL: ON");
     ui_turn(1, 0); CHECK(ui_item == 0u, "F9: on from ON: MODEL");
     ui_turn(1, 0); CHECK(ui_item == 2u, "F9: on from MODEL: the first setting");
     ui_item = 1; ui_turn(-1, 0); CHECK((int)ui_item == ui_nitems() - 1, "F9: back from ON: the last setting");
     ui_turn(1, 0); CHECK(ui_item == 1u, "F9: on from the last setting: ON");
     /* F10: FX steps through its blocks in the preset's chain order, as the tiles read */
-    load_preset(9); cur_preset = 9; ui_home();
+    load_preset(9); cur_preset = 9; ui_home(); ui_blk = PX_B_MOD;   /* (from a block outside the FX group) */
     for (int i = 0, last = -1; i < 7; i++) {
         tap(UB_FX);
         int pos = ui_pos_of(ui_blk);
@@ -348,7 +298,7 @@ int main(int argc, char **argv)
     const char *d = argc > 1 ? argv[1] : ".";
     load_preset(9);
     cur_preset = 9;
-    ui_blk = PX_B_AMP;
+    ui_blk = PX_B_SYN;
     full(); shot(d, "play");
     ui_knob(1, 0); ui_render(); shot(d, "play_knob_next_block");
     ui_knob(-1, 0); ui_push(); poison(); ui_render(); status(); shot(d, "edit_amp_model");

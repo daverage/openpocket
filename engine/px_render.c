@@ -2,7 +2,7 @@
  * and writes the processed WAV. Lets you HEAR your actual tones on your own guitar.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- *   px_render in.wav out.wav [preset 1..52] [amp 1..8] [gain 0..100]   (list: docs/SOUNDS-AND-CONTROLS.md)
+ *   px_render in.wav out.wav [preset 1..52] [synth type 1..N] [its 1st knob 0..100]   (list: docs/SOUNDS-AND-CONTROLS.md)
  *
  * Host build: cc -O2 px_render.c px_dsp.c -lm -o px_render
  */
@@ -58,24 +58,23 @@ static void save_wav(const char *fn, const float *buf, int n, float sr)
 
 int main(int argc, char **argv)
 {
-    if(argc<3){ fprintf(stderr,"usage: %s in.wav out.wav [preset 1..%d] [amp 1..%d] [gain 0..100]\n",argv[0],px_preset_count(),PX_AMP_COUNT); return 1; }
+    if(argc<3){ fprintf(stderr,"usage: %s in.wav out.wav [preset 1..%d] [synth type 1..%d] [its 1st knob 0..100]\n",argv[0],px_preset_count(),PX_SYN_COUNT); return 1; }
     int npreset = argc>3 ? atoi(argv[3]) - 1 : 0;
-    if (getenv("PX_FX_INT")) px_fx_int = 1;            /* the cabinet and drive filters in integers (slower on the pedal) */
     int n; float sr;
     float *in = load_wav(argv[1], &n, &sr);
     if(!in){ fprintf(stderr,"unreadable WAV\n"); return 1; }
 
     static px_engine e; px_engine_init(&e, sr);
     px_preset_t p; px_preset_factory(&p, npreset);
-    if(argc>4){ p.type[PX_B_AMP] = (uint8_t)((atoi(argv[4]) - 1 + PX_AMP_COUNT) % PX_AMP_COUNT); p.on[PX_B_AMP] = 1; }
-    if(argc>5) p.p[PX_B_AMP][0] = (uint8_t)atoi(argv[5]);
+    if(argc>4){ p.type[PX_B_SYN] = (uint8_t)((atoi(argv[4]) - 1 + PX_SYN_COUNT) % PX_SYN_COUNT); p.on[PX_B_SYN] = 1; }
+    if(argc>5) p.p[PX_B_SYN][0] = (uint8_t)atoi(argv[5]);
     px_engine_set(&e, &p);
 
     float *out = malloc(sizeof(float)*n);
     for(int i=0;i<n;i+=PX_MAX_BLOCK){ int b=n-i; if(b>PX_MAX_BLOCK) b=PX_MAX_BLOCK;
         px_engine_process(&e, in+i, out+i, b); }
     save_wav(argv[2], out, n, sr);
-    printf("OK  %s -> %s  (%d samples @ %.0f Hz)  preset '%s'  amp '%s'  cab '%s'\n", argv[1], argv[2], n, sr, p.name,
-        px_type_name(PX_B_AMP, p.type[PX_B_AMP]), p.on[PX_B_CAB] ? px_type_name(PX_B_CAB, p.type[PX_B_CAB]) : "off");
+    printf("OK  %s -> %s  (%d samples @ %.0f Hz)  preset '%s'  synth '%s'\n", argv[1], argv[2], n, sr, p.name,
+        p.on[PX_B_SYN] ? px_type_name(PX_B_SYN, p.type[PX_B_SYN]) : "off");
     free(in); free(out); return 0;
 }

@@ -9,8 +9,7 @@
  * editor made itself is not echoed back.
  * The including file provides: PRESET, cur_preset, load_preset, ui_blk / ui_mode / ui_item (ui.h), st_gen, the
  * store (px_store.h), BLK_COL (ui_colors.h), ota_frame_get / ota_frame_done / ota_wire_send, ms_now, OP_VERSION,
- * FELUCCA_ID_PTR, ed_load / ed_flags (the DSP load for PING), and (v37) the NAM user models (px_models.h) with
- * nm_changed(slot), called after a slot was written or erased; (v42) px_ua_on (px_midi.h), st_usb, and with
+ * FELUCCA_ID_PTR, ed_load / ed_flags (the DSP load for PING); (v42) px_ua_on (px_midi.h), st_usb, and with
  * OP_UAUDIO ed_ua_stat(k), USB audio's state (k = 0) and its ED_UA_STATS counts (px_uaudio.h).
  * An image with a log channel also defines ED_DIAG_LINES
  * and ed_diag_line(i, out), which writes line i (at most ED_DIAG_LEN - 1 characters); without them DIAG gets no reply.
@@ -20,7 +19,7 @@
 #define ED_H0 0x7Du
 #define ED_H1 0x4Fu
 #define ED_H2 0x50u
-#define ED_PROTO 5u                             /* 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
+#define ED_PROTO 6u                             /* 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
 #define ED_NAME_MAX 13u
 #define ED_P_SIZE 110u
 #if OP_UADEV
@@ -34,8 +33,8 @@
 typedef char ed_size_check[sizeof(px_preset_t) == ED_P_SIZE ? 1 : -1];
 enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_ORDER, ED_NAME, ED_PUT, ED_SELECT,
        ED_FOCUS, ED_LIST, ED_SLOT_GET, ED_SLOT_PUT, ED_COMMIT, ED_SAVE, ED_WATCH, ED_PING,
-       ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,
-       ED_IR_LIST, ED_IR_WRITE, ED_IR_COMMIT, ED_IR_ERASE,     /* v38: 24..27 */
+       ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,   /* 19..22: NAM retired (v70) */
+       ED_IR_LIST, ED_IR_WRITE, ED_IR_COMMIT, ED_IR_ERASE,     /* v38: 24..27, retired (v70) */
        ED_USB_AUDIO,                                           /* v42: 28 */
        ED_FOOTSWITCH };                                        /* v48: 29 */
 
@@ -256,44 +255,6 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         ed_b(ED_PROF);                                 /* v40.2: where the DSP time goes (ed_prof), after their count */
         for (k = 0; k < ED_PROF; k++) { ed_b(ed_prof(k)); ed_b(ed_prof(k) >> 7); }
 #endif
-        break;
-    case ED_NAM_LIST: {                                /* v37: every model, factory first, then the user slots */
-        char nm[12];
-        ed_b(PX_NAM_NFACT); ed_b(PX_NAM_NUSER);
-        for (k = 0; k < PX_NAM_N; k++) { rc = px_nam_name((int)k, nm); ed_b(rc ? 1u : 0u); ed_str(nm, 11); }
-        break;
-    }
-    case ED_NAM_WRITE:                                 /* piece (2 bytes, 7 bits each), then 128 packed bytes */
-        if (n < 2u) return;
-        i = a[0] | (uint32_t)a[1] << 7;
-        rc = nm_write_piece(i, a + 2, n - 2u);
-        ed_b(a[0]); ed_b(a[1]); ed_b((uint32_t)rc);
-        break;
-    case ED_NAM_COMMIT:
-    case ED_NAM_ERASE:
-        if (n < 1u) return;
-        rc = cmd == ED_NAM_COMMIT ? nm_commit(a[0]) : nm_erase(a[0]);
-        nm_changed(a[0]);                              /* a sound playing that slot reloads it */
-        ed_b(a[0]); ed_b((uint32_t)rc);
-        break;
-    case ED_IR_LIST: {                                 /* v38: the cabinet IR slots */
-        char nm[12];
-        ed_b(PX_IR_N);
-        for (k = 0; k < PX_IR_N; k++) { rc = px_ir_name((int)k, nm); ed_b(rc ? 1u : 0u); ed_str(nm, 11); }
-        break;
-    }
-    case ED_IR_WRITE:                                  /* piece (2 bytes, 7 bits each), then 128 packed bytes */
-        if (n < 2u) return;
-        i = a[0] | (uint32_t)a[1] << 7;
-        rc = ir_write_piece(i, a + 2, n - 2u);
-        ed_b(a[0]); ed_b(a[1]); ed_b((uint32_t)rc);
-        break;
-    case ED_IR_COMMIT:
-    case ED_IR_ERASE:
-        if (n < 1u) return;
-        rc = cmd == ED_IR_COMMIT ? ir_commit(a[0]) : ir_erase(a[0]);
-        ir_changed(a[0]);                              /* a sound playing that slot reloads it */
-        ed_b(a[0]); ed_b((uint32_t)rc);
         break;
     case ED_USB_AUDIO:                                 /* v42: the USB AUDIO setting (no argument: read), its streams */
 #if OP_UAUDIO

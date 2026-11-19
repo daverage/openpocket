@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,8 +19,8 @@ const sha256 = (...buffers) => { const h = createHash("sha256"); for (const b of
 const check = (what, fn) => { fn(); console.log(`${what.padEnd(76)} ok`); };
 
 check("the committed engine is built from these sources (else: node tools/op.mjs wasm)", () => {
-  const sources = ["engine/px_wasm.c", "engine/px_dsp.c", "firmware/px_math.c", "engine/px_dsp.h", "engine/px_trim.h",
-    "engine/px_nam.c", "engine/px_nam.h", "engine/px_nam_factory.h", "engine/px_track.h", "engine/px_acoustic.h", "engine/px_acoustic_bank.h"];   // (px_dsp.c includes the NAM network, v37)
+  const headers = readdirSync(join(ROOT, "engine")).filter((f) => f.endsWith(".h")).sort().map((f) => `engine/${f}`);
+  const sources = ["engine/px_wasm.c", "engine/px_dsp.c", "firmware/px_math.c", ...headers];   // (every engine header: px_dsp.c includes them)
   assert.equal(sha256(...sources.map(read)), read("tools/sim/px_engine.wasm.sources").toString().trim());
 });
 

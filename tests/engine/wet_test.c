@@ -93,33 +93,6 @@ int main(void)
     printf("reverb lane: %d types, the tail %d frames later%s\n", PX_REV_COUNT, LAG, bad2 ? " (NOT)" : "");
     bad += bad2;
 
-    /* 3. the pipeline with the lanes: the plain run with the lanes, one block later */
-    int n3 = 0, bad3 = 0;
-    for (int f = 0; f < 24; f++) {
-        px_preset_t p;
-        px_preset_factory(&p, f);
-        if (!p.on[PX_B_AMP] || p.type[PX_B_AMP] != PX_AMP_NAM) continue;
-        run_lanes(&p, ref, 0);
-        start(&p);
-        px_wet_mode(&e, 1, LAG);
-        static float nb[2][FR];
-        int cur = 0;
-        memset(got, 0, sizeof got);
-        for (int b = 0; b < NB; b++) {
-            px_wet_swap(&e);
-            px_wet_run(&e, 0, 0);                      /* (as the firmware: first in POST's share, post_job) */
-            if (b) for (int o = 0; o < FR; o += 64) px_engine_part(&e, nb[cur ^ 1] + o, got + FR * (b - 1) + o, 64, PX_PART_POST);
-            for (int o = 0; o < FR; o += 64) px_engine_part(&e, sig + FR * b + o, nb[cur] + o, 64, PX_PART_PRE);
-            for (int o = 0; o < FR; o += 64) px_engine_part(&e, nb[cur] + o, nb[cur] + o, 64, PX_PART_NAM);
-            cur ^= 1;
-        }
-        n3++;
-        const int i = first_diff(ref, got, FR * (NB - 1));
-        if (i >= 0) { bad3++; printf("pipeline, preset %02d: differs from frame %d (%g against %g)\n", f + 1, i, ref[i], got[i]); }
-    }
-    printf("pipeline with the lanes: %d NAM presets, %d differ\n", n3, bad3);
-    bad += bad3;
-
     /* 4. out of time every block: the dry sound only, counted */
     {
         px_preset_t p;

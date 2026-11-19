@@ -9,6 +9,6 @@ for f in $SRC; do
   clang --target=wasm32 -O2 -fno-builtin -ffp-contract=off -nostdlibinc -Iengine -Ifirmware/inc -Wall -Wno-unused-function -c "$f" -o "$O/$(basename "$f" .c).o"
 done
 wasm-ld --no-entry --strip-all -z stack-size=65536 "$O"/*.o -o tools/sim/px_engine.wasm
-cat $SRC engine/px_dsp.h engine/px_trim.h engine/px_nam.c engine/px_nam.h engine/px_nam_factory.h engine/px_track.h engine/px_acoustic.h engine/px_acoustic_bank.h | sha256sum | cut -d' ' -f1 > tools/sim/px_engine.wasm.sources
+cat $SRC $(ls engine/*.h | LC_ALL=C sort) | sha256sum   # (every engine header: px_dsp.c includes them) | cut -d' ' -f1 > tools/sim/px_engine.wasm.sources
 chmod 644 tools/sim/px_engine.wasm
 ls -l tools/sim/px_engine.wasm

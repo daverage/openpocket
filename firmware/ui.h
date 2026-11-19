@@ -92,12 +92,12 @@ enum { UI_ST_NORM, UI_ST_LATE, UI_ST_BYPASS, UI_ST_LOADING, UI_ST_HIGH };
 static struct {
     int full, screen;                  /* screen: 0 PLAY, 1 EDIT, -1 another page was drawn over it */
     uint32_t preset, vol; char name[14];
-    int dirty, amp_t, cab_t, amp_on, cab_on, amp_m, cab_m;
+    int dirty, amp_t, cab_t, amp_on, cab_on;   /* (v70: SYNTH and OCTAVE under the number) */
     uint8_t tile_on[PX_NBLK], tile_sel[PX_NBLK], tile_blk[PX_NBLK], tile_mv[PX_NBLK];
     int info_b, info_t, info_on, info_m;
     int blk, type, np, item, mode, on;
     uint8_t val[PX_NPAR];
-    int hint, amp_ld, row_ld; uint32_t bnum;
+    int hint, row_ld; uint32_t bnum;
     char status[12]; int status_kind;
 } uc;
 static void ui_invalidate(void) { uc.full = 1; }
@@ -105,16 +105,11 @@ static int ui_np(void) { return px_nparams((int)ui_blk, PRESET.type[ui_blk]); }
 static int ui_nitems(void) { return 2 + ui_np(); }     /* 0 = type, 1 = on/off, 2.. = parameters */
 static const char *ui_block_name(int b) { return b == PX_B_SYN ? "SYNTH" : px_block_name(b); }   /* (the documents' name) */
 
-/* v42: a setting that picks from a list (NAM MODEL, USER IR) steps one item a detent, skips the empty slots and shows its
- * place in the list. The stored value stays 0..100 (px_nam_knob, px_ir_knob): presets do not change. */
-static int ui_list_n(int b, int t, int k)              /* the list's length, 0: not a list */
-{
-    if (k != 0) return 0;
-    return b == PX_B_AMP && t == PX_AMP_NAM ? PX_NAM_N : b == PX_B_CAB && t == PX_CAB_IR ? PX_IR_N : 0;
-}
-static int ui_list_of(int b, int v) { return b == PX_B_AMP ? px_nam_model(v) : px_ir_slot(v); }
-static int ui_list_val(int b, int i) { return b == PX_B_AMP ? px_nam_knob(i) : px_ir_knob(i); }
-static int ui_list_name(int b, int i, char *nm12) { return b == PX_B_AMP ? px_nam_name(i, nm12) : px_ir_name(i, nm12); }
+/* v42: a setting that picks from a list stepped one item a detent. v70: the lists (NAM MODEL, USER IR) are gone. */
+static int ui_list_n(int b, int t, int k) { (void)b; (void)t; (void)k; return 0; }
+static int ui_list_of(int b, int v) { (void)b; return v; }
+static int ui_list_val(int b, int i) { (void)b; return i; }
+static int ui_list_name(int b, int i, char *nm12) { (void)b; (void)i; nm12[0] = 0; return 0; }
 static int ui_list_place(int b, int n, int cur, int *count)   /* cur's place among the filled items (1..), 0: an empty one */
 {
     char nm[12];
@@ -267,23 +262,15 @@ static void draw_play_top(int force)
         ft_box(6, P_NUM_Y, 84, b, &FT_XL, UI_ACC, UI_BG, 0);
         uc.preset = cur_preset;
     }
-    int at = PRESET.type[PX_B_AMP], ct = PRESET.type[PX_B_CAB], ao = PRESET.on[PX_B_AMP], co = PRESET.on[PX_B_CAB];
-    int am = at == PX_AMP_NAM ? px_nam_model(PRESET.p[PX_B_AMP][0]) : -1;   /* v37: a NAM amp shows its model */
-    int ald = uc.status_kind == UI_ST_LOADING && at == PX_AMP_NAM;   /* a NAM model loads: the name greys until it plays */
-    if (force || at != uc.amp_t || ao != uc.amp_on || am != uc.amp_m || ald != uc.amp_ld) {
-        char nm[12];
-        const char *an = px_type_name(PX_B_AMP, at);
-        if (am >= 0) { px_nam_name(am, nm); an = nm; }
-        ft_box(94, P_NUM_Y + 4u, 142, ao ? an : "NO AMP", &FT_MD, ao && !ald ? BLK_COL[PX_B_AMP] : UI_DIM, UI_BG, 0);
-        uc.amp_t = at; uc.amp_on = ao; uc.amp_m = am; uc.amp_ld = ald;
+    /* v70: under the number, the SYNTH block's type, then the OCTAVE (pitch) block's */
+    int at = PRESET.type[PX_B_SYN], ct = PRESET.type[PX_B_PITCH], ao = PRESET.on[PX_B_SYN], co = PRESET.on[PX_B_PITCH];
+    if (force || at != uc.amp_t || ao != uc.amp_on) {
+        ft_box(94, P_NUM_Y + 4u, 142, ao ? px_type_name(PX_B_SYN, at) : "NO SYNTH", &FT_MD, ao ? BLK_COL[PX_B_SYN] : UI_DIM, UI_BG, 0);
+        uc.amp_t = at; uc.amp_on = ao;
     }
-    int cm = ct == PX_CAB_IR ? px_ir_slot(PRESET.p[PX_B_CAB][0]) : -1;   /* v38: a user IR shows its name */
-    if (force || ct != uc.cab_t || co != uc.cab_on || cm != uc.cab_m) {
-        char nm[12];
-        const char *cn = px_type_name(PX_B_CAB, ct);
-        if (cm >= 0) { px_ir_name(cm, nm); cn = nm; }
-        ft_box(94, P_NUM_Y + 29u, 88, co ? cn : "NO CAB", &FT_SM, UI_DIM, UI_BG, 0);
-        uc.cab_t = ct; uc.cab_on = co; uc.cab_m = cm;
+    if (force || ct != uc.cab_t || co != uc.cab_on) {
+        ft_box(94, P_NUM_Y + 29u, 88, co ? px_type_name(PX_B_PITCH, ct) : "NO OCTAVE", &FT_SM, UI_DIM, UI_BG, 0);
+        uc.cab_t = ct; uc.cab_on = co;
     }
     int d = ui_dirty();                                /* EDITED: the sound differs from its saved slot */
     if (force || d != uc.dirty) { ft_box(182, P_NUM_Y + 29u, 54, d ? "EDITED" : "", &FT_SM, UI_ACC, UI_BG, 2); uc.dirty = d; }
@@ -316,7 +303,7 @@ static void draw_tiles(int force)
         if (force || uc.tile_blk[i] != b || uc.tile_on[i] != on || uc.tile_sel[i] != sel || uc.tile_mv[i] != mv) draw_tile(i);
     }
 }
-static void draw_info(int force)       /* the selected block: label, model (v42: a NAM amp's model, a user IR's name), on/off */
+static void draw_info(int force)       /* the selected block: label, model, on/off */
 {
     int b = (int)ui_blk, t = PRESET.type[b], on = PRESET.on[b] != 0;
     int m = ui_list_n(b, t, 0) ? ui_list_of(b, PRESET.p[b][0]) : -1;
@@ -364,17 +351,7 @@ static void draw_type(void)
 }
 static int ui_loading_row(int k)       /* the NAM amp's MODEL row while its model loads */
 {
-    return uc.status_kind == UI_ST_LOADING && ui_blk == PX_B_AMP && PRESET.type[PX_B_AMP] == PX_AMP_NAM && k == 0;
-}
-static void ui_hz_text(char *b, int off)   /* v42: USER IR's cut frequencies with their unit: "89 HZ", "6.3 KHZ", "OFF" */
-{
-    uint32_t hz = 0;
-    for (int i = 0; b[i]; i++) hz = hz * 10u + (uint32_t)(b[i] - '0');
-    b[0] = 0;
-    if (off) { b_str(b, "OFF"); return; }
-    if (hz < 1000u) { b_num(b, hz); b_str(b, " HZ"); return; }
-    hz = (hz + 50u) / 100u;
-    b_num(b, hz / 10u); b_str(b, "."); b_num(b, hz % 10u); b_str(b, " KHZ");
+    (void)k; return 0;                                 /* (v70: nothing loads) */
 }
 #define E_LIST_X 96u                   /* a list setting: its place at the left, the item's name from here */
 static void draw_bar(int k)            /* value + bar: the only thing that moves while adjusting */
@@ -405,7 +382,6 @@ static void draw_bar(int k)            /* value + bar: the only thing that moves
         return;
     }
     if (!px_param_text((int)ui_blk, t, k, (int)v, b)) num3(b, v);   /* "+5TH", "440 MS"... */
-    else if (ui_blk == PX_B_CAB && t == PX_CAB_IR && k >= 1) ui_hz_text(b, k == 2 && v == 0u);
     ft_box(140, y + 1u, 90, b, &FT_MD, vc, bg, 2);
     uint32_t w = v * BAR_W / 100u;
     if (w) lcd_rect(BAR_X, y + 24u, w, 4, fc);
@@ -879,13 +855,13 @@ static void dg_chip(uint32_t x, uint32_t y, uint32_t w, const char *s, uint16_t 
     ui_rbox(x, y, w, 18, 4, C_CARD, UI_BG);
     ft_box(x + 3u, y + 2u, w - 6u, s, &FT_SM, col, C_CARD, 1);
 }
-static int dg_top(uint8_t *idx, int n)  /* the costliest blocks (a_pf; PX_NBLK = the NAM network), most first: how many */
+static int dg_top(uint8_t *idx, int n)  /* the costliest blocks (a_pf), most first: how many */
 {
-    uint8_t used[PX_NBLK + 1] = {0};
+    uint8_t used[PX_NBLK] = {0};
     int c = 0;
     for (; c < n; c++) {
         int best = -1;
-        for (int k = 0; k <= PX_NBLK; k++) if (!used[k] && a_pf[k] && (best < 0 || a_pf[k] > a_pf[best])) best = k;
+        for (int k = 0; k < PX_NBLK; k++) if (!used[k] && a_pf[k] && (best < 0 || a_pf[k] > a_pf[best])) best = k;
         if (best < 0) break;
         used[best] = 1; idx[c] = (uint8_t)best;
     }
@@ -946,7 +922,7 @@ static void diag_dsp(void)             /* page 1: the load against the guard, ea
         for (int i = 0; i < DG_BLK; i++) {                   /* sorted, the heaviest in amber */
             uint32_t y = 160u + (uint32_t)i * 15u;
             if (i >= n) { lcd_rect(0, y, 240, 15, UI_BG); continue; }
-            const char *l = top[i] == PX_NBLK ? "NAM" : px_block_label(top[i]);
+            const char *l = px_block_label(top[i]);
             ft_box(DG_X, y, 42, l, &FT_SM, i ? UI_TXT : WHT, UI_BG, 0);
             dg_bar(52, y + 5u, 148, 5, a_pf[top[i]], 100, i ? UI_DIM : UI_ACC, 0);
             b[0] = 0; b_num(b, a_pf[top[i]]);

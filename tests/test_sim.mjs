@@ -36,7 +36,7 @@ const png = async (path = "/api/screen.png") => Buffer.from(await (await fetch(s
 let info = await get("/api/info");
 ok(info.kind === "pedal" && info.port === "OpenPocket" && info.controls.includes("fs_up"), `info: ${info.kind} on port "${info.port}"`);
 let s = await state();
-ok(s.slot === 0 && s.name === "TWIN CLEAN" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
+ok(s.slot === 0 && s.name === "PRESET 01" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
 ok(s.preset.p.length === 12 && s.preset.order.length === 12 && s.dsp.load === 42 && s.writes_ok === 1, "state: 12 blocks, the DSP load, flash writes allowed");
 
 // ---- 2. footswitches and the screen ----
@@ -45,7 +45,7 @@ ok(shot0.length === 240 * 240 * 2, "screen.rgb565: 240 x 240 x 2 bytes");
 await act("/api/press/fs_up");
 s = await state();
 const shot1 = await png("/api/screen.rgb565");
-ok(s.slot === 1 && s.name === "CHORUS CLEAN" && s.last_press === "fs_up" && s.presses === 1, `footswitch up: slot 2 "${s.name}"`);
+ok(s.slot === 1 && s.name === "PRESET 02" && s.last_press === "fs_up" && s.presses === 1, `footswitch up: slot 2 "${s.name}"`);
 ok(s.frame !== f0 && !shot0.equals(shot1), "the screen was redrawn (frame counter and pixels changed)");
 const p = await png("/api/screen.png?scale=2");
 ok(p.subarray(1, 4).toString() === "PNG" && p.readUInt32BE(16) === 480 && p.readUInt32BE(20) === 480, "screen.png?scale=2: a 480 x 480 PNG");
@@ -53,27 +53,19 @@ await act("/api/press/fs_dn");
 ok((await state()).slot === 0, "footswitch down: back to slot 1");
 
 // ---- 3. block buttons, the knob, the pages ----
-await act("/api/press/amp");
+await act("/api/press/mod");
 s = await state();
-ok(s.mode === "block" && s.block === 5, "AMP button: the AMP page");
-await act("/api/knob/1");                    // (v42: down the page from MODEL: the first setting, the NAM amp's MODEL list)
+ok(s.mode === "block" && s.block === 8, "MOD button: the MOD page");
+await act("/api/knob/1");                    // (down the page from MODEL: the first setting)
 await act("/api/press/push");
 s = await state();
-const model = s.preset.p[5][0];
-ok(s.mode === "edit", "knob + PUSH: editing the AMP's first setting");
-await act("/api/knob/1?fast");
-s = await state();
-ok(s.preset.p[5][0] !== model && Math.abs(s.preset.p[5][0] - model) <= 4, `NAM MODEL: one model a detent, even fast (v42): ${model} -> ${s.preset.p[5][0]}`);
-await act("/api/press/push");
-await act("/api/knob/1");
-await act("/api/press/push");
-s = await state();
-const gain = s.preset.p[5][1];
+ok(s.mode === "edit", "knob + PUSH: editing the MOD's first setting");
+const gain = s.preset.p[8][0];
 await act("/api/knob/8");
 s = await state();
-ok(s.preset.p[5][1] === Math.min(100, gain + 8) && s.dirty === 1, `knob x8: GAIN ${gain} -> ${s.preset.p[5][1]}, the sound is edited`);
+ok(s.preset.p[8][0] === Math.min(100, gain + 8) && s.dirty === 1, `knob x8: RATE ${gain} -> ${s.preset.p[8][0]}, the sound is edited`);
 await act("/api/knob/-3?fast");
-ok((await state()).preset.p[5][1] === Math.max(0, s.preset.p[5][1] - 15), "knob counterclockwise, fast: steps of 5");
+ok((await state()).preset.p[8][0] === Math.max(0, s.preset.p[8][0] - 15), "knob counterclockwise, fast: steps of 5");
 await act("/api/press/home");
 ok((await state()).mode === "chain", "HOME: back to the chain");
 await act("/api/press/dpush");
@@ -103,7 +95,7 @@ s = await state();
 ok(s.mode === "chain" && s.slot === 2, "PUSH loads the preset shown");
 await act("/api/press/fs_dn"); await act("/api/press/fs_dn");
 s = await state();
-ok(s.slot === 0 && s.dirty === 1, "back on slot 1 by foot: its unsaved GAIN edit is back (v42)");
+ok(s.slot === 0 && s.dirty === 1, "back on slot 1 by foot: its unsaved RATE edit is back (v42)");
 await act("/api/press/fx_long");
 ok((await state()).mode === "midi", "hold FX: the MIDI page");
 await act("/api/press/home");

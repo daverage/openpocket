@@ -57,7 +57,7 @@ int main(void)
             const int ch = px_engine_change(&A, &p1);
             run(&A, ya, 0, T0); run(&B, yb, 0, T0);
             if (ch == PX_CH_NONE) continue;
-            if (ch == PX_CH_FULL) { CHECK(b == PX_B_AMP, "preset %d: block %d change sorted full", f, b); continue; }
+            if (ch == PX_CH_FULL) { CHECK(0, "preset %d: block %d change sorted full", f, b); continue; }
             px_engine_prepare(&A, &p1);
             px_engine_knobs(&A, &p1);
             px_engine_set(&B, &p1);
@@ -67,9 +67,6 @@ int main(void)
             for (int i = 0; i < GL_N; i++)
                 CHECK(*GLP(&A, i) == *GLP(&B, i), "preset %d block %d: setting %d ends at %g, not %g", f, b, i, *GLP(&A, i), *GLP(&B, i));
             for (int z = 0; z < PX_NBLK; z++) CHECK(A.run.on[z] == p1.on[z] && A.bfd[z] == 0, "preset %d: block %d fade state", f, z);
-            CHECK(A.cab_g == B.cab_g && A.cab_n == B.cab_n && !memcmp(&A.cd, &B.cd, sizeof A.cd), "preset %d: cabinet", f);
-            for (int c = 0; c < A.cab_n; c++)
-                CHECK(A.cab[c].b0 == B.cab[c].b0 && A.cab[c].a1 == B.cab[c].a1 && A.cab[c].a2 == B.cab[c].a2, "preset %d: cab filter %d", f, c);
             if (trial % 3 == 2) nfade++; else nk++;
             ca += click(ya, T0, 1323); cb += click(yb, T0, 1323);
         }
@@ -83,11 +80,6 @@ int main(void)
         q = p; q.on[PX_B_DELAY] ^= 1; CHECK(px_engine_change(&A, &q) == PX_CH_KNOBS, "a block on / off");
         q = p; q.type[PX_B_MOD] = (uint8_t)((q.type[PX_B_MOD] + 1) % PX_MOD_COUNT); CHECK(px_engine_change(&A, &q) == PX_CH_FULL, "a type");
         q = p; uint8_t t = q.order[3]; q.order[3] = q.order[4]; q.order[4] = t; CHECK(px_engine_change(&A, &q) == PX_CH_FULL, "the order");
-        if (p.type[PX_B_AMP] == PX_AMP_NAM) {
-            q = p; q.p[PX_B_AMP][0] = (uint8_t)px_nam_knob((px_nam_model(p.p[PX_B_AMP][0]) + 1) % PX_NAM_NFACT);
-            CHECK(px_engine_change(&A, &q) == PX_CH_FULL, "another NAM model");
-            q = p; q.on[PX_B_AMP] ^= 1; CHECK(px_engine_change(&A, &q) == PX_CH_FULL, "the NAM amp on / off");
-        }
     }
     printf("changes: %d knob changes and %d blocks on / off glided and faded; clicks (summed: how far the 30 ms after the change stand out) %.1f against %.1f "
            "the old way (%.1f dB)\n", nk, nfade, ca, cb, 20.0 * log10(ca / cb));

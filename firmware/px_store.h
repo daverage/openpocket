@@ -4,9 +4,9 @@
  * 52 slots of 112 bytes (px_preset_t, 110 B, + a "saved" mark), kept in RAM (st_slot) and written as one whole copy
  * on each save, alternately to copy A [0xF0000, 0xF2000) and copy B [0xF2000, 0xF4000), each two 4 KiB sectors:
  *   sector 0: header (16 B) + slots 0..33        sector 1: slots 34..51
- * Format 2 (v29: a 12th block and the block order). A format-1 copy (v25..v28: 42 slots of 96 B, 11 blocks) is read
- * and converted at boot: the saved sounds come through, the new block off, the order the default one; the next save
- * writes format 2 to the other copy.
+ * Format 6 (v70, OpenPocket Synth). The multi-effects firmware's presets (formats 2..5, same slot size) are not
+ * converted: such a copy gives its settings (MIDI, USB AUDIO, STOMP mode) and every slot starts as its placeholder
+ * (px_preset_factory). The first save writes format 6; later updates keep the presets.
  * The header goes last, with a sequence number and a CRC16 of every slot: at boot the valid copy with the highest
  * sequence wins, so a power cut during a save leaves the previous copy. Bytes 0xF00..0xF7F of each sector stay
  * erased: the update loader treats a valid record there as an update record (loader/ldr_core.c).
@@ -21,11 +21,8 @@
 #define ST_NSLOT   52u
 #define ST_SLOT    112u
 #define ST_S0N     34u                          /* slots in sector 0: 16 + 34 * 112 = 0xEF0 < 0xF00 */
-#define ST_VER     5u          /* 5: v36 (preset LEVEL); 4: v35 (delay TIME up to 2 s); 3: v34 (amp / drive / cab types renumbered); 2: v29; 1: v25 */
-#define ST1_NSLOT  42u                          /* format 1 (v25..v28) */
-#define ST1_SLOT   96u
-#define ST1_S0N    38u
-#define ST1_PSIZE  91u                          /* its preset: name 14, on 11, type 11, p 11 x 5 */
+#define ST_VER     6u          /* 6: v70 OpenPocket Synth; 2..5: the multi-effects firmware (settings kept, presets not) */
+#define ST_VER_MIN 2u
 typedef char st_size_check[(sizeof(px_preset_t) < ST_SLOT && ST_NSLOT == 52u) ? 1 : -1];
 #define ST_MAGIC   0x5350504Fu                  /* "OPPS" */
 #define ST_MARK    0x5Au                        /* slot holds a saved preset (else: the factory one) */
@@ -52,51 +49,6 @@ static uint32_t st_slot_off(uint32_t base, uint32_t k)
 {
     return k < ST_S0N ? base + 16u + k * ST_SLOT : base + 0x1000u + (k - ST_S0N) * ST_SLOT;
 }
-static uint32_t st1_slot_off(uint32_t base, uint32_t k)
-{
-    return k < ST1_S0N ? base + 16u + k * ST1_SLOT : base + 0x1000u + (k - ST1_S0N) * ST1_SLOT;
-}
-/* a format-1 slot -> format 2: the 11 old blocks copied over factory slot k (new block, order: defaults) */
-static void st_from_v1(uint32_t k, const uint8_t *o)
-{
-    memset(st_slot[k], 0xFF, ST_SLOT);
-    if (o[ST1_PSIZE] != ST_MARK) return;                       /* never saved: stays the factory preset */
-    px_preset_t q;
-    px_preset_factory(&q, (int)k);
-    memcpy(q.name, o, 14);
-    memcpy(q.on, o + 14, 11); q.on[PX_B_SYN] = 0;
-    memcpy(q.type, o + 25, 11);
-    memcpy(q.p, o + 36, 55);
-    px_order_default(q.order);
-    memcpy(st_slot[k], &q, sizeof q);
-    st_slot[k][sizeof q] = ST_MARK;
-}
-/* format 1 / 2 -> 3: the saved presets' amp, drive and cab types moved to the v34 set (px_type_v34: the nearest one).
- * In RAM only; the flash gets it at the next save (until then it is redone at each boot). */
-static void st_types_v34(void)
-{
-    static const uint8_t B[3] = {PX_B_DRIVE, PX_B_AMP, PX_B_CAB};
-    for (uint32_t k = 0; k < ST_NSLOT; k++) {
-        if (st_slot[k][sizeof(px_preset_t)] != ST_MARK) continue;
-        px_preset_t *q = (px_preset_t *)(void *)st_slot[k];
-        for (uint32_t i = 0; i < 3u; i++) q->type[B[i]] = (uint8_t)px_type_v34(B[i], q->type[B[i]]);
-    }
-}
-static void st_level_v36(void)               /* saved before v36: no preset LEVEL yet (that byte was unused) = 0 dB */
-{
-    for (uint32_t k = 0; k < ST_NSLOT; k++) {
-        if (st_slot[k][sizeof(px_preset_t)] != ST_MARK) continue;
-        ((px_preset_t *)(void *)st_slot[k])->p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
-    }
-}
-static void st_time_v35(void)
-{
-    for (uint32_t k = 0; k < ST_NSLOT; k++) {
-        if (st_slot[k][sizeof(px_preset_t)] != ST_MARK) continue;
-        px_preset_t *q = (px_preset_t *)(void *)st_slot[k];
-        q->p[PX_B_DELAY][0] = (uint8_t)px_dly_time_v35(q->type[PX_B_DELAY], q->p[PX_B_DELAY][0]);
-    }
-}
 static uint32_t st_crc(void)
 {
     uint32_t k, c = 0;
@@ -107,17 +59,8 @@ static uint32_t st_crc(void)
 /* reads copy `base` (format h->ver) into st_slot; returns its CRC as stored on flash */
 static uint32_t st_read_copy(uint32_t base, const st_hdr_t *h)
 {
-    uint32_t k, c = 0;
-    if (h->ver == 1u) {
-        static uint8_t o[ST1_SLOT];
-        memset(st_slot, 0xFF, sizeof st_slot);
-        for (k = 0; k < ST1_NSLOT; k++) {
-            if (ota_fread(st1_slot_off(base, k), o, ST1_SLOT)) return ~0u;
-            c = ota_crc16(o, ST1_SLOT, c);
-            st_from_v1(k, o);
-        }
-        return c;
-    }
+    uint32_t k;
+    (void)h;
     for (k = 0; k < ST_NSLOT; k++)
         if (ota_fread(st_slot_off(base, k), st_slot[k], ST_SLOT)) return ~0u;
     return st_crc();
@@ -134,7 +77,7 @@ static void st_load(void)
     memset(&bh, 0, sizeof bh);
     for (i = 0; i < 2u; i++) {
         if (ota_fread(BASE[i], &h, sizeof h) || h.magic != ST_MAGIC) continue;
-        if (!(((h.ver >= 2u && h.ver <= ST_VER) && h.nslot == ST_NSLOT) || (h.ver == 1u && h.nslot == ST1_NSLOT))) continue;
+        if (h.ver < ST_VER_MIN || h.ver > ST_VER || h.nslot != ST_NSLOT) continue;
         if (st_read_copy(BASE[i], &h) == h.crc && (!best || (int32_t)(h.seq - bseq) > 0)) {
             best = BASE[i];
             bseq = h.seq;
@@ -156,9 +99,10 @@ static void st_load(void)
         st_usb = 0; st_ui = 0;
     }
     if (st_last >= ST_NSLOT) st_last = 0;
-    if (best && bh.ver < 3u) st_types_v34();        /* saved before v34: the old amp / drive / cab numbers */
-    if (best && bh.ver < 4u) st_time_v35();         /* saved before v35: delay TIME on the 1 s scale */
-    if (best && bh.ver < 5u) st_level_v36();        /* saved before v36: preset LEVEL = 0 dB */
+    if (best && bh.ver < ST_VER) {                 /* the multi-effects firmware's presets: placeholders instead */
+        memset(st_slot, 0xFF, sizeof st_slot);
+        st_last = 0;
+    }
 }
 
 static int st_saved(uint32_t k) { return k < ST_NSLOT && st_slot[k][sizeof(px_preset_t)] == ST_MARK; }
