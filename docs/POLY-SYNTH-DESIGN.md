@@ -196,7 +196,38 @@ build/pulse_poly_bench - fm 40 74 40 60 95 < mono-44100.f32 > fm.f32
 build/pulse_poly_bench --fm-oscillator 1250 5 capped > fm-high.f32
 ```
 
-Both 675,968-byte packages contain a 484,080-byte application. The link
-leaves 568 bytes in the RAM code window, 5,672 in general RAM, 864 in low RAM
-and 1,456 in the DSP pool. The BlackBox package passed the installer dry
-run against v56. AC791N playing load and listening remain pending.
+Both 675,968-byte packages contain a 484,080-byte application. The XIP
+window includes the flash image of the initialized RAM sections.
+
+| Linker region | Used | Free |
+| --- | ---: | ---: |
+| XIP application | 484,080 B | 97,484 B |
+| RAM code window, including data and alignment | 85,448 B | 568 B |
+| General RAM | 92,632 B | 5,672 B |
+| Low RAM | 23,712 B | 864 B |
+| DSP pool | 256,592 B | 1,456 B |
+
+The three new voicings add 1,664 bytes to the application and 48 bytes of
+general RAM versus v56. Their waveforms run from flash. The allocator and
+voice loops are shared, so another small voicing can reuse that state.
+An effect that needs its own large buffers or RAM-resident processing has
+much less room than the XIP figure suggests.
+
+### BlackBox v57 smoke test
+
+The update from v56 completed and all three saved presets matched their
+pre-update checksum. The editor read back the five controls at 0, 50 and
+100 on all three new types. The bypass toggles passed and the probe restored
+the original sound. Arcade value labels use the editor protocol's seven
+characters, such as `STEP PU` for stepped pulse.
+
+| Effect | Smart Gate off | Smart Gate on |
+| --- | ---: | ---: |
+| Pulse Poly | 19% | 23% |
+| Saw Poly | 18% | 22% |
+| Arcade Poly | 17% | 21% |
+| FM Poly | 17% | 21% |
+
+Every pass had zero late blocks, no safety bypass and an active second core.
+Input was uncontrolled. Playing load and listening through the guitar input
+remain open.
