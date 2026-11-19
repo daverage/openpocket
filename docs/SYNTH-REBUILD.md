@@ -196,3 +196,26 @@ and above the pedal's gate in 56 % of gaps, which matches the engine's 58 %. Thr
 removed: the level a set dB under the note's peak, the pitch lost for 44-87 ms, and a fast fall within 23 ms.
 Each cut real sustained notes, or never fired. Whether a synth should stop while the string still rings is for
 listening on the pedal, perhaps as a control.
+
+### Poly tracking, first comparison (GuitarSet comping, development players 00-01, 60 takes)
+
+`tools/research/poly_compare.py` scores 10 ms frames against the annotated notes. P: reported notes that are real.
+R: sounding notes found. R2: up to two sounding notes found (the synth has two voices). Ghosts: harmonics among the
+wrong notes. Entry: onset to first report. Found: notes reported within 0.5 s.
+
+| Candidate | P | R | R2 | Ghosts | Entry median / 90th | Found |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Engine tracker (analysis, up to 6 notes) | 76.9 % | 41.3 % | 74.3 % | 10.3 % | 16 / 90 ms | 75.0 % |
+| Engine voices (two-slot allocator: what plays) | 74.7 % | 38.3 % | 68.9 % | 9.1 % | 26 / 113 ms | 62.9 % |
+| Basic Pitch frames, stamped 91 ms late (measured look-ahead) | 79.2 % | 59.4 % | 76.0 % | 15.9 % | 14 / 178 ms | 77.9 % |
+| Basic Pitch note events, stamped 1.06 s late | 42.3 % | 44.1 % | 56.8 % | 16.3 % | 7 / 153 ms | 51.2 % |
+| Basic Pitch offline, no latency (a ceiling only) | 80.9 % | 84.4 % | 92.9 % | 43.3 % | 5 / 10 ms | 87.9 % |
+
+What it shows:
+
+- The information for two-note tracking is in the audio: offline, Basic Pitch finds 93 % of up to two notes.
+- At a latency a pedal can use, that edge is gone. Its frames, 91 ms late, find 76 % against the engine
+  analysis's 74 %, and its network and harmonic CQT would be heavy for the AC791N.
+- The engine loses most between its analysis and its voices. R2 falls from 74.3 to 68.9 %, and notes found
+  within 0.5 s fall from 75 to 63 %. The two-slot allocator is the first thing to improve. It should get simpler,
+  not gain more rules (docs/TRACKING-ARCHITECTURE-REVIEW.md).
