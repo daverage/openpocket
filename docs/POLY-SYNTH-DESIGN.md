@@ -140,3 +140,63 @@ and read back the original sound.
 Core 2 stayed active with zero late blocks and no safety bypass. The input
 was uncontrolled. Active-playing peak load and audible onset still need a
 guitar-input test.
+
+
+## Next voicings
+
+Build **Saw Poly**, **Arcade Poly** and **FM Poly** in that order on the
+two-voice allocator. Saw Poly adds controllable analogue-style oscillator
+detune and note-driven filter sweep. Arcade Poly adds chiptune waves and
+optional semitone stepping. FM Poly uses a two-operator sine voice inspired
+by early digital synths such as the Yamaha DX7, with a per-note modulation
+envelope for electric pianos, metallic bells and other digital textures.
+Benchmark the FM bandwidth limit and peak callback load at maximum index.
+Monophonic orchestral ensembles are a separate line of work.
+
+## v57 Saw, Arcade and FM Poly on Full
+
+The opt-in `poly-test` channel appends three SYN types after Pulse Poly.
+Each uses the same two-note allocator and independent voice envelopes.
+The new voicings inherit v56's tracking limits on close intervals,
+soft repicks and recorded low bass.
+
+| Effect | Controls | Voicing |
+| --- | --- | --- |
+| Saw Poly | DETUNE, OCTAVE, CUTOFF, SWEEP, RELEASE | PolyBLEP saw, second saw when detune is raised, per-note filter sweep into the shared ladder |
+| Arcade Poly | WAVE, OCTAVE, CRUSH, DECAY, MIX | Square, triangle, noise and narrow pulse, each with an optional semitone-stepped setting |
+| FM Poly | RATIO, INDEX, DECAY, RELEASE, LEVEL | Two sine operators per note with a separate decaying modulation envelope |
+
+FM uses phase modulation with ratios from 1:1 to 5:1, including fractional
+ratios. Its index falls as the predicted sidebands approach Nyquist. That
+makes the brightest patches gentler at the top of the register. The bench
+compares the emitted 44.1 kHz oscillator with a 12× exact-sine reference
+low-passed to Nyquist, using the same index for each comparison. Error
+includes foldback and the firmware sine approximation.
+
+| Carrier and ratio | Maximum index, uncapped → capped | Relative RMS error, uncapped → capped |
+| --- | ---: | ---: |
+| 110 Hz, 2:1 | 5.000 → 5.000 | −51.9 → −51.9 dB |
+| 880 Hz, 5:1 | 5.000 → 2.010 | −9.1 → −42.9 dB |
+| 1,250 Hz, 5:1 | 5.000 → 0.764 | −0.3 → −55.6 dB |
+| 1,318 Hz, 5:1 | 5.000 → 0.611 | −0.3 → −58.9 dB |
+
+On the same arpeggio DI, the four voicings took 1.02–1.04 ms of host CPU
+time per second of audio. The maximum-index FM patch took 1.03 ms. These
+are medians of five native renders and do not show AC791N callback load.
+On isolated oscillator tests, Saw split a 110 Hz note around 109 and 111 Hz.
+Arcade followed a 112 Hz target and stepped to 110 Hz with STEP SQUARE.
+The standard engine matched the previous revision across 1,022 equivalence
+runs. The v57 sweep passed 3,091 configurations, and the isolated oscillator
+tests passed ASan and UBSan.
+
+```sh
+OP_CHANNEL=poly-test sh firmware/build.sh
+cc -O2 -Iengine -Ifirmware tools/sim/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+build/pulse_poly_bench - fm 40 74 40 60 95 < mono-44100.f32 > fm.f32
+build/pulse_poly_bench --fm-oscillator 1250 5 capped > fm-high.f32
+```
+
+Both 675,968-byte packages contain a 484,080-byte application. The link
+leaves 568 bytes in the RAM code window, 5,672 in general RAM, 864 in low RAM
+and 1,456 in the DSP pool. The BlackBox package passed the installer dry
+run against v56. AC791N playing load and listening remain pending.

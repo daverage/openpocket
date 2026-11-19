@@ -1,17 +1,51 @@
 /* OpenPocket, SPDX-License-Identifier: GPL-3.0-or-later.
- * Render the firmware PULSE POLY block from mono 44.1 kHz float32 on stdin.
- * Pass a CSV path to log the raw resonator candidates and audible voices.
+ * Render the poly synths from mono 44.1 kHz float32 on stdin.
+ * Usage: pulse_poly_bench [trace.csv|-] [pulse|saw|arcade|fm [five knobs]]
+ *        pulse_poly_bench --fm-oscillator HZ RATIO capped|uncapped
  */
 #define PX_PULSE_TEST 1
+#define PX_POLY_TEST 1
 #include "../../engine/px_dsp.c"
 #include <stdio.h>
 #include <stdlib.h>
 
+static int fm_oscillator(int argc, char **argv)
+{
+    if (argc != 5) return 2;
+    char *end;
+    const long hz = strtol(argv[2], &end, 10);
+    if (end == argv[2] || *end || hz < 1 || hz > 1600) return 2;
+    const long ratio = strtol(argv[3], &end, 10);
+    if (end == argv[3] || *end || ratio < 1 || ratio > 5) return 2;
+    const int capped = !strcmp(argv[4], "capped");
+    if (!capped && strcmp(argv[4], "uncapped")) return 2;
+    enum { RATE = 44100 };
+    const float step = (float)hz / RATE;
+    const float index = capped ? poly_fm_index(step, step * (float)ratio, 5.0f) : 5.0f;
+    fprintf(stderr, "%.9g\n", index);
+    /* Exact phase bins let the FFT separate foldback from drift. */
+    for (long i = 0; i < RATE; ++i) {
+        const float carrier = (float)(i * hz % RATE) / RATE;
+        const float modulator = (float)(i * hz * ratio % RATE) / RATE;
+        const float out = poly_fm_carrier(carrier, modulator, index);
+        if (fwrite(&out, sizeof out, 1, stdout) != 1) return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc > 2) return 2;
-    FILE *trace = argc == 2 ? fopen(argv[1], "w") : NULL;
-    if (argc == 2 && !trace) return 1;
+    if (argc >= 2 && !strcmp(argv[1], "--fm-oscillator")) return fm_oscillator(argc, argv);
+    if (argc > 3 && argc != 8) return 2;
+    int type = PX_SYN_PULSE_POLY;
+    if (argc >= 3) {
+        static const char *const names[] = {"pulse", "saw", "arcade", "fm"};
+        unsigned i;
+        for (i = 0; i < sizeof names / sizeof names[0]; ++i)
+            if (!strcmp(argv[2], names[i])) break;
+        if (i == sizeof names / sizeof names[0]) return 2;
+        type += (int)i;
+    }
 
     static px_engine engine;
     px_preset_t preset;
@@ -21,10 +55,24 @@ int main(int argc, char **argv)
     px_order_default(preset.order);
     preset.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
     preset.on[PX_B_SYN] = 1;
-    preset.type[PX_B_SYN] = PX_SYN_PULSE_POLY;
-    for (int k = 0; k < PX_NPAR; ++k) preset.p[PX_B_SYN][k] = 50;
+    preset.type[PX_B_SYN] = (uint8_t)type;
+    for (int k = 0; k < PX_NPAR; ++k) {
+        long value = 50;
+        if (argc == 8) {
+            char *end;
+            const char *arg = argv[3 + k];
+            value = strtol(arg, &end, 10);
+            if (end == arg || *end || value < 0 || value > 100) return 2;
+        }
+        preset.p[PX_B_SYN][k] = (uint8_t)value;
+    }
     px_engine_set(&engine, &preset);
 
+    FILE *trace = NULL;
+    if (argc >= 2 && strcmp(argv[1], "-")) {
+        trace = fopen(argv[1], "w");
+        if (!trace) return 1;
+    }
     if (trace) {
         fprintf(trace, "t,nn");
         for (int i = 0; i < PXT_NOTES; ++i) fprintf(trace, ",n%d", i + 1);

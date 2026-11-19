@@ -555,6 +555,11 @@ static const char *const PN_CEL[] = {"OCTAVE", "BOW", "VIBRATO", "RELEASE", "DRY
 #ifdef PX_PULSE_TEST
 static const char *const PN_PULSE_POLY[] = {"WIDTH", "PWM", "CUTOFF", "RESO", "RELEASE"};
 #endif
+#ifdef PX_POLY_TEST
+static const char *const PN_SAW_POLY[] = {"DETUNE", "OCTAVE", "CUTOFF", "SWEEP", "RELEASE"};
+static const char *const PN_ARCADE_POLY[] = {"WAVE", "OCTAVE", "CRUSH", "DECAY", "MIX"};
+static const char *const PN_FM_POLY[] = {"RATIO", "INDEX", "DECAY", "RELEASE", "LEVEL"};
+#endif
 static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ORGAN", 5, PN_ORG}, {"CHURCH ORGAN", 5, PN_CHU}, {"STRINGS", 5, PN_STR}, {"CHOIR", 5, PN_CHO},
     {"MONO SYNTH", 5, PN_MONO}, {"PWM SYNTH", 5, PN_PWM}, {"BASS SYNTH", 5, PN_BSY}, {"12-STRING", 3, PN_12S},
@@ -565,6 +570,9 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"STRING MACHINE", 5, PN_STRING_MACHINE},
 #ifdef PX_PULSE_TEST
     {"PULSE POLY", 5, PN_PULSE_POLY},
+#endif
+#ifdef PX_POLY_TEST
+    {"SAW POLY", 5, PN_SAW_POLY}, {"ARCADE POLY", 5, PN_ARCADE_POLY}, {"FM POLY", 5, PN_FM_POLY},
 #endif
 };
 
@@ -802,6 +810,11 @@ static float syn_att_ms(float x) { return 10.0f + x * x * 1490.0f; }     /* STRI
 static float syn_rel_ms(float x) { return 50.0f + x * x * 2950.0f; }     /* release */
 static int syn_bari_st(int v) { return -1 - (int)((float)v * 0.01f * 11.99f); }
 static int syn_oct(int v) { return v < 34 ? -1 : (v < 67 ? 0 : 1); }
+#ifdef PX_POLY_TEST
+static int poly_wave(uint8_t v) { return (int)(f01(v) * 7.99f); }
+static int poly_ratio(uint8_t v) { return (int)(f01(v) * 5.99f); }
+static float poly_octave(uint8_t v) { return v < 34 ? 0.5f : (v < 67 ? 1.0f : 2.0f); }
+#endif
 static float syn_fuzz_level_db(float level)
 {
     return (level - 0.5f) * (level < 0.5f ? 24.0f : 12.0f);
@@ -908,6 +921,20 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_MOD_ROTARY && k == 0) { put_str(buf, v < 50 ? "SLOW" : "FAST"); return 1; }
         break;
     case PX_B_SYN:
+#ifdef PX_POLY_TEST
+        if ((t == PX_SYN_SAW_POLY || t == PX_SYN_ARCADE_POLY) && k == 1) {
+            put_int(buf, syn_oct(v), 1); return 1;
+        }
+        if (t == PX_SYN_ARCADE_POLY && k == 0) {
+            static const char *const waves[] = {"SQUARE", "TRIANGLE", "NOISE", "PULSE",
+                                                "STEP SQUARE", "STEP TRI", "STEP NOISE", "STEP PULSE"};
+            put_str(buf, waves[poly_wave(v)]); return 1;
+        }
+        if (t == PX_SYN_FM_POLY && k == 0) {
+            static const char *const ratios[] = {"1:1", "3:2", "2:1", "5:2", "7:2", "5:1"};
+            put_str(buf, ratios[poly_ratio(v)]); return 1;
+        }
+#endif
         if (t == PX_SYN_OCT_FUZZ && k == 4) {
             const float db = syn_fuzz_level_db(x);
             put_int(buf, (int)(db + (db < 0.0f ? -0.5f : 0.5f)), 1);
@@ -2213,6 +2240,14 @@ static void syn_fuzz_reset(px_engine *e)
 
 #ifdef PX_PULSE_TEST
 static void pulse_poly_reset(px_engine *e, int configure);
+static int poly_synth_type(int type)
+{
+#ifdef PX_POLY_TEST
+    return type >= PX_SYN_PULSE_POLY && type <= PX_SYN_FM_POLY;
+#else
+    return type == PX_SYN_PULSE_POLY;
+#endif
+}
 #endif
 static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, float f);   /* v48: px_acoustic.h */
 static void rc_syn(px_engine *e)
@@ -2226,7 +2261,7 @@ static void rc_syn(px_engine *e)
         if (syn_octave_hq(t)) memset(&e->erb_syn, 0, sizeof e->erb_syn);
         if (t == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
 #ifdef PX_PULSE_TEST
-        if (t == PX_SYN_PULSE_POLY) pulse_poly_reset(e, 1);
+        if (poly_synth_type(t)) pulse_poly_reset(e, 1);
 #endif
         if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
@@ -2335,6 +2370,39 @@ static void rc_syn(px_engine *e)
         e->syn_ka = onepole_k(sr, 0.004f);
         e->syn_kr = onepole_k(sr, 0.003f + 0.052f * f * f);
         break;
+#endif
+#ifdef PX_POLY_TEST
+    case PX_SYN_SAW_POLY:
+        e->syn_mul = poly_octave(q[1]);
+        e->syn_pwd = expf(a * (18.0f * 0.00057762265f)) - 1.0f;
+        e->syn_cut = 300.0f * powf(24.0f, c);
+        e->syn_res = 0.26f;
+        e->syn_fenv = 3.0f * d;
+        e->syn_fdk = onepole_k(sr, 0.14f);
+        e->syn_ka = onepole_k(sr, 0.004f);
+        e->syn_kr = onepole_k(sr, 0.003f + 0.052f * f * f);
+        break;
+    case PX_SYN_ARCADE_POLY:
+        e->syn_snap = poly_wave(q[0]);
+        e->syn_mul = poly_octave(q[1]);
+        e->syn_wave = 128.0f * powf(0.0625f, c);     /* 256 to 16 levels */
+        e->syn_pwd = c;
+        e->syn_fdk = onepole_k(sr, 0.015f + 0.62f * d * d);
+        e->syn_ka = onepole_k(sr, 0.002f);
+        e->syn_kr = onepole_k(sr, 0.008f);
+        e->syn_dry = 1.0f - f;
+        e->syn_out = 0.26f * f;
+        break;
+    case PX_SYN_FM_POLY: {
+        const float ratios[] = {1.0f, 1.5f, 2.0f, 2.5f, 3.5f, 5.0f};
+        e->syn_mul = ratios[poly_ratio(q[0])];
+        e->syn_fenv = 5.0f * b * b;
+        e->syn_fdk = onepole_k(sr, 0.018f + 0.9f * c * c);
+        e->syn_ka = onepole_k(sr, 0.004f);
+        e->syn_kr = onepole_k(sr, 0.004f + 0.10f * d * d);
+        e->syn_out = 0.24f * f;
+        break;
+    }
 #endif
     case PX_SYN_MONO:                                  /* one note: tracker -> oscillator -> 24 dB ladder */
         bq_lowpass(&e->syn_f[0], sr, 110.0f, 0.54f); bq_lowpass(&e->syn_f[1], sr, 110.0f, 1.31f);
@@ -2571,7 +2639,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
             if (b == PX_B_SYN && p->type[b] == PX_SYN_OCT_FUZZ) syn_fuzz_reset(e);
 #ifdef PX_PULSE_TEST
-            if (b == PX_B_SYN && p->type[b] == PX_SYN_PULSE_POLY) pulse_poly_reset(e, 0);
+            if (b == PX_B_SYN && poly_synth_type(p->type[b])) pulse_poly_reset(e, 0);
 #endif
             if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ)) {
                 memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq); pxt_reset(e, &pxa_trk, &pxa_lay);
@@ -4170,7 +4238,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             goto faded;
         }
 #ifdef PX_PULSE_TEST
-        if (sblk == PX_B_SYN && syn_t == PX_SYN_PULSE_POLY) {
+        if (sblk == PX_B_SYN && poly_synth_type(syn_t)) {
             pulse_poly_block(e, xb, n, strim);
             goto faded;
         }

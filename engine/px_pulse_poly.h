@@ -6,6 +6,10 @@ typedef struct {
     float frequency, target, phase, gain, sustain, power;
     float pending;
     unsigned stable, missing, held, repick;
+#ifdef PX_POLY_TEST
+    float note, phase2, color, triangle;
+    uint32_t noise;
+#endif
 } px_poly_voice;
 
 typedef struct {
@@ -181,6 +185,9 @@ static __attribute__((noinline)) void pulse_poly_frame(const px_track *track)
         v->power += 0.21f * (c->power - v->power);
         v->sustain = pulse_poly_sustain(c->power);
         v->target = c->hz;
+#ifdef PX_POLY_TEST
+        v->note = c->note;
+#endif
         v->missing = 0;
     }
     for (int i = 0; i < 2; ++i) {
@@ -212,16 +219,108 @@ static __attribute__((noinline)) void pulse_poly_frame(const px_track *track)
             v->target = v->frequency = c->hz;
             v->power = c->power;
             v->sustain = pulse_poly_sustain(c->power);
+#ifdef PX_POLY_TEST
+            v->note = c->note;
+            v->phase2 = wrap1(v->phase + 0.25f);
+            v->color = 1.0f;
+            v->triangle = -lfo_tri(v->phase);
+            v->noise = i == 0 ? 0x91e10da5u : 0xc2b2ae35u;
+#endif
         }
     }
 }
 
+#ifdef PX_POLY_TEST
+/* The index is in radians. Keep the significant sidebands below 42% of
+ * the sample rate as carrier frequency and modulator ratio rise. */
+static inline float poly_fm_index(float step, float mod_step, float index)
+{
+    if (step + mod_step * (index + 2.0f) <= 0.42f) return index;
+    const float limit = (0.42f - step) / mod_step - 2.0f;
+    return limit > 0.0f ? limit : 0.0f;
+}
+
+static inline float poly_fm_carrier(float phase, float modulator, float index)
+{
+    return sin_hq(wrap1(phase + (index / (2.0f * PI_F)) * sin_hq(modulator)));
+}
+
+static inline float poly_fm_sample(px_poly_voice *v, float step, float ratio, float index)
+{
+    const float mod_step = step * ratio;
+    v->phase2 = wrap1(v->phase2 + mod_step);
+    index = poly_fm_index(step, mod_step, index);
+    return poly_fm_carrier(v->phase, v->phase2, index);
+}
+
+/* In the experimental multi-voice build, leave the waveforms in flash
+ * and share the RAM-resident voice and tracking loops. */
+static __attribute__((noinline)) float poly_synth_oscillator(const px_engine *e, px_poly_voice *v,
+                                                              int type, float step)
+{
+    v->color += e->syn_fdk * -v->color;
+    if (type == PX_SYN_FM_POLY) {
+        v->phase = wrap1(v->phase + step);
+        return poly_fm_sample(v, step, e->syn_mul, e->syn_fenv * (0.14f + 0.86f * v->color));
+    }
+    if (type == PX_SYN_SAW_POLY) {
+        step *= e->syn_mul;
+        const float first = step * (1.0f - e->syn_pwd);
+        v->phase = wrap1(v->phase + first);
+        const float a = syn_saw(v->phase, first);
+        if (e->syn_pwd == 0.0f) return a;
+        const float second = step * (1.0f + e->syn_pwd);
+        v->phase2 = wrap1(v->phase2 + second);
+        return 0.5f * (a + syn_saw(v->phase2, second));
+    }
+
+    /* Arcade WAVE's upper four positions use the accepted semitone bin. */
+    const unsigned wave = (unsigned)e->syn_snap;
+    if (wave >= 4) step = v->note * pulse_poly.inv_rate;
+    step *= e->syn_mul;
+    const float phase = v->phase + step;
+    v->phase = wrap1(phase);
+    float sample;
+    if ((wave & 3u) == 2u) {
+        if (phase >= 1.0f) {
+            v->noise ^= v->noise << 13;
+            v->noise ^= v->noise >> 17;
+            v->noise ^= v->noise << 5;
+        }
+        sample = (float)(v->noise >> 8) * (1.0f / 8388608.0f) - 1.0f;
+    } else {
+        const float width = (wave & 3u) == 3u ? 0.25f : 0.5f;
+        sample = syn_saw(v->phase, step) - syn_saw(wrap1(v->phase + width), step);
+        if ((wave & 3u) == 1u) {
+            /* Integrate a symmetric band-limited pulse. The leak removes
+             * the integration constant over a few oscillator cycles. */
+            v->triangle += step * (4.0f * sample - 0.85f * v->triangle);
+            sample = v->triangle * 0.83f;
+        }
+    }
+    if (e->syn_pwd > 0.0f) {
+        const float x = sample * e->syn_wave;
+        sample = (float)(int)(x + (x < 0.0f ? -0.5f : 0.5f)) / e->syn_wave;
+    }
+    return sample * v->color;
+}
+#endif
+
 /* Full-rate PolyBLEP phase. A releasing oscillator keeps its phase and
  * frequency until its gain reaches silence or the slot can be reused. */
 static __attribute__((noinline)) float pulse_poly_voice_sample(px_poly_voice *v, float width,
-                                                               float attack, float release)
+                                                               float attack, float release
+#ifdef PX_POLY_TEST
+                                                               , const px_engine *e, int type
+#endif
+                                                               )
 {
-    if (v->repick && v->gain < 0.12f) v->repick = 0;
+    if (v->repick && v->gain < 0.12f) {
+        v->repick = 0;
+#ifdef PX_POLY_TEST
+        v->color = 1.0f;
+#endif
+    }
     const float target = v->held && !v->repick ? v->sustain : 0.0f;
     const float k = v->repick || (!v->held && v->stable >= PULSE_CONFIRM) ? pulse_poly.dip :
                     target > v->gain ? attack : release;
@@ -229,23 +328,60 @@ static __attribute__((noinline)) float pulse_poly_voice_sample(px_poly_voice *v,
     if (v->gain < 1e-5f && !v->held) { v->gain = 0.0f; return 0.0f; }
     v->frequency += attack * (v->target - v->frequency);
     const float step = v->frequency * pulse_poly.inv_rate;
+#ifdef PX_POLY_TEST
+    if (type != PX_SYN_PULSE_POLY) return v->gain * poly_synth_oscillator(e, v, type, step);
+#endif
     v->phase = wrap1(v->phase + step);
     return v->gain * (syn_saw(v->phase, step) - syn_saw(wrap1(v->phase + width), step));
 }
 
 static __attribute__((noinline)) void pulse_poly_block(px_engine *e, float *samples, int n, float trim)
 {
-    const float cutoff = syn_ladder_coefficient(e, e->syn_cut);
+    float hz = e->syn_cut;
+#ifdef PX_POLY_TEST
+    const int type = e->syn_type;
+    if (type == PX_SYN_SAW_POLY) {
+        float sweep = 0.0f;
+        for (int i = 0; i < 2; ++i) {
+            const float amount = pulse_poly.voice[i].color * pulse_poly.voice[i].gain;
+            if (amount > sweep) sweep = amount;
+        }
+        hz *= 1.0f + e->syn_fenv * sweep;
+    }
+#endif
+    const float cutoff = syn_ladder_coefficient(e, hz);
     for (int i = 0; i < n; ++i) {
         const float input = samples[i];
         pulse_poly.env += e->syn_ea * (px_abs(input) - pulse_poly.env);
         if (pxr_run_bank(&pulse_bank, &pxa_trk, input)) pulse_poly_frame(&pxa_trk);
-        e->syn_lfo[0] = wrap1(e->syn_lfo[0] + e->syn_linc[0]);
-        float width = e->syn_pw0 + e->syn_pwd * lfo_sin(e->syn_lfo[0]);
-        width = width < 0.08f ? 0.08f : (width > 0.92f ? 0.92f : width);
-        const float a = pulse_poly_voice_sample(&pulse_poly.voice[0], width, e->syn_ka, e->syn_kr);
-        const float b = pulse_poly_voice_sample(&pulse_poly.voice[1], width, e->syn_ka, e->syn_kr);
+        float width = 0.5f;
+#ifdef PX_POLY_TEST
+        if (type == PX_SYN_PULSE_POLY)
+#endif
+        {
+            e->syn_lfo[0] = wrap1(e->syn_lfo[0] + e->syn_linc[0]);
+            width = e->syn_pw0 + e->syn_pwd * lfo_sin(e->syn_lfo[0]);
+            width = width < 0.08f ? 0.08f : (width > 0.92f ? 0.92f : width);
+        }
+        float sum = 0.0f;
+        for (int v = 0; v < 2; ++v) {
+            sum += pulse_poly_voice_sample(&pulse_poly.voice[v], width, e->syn_ka, e->syn_kr
+#ifdef PX_POLY_TEST
+                                           , e, type
+#endif
+                                           );
+        }
+#ifdef PX_POLY_TEST
+        if (type == PX_SYN_ARCADE_POLY) {
+            samples[i] = (input * e->syn_dry + e->syn_out * 0.5f * sum) * trim;
+            continue;
+        }
+        if (type == PX_SYN_FM_POLY) {
+            samples[i] = e->syn_out * 0.5f * sum * trim;
+            continue;
+        }
+#endif
         const float dn = (i & 1) ? 1e-15f : -1e-15f;
-        samples[i] = 0.29f * syn_ladder_step(e, (a + b) * 0.48f + dn, cutoff) * trim;
+        samples[i] = 0.29f * syn_ladder_step(e, sum * 0.48f + dn, cutoff) * trim;
     }
 }
