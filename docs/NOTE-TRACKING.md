@@ -115,3 +115,37 @@ With every voice level at zero (STRINGS HQ's OCT at 0, for example) the bank's o
 - No bass-note option for POLY OCTAVE yet.
 - No measurement of the tracker with NAM running beside it.
 - The second core's earlier shutdown on v48 was not reproduced, and its cause is unknown.
+
+## v60: MONO SYNTH on the note layer (poly-test)
+
+MONO SYNTH was the last voice on `syn_track`. That tracker took zero
+crossings of a fixed 110 Hz low-pass, with the median of three periods. With
+`PX_MONO_LAYER=1`, which the `poly-test` channel sets, it plays the shared
+`pxt_layer` note instead, as the HQ synths and acoustic voices do. The gate,
+pick and pitch come from the layer. A pick, a slur or a corrected octave
+jumps to the new pitch. Bends and vibrato glide. The oscillator and ladder
+are unchanged. The standard build keeps `syn_track` and stays bit-identical
+until the voice has had a listening comparison.
+
+`tools/sim/mono_bench.c` renders what MONO SYNTH plays. `tools/sim/mono_eval.py`
+scores it: a note counts as right when the voice is within 50 cents over most
+of its middle half. Wrong frames play a pitch that is not a sounding note.
+
+| Material | `syn_track` right | layer right | Time to pitch, median / p90 | Wrong-pitch frames |
+| --- | ---: | ---: | --- | --- |
+| GuitarSet solo takes 30–89, 6,187 notes (unseen) | 59.2% | **91.5%** | 46.5/72.1 → 6.3/40.0 ms | 42.5% → 11.3% |
+| GuitarSet solo takes 0–29, 2,631 notes | 46.0% | 72.7% | 40.2/90.1 → 10.4/57.6 ms | 46.1% → 19.0% |
+| Lead loop, 27 notes | 48.1% | 96.3% | 26.3/35.6 → 1.3/10.6 ms | 54.0% → 6.6% |
+| Owner DI `mvave.wav`, 217 notes | 36.9% | 74.2% | 60.9/101.6 → 27.6/81.2 ms | 59.6% → 30.3% |
+| Owner DI `mvave2.wav`, 77 notes | 63.6% | 84.4% | 42.8/97.3 → 47.9/85.6 ms | 42.6% → 32.6% |
+
+Octave errors rise from 71 to 120 of the 6,187 unseen notes. On the owner's
+DI the layer sometimes speaks on a high partial before the fundamental
+arrives. The `mvave` references are automatic pYIN transcriptions, not
+annotations. Release lingering is unchanged, because both versions release
+from the same level gate.
+
+BlackBox v60: MONO SYNTH peaks at 25% with the SYN block at 18%. There were
+no late blocks and no safety bypass, and the second core stayed active. The
+RAM code window has 496 bytes free, because the inlined `syn_track` path
+left the RAM loop.
