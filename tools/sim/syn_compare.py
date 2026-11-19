@@ -140,12 +140,43 @@ def match_sound(outdir):
               f'{len(midi) - pitch_ok.sum()} excluded by pitch filter; '
               f'median differences (dB, %, dB, dB) {median}')
 
+
+def octave_attacks(direction):
+    rate = 44100
+    start = rate // 10
+    t = (np.arange(rate * 2) - start) / rate
+    print(f'{"type":18s} arrival D2–E3 mean / worst ms  pick high-band excess dB')
+    for old, new, ratio, *settings in PAIRS:
+        block, knobs = settings if settings else ('SYN', None)
+        for name in (old, new):
+            arrivals, clicks = [], []
+            for m in range(38, 53):
+                hz = 440 * 2 ** ((m - 69) / 12)
+                x = np.where(t >= 0, 0.3 * np.sin(2 * np.pi * hz * t), 0)
+                y, _ = render(name, x, block, knobs, direction)
+                # Match octave_banks.c: half the steady wet level, with a
+                # one-cycle RMS window at the shifted frequency.
+                window = int(rate / (hz * ratio)) + 1
+                energy = np.r_[0, np.cumsum(y.astype(float) ** 2)]
+                steady = (energy[rate + rate // 10] - energy[rate]) / (rate // 10)
+                i = np.arange(start, len(y) - window, 16)
+                hit = i[energy[i + window] - energy[i] > 0.25 * steady * window]
+                if hit.size:
+                    arrivals.append((hit[0] + window // 2 - start) * 1000 / rate)
+                # Same finite-difference high-band proxy as octave_banks.c.
+                high = np.convolve(y, [1, -1.68, 0.71], 'full')[:len(y)]
+                pick = np.mean(high[start:start + rate // 50] ** 2)
+                clicks.append(10 * np.log10((pick + 1e-20) / (np.mean(high ** 2) + 1e-20)))
+            response = f'{np.mean(arrivals):6.1f} / {max(arrivals):6.1f}' if arrivals else '      no response'
+            print(f'{name:18s} {response}  {len(arrivals)}/15 responded  {np.mean(clicks):+6.2f}')
+
 p = argparse.ArgumentParser(); p.add_argument('--takes', type=int, default=20); p.add_argument('--comp', action='store_true')
 p.add_argument('--wobble', action='store_true', help='added level wobble on the bundled loops instead')
 p.add_argument('--bench', help='another ensemble_bench build (e.g. with -DPX_SUB2_TEST)')
 p.add_argument('--pair', help='OLD|NEW|BASE|BLK|KNOBS instead of the built-in pairs')
 p.add_argument('--match', metavar='OUTDIR', help='compare wet sound on paired synthetic notes and save audition WAVs')
 p.add_argument('--octave-voices', choices=['up', 'down'], help='score only the specified organ, strings or choir octave')
+p.add_argument('--attacks', action='store_true', help='measure isolated low-note arrival and pick transients')
 a = p.parse_args()
 if a.bench: BENCH = a.bench
 if a.pair:
@@ -158,9 +189,14 @@ if a.octave_voices:
     if a.octave_voices == 'up':
         names.add('STRINGS')
     ratio = 2.0 if a.octave_voices == 'up' else 0.5
-    PAIRS = [(pair[0], pair[1], ratio) for pair in PAIRS if pair[0] in names]
+    PAIRS = [(pair[0], pair[1], ratio, *pair[3:]) for pair in PAIRS if pair[0] in names]
     if not PAIRS:
         p.error('selected pair has no comparable isolated octave voice')
+if a.attacks:
+    if not a.octave_voices:
+        p.error('--attacks requires --octave-voices')
+    octave_attacks(a.octave_voices)
+    sys.exit(0)
 if a.wobble:
     loops = [read_di(os.path.join(ROOT, 'assets', 'loops', n + '.wav')) for n in ('chug', 'riff', 'chords', 'arpeggio', 'lead')]
     print(f'{"type":18s} added wobble dB: chug riff chords arpeggio lead | mean')

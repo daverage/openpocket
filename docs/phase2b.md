@@ -632,6 +632,13 @@ half-ghost limit for this benchmark is 17.575%.
   cut scale ghosts to 9.22% and comping extras to 27.7%. It retained 39.5%
   both-note accuracy and a 25.3 ms second-entry median. It had 127 of 270 entries,
   two fewer than v66. Continue with the same evaluation criteria.
+- Keeping the six-report confirmation and giving an active second voice a
+  5% entry power floor retained 129 of 270 entries at 25.3 ms, lowered comping
+  extras to 28.6%, and scored 40.6% on both-note accuracy. Scale ghosts were
+  13.15%. Solo arrival was 11.8 ms median / 45.0 ms p90, with 117 false starts
+  per minute. Solo reach within 150 ms was 95.6% against v66's 95.8%, so the
+  candidate is still for host testing. Shortening first voice confirmation
+  increased false starts on the development set.
 - The brass benchmark isolated trumpet (LAYER 0) and horn (LAYER 100 minus
   LAYER 0) from matched synthetic notes between E2 and C5. At TONE 50, the first
   register correction reduced the span of their balance from 3.97 dB to 1.63 dB.
@@ -654,7 +661,12 @@ isolated +1 on-pitch energy improved from 62.1% to 70.9% for ORGAN, 61.5% to 69.
 for CHURCH ORGAN, 56.3% to 65.7% for STRINGS, and 52.8% to 61.9% for CHOIR.
 Isolated −1 improved by 1.7 to 2.7 points for the three types that have it.
 Mean added wobble also fell in each measured comparison. Wet arrival and
-pick-click comparisons are still needed before a retirement decision.
+pick-click results from the synthetic D2–E3 steps show the strongest arrival
+improvement on CHURCH ORGAN, from 17.9 to 12.1 ms up and 32.9 to 9.9 ms down.
+ORGAN and STRINGS arrival was effectively unchanged. CHOIR improved on the
+up octave from 140.4 to 132.5 ms with its standard swell. High-band pick
+energy relative to steady output rose for most HQ voices, so compare their
+transients on real guitar at matching wet levels before deciding retirement.
 
 The [space-saver spec](spacesaver.md#phase-2b-update) now reflects the v66
 catalogue and memory map, the HQ retirement gates and the NAM-pool borrowing
