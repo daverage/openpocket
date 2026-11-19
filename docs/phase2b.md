@@ -715,6 +715,35 @@ half-ghost limit for this benchmark is 17.575%.
   overlap, but still lost the comping entry and reached 29.1% extras.
   The weak-upper misses and the reappearance of attenuated ghosts remain
   separate checks for the next allocator trial.
+- Tracing voice acquisitions on GuitarSet takes 24–47 found 130 additional
+  held frames where the tracker had started an octave that was absent at
+  the acquisition timestamp. Correctly played octave tails accounted for
+  46 additional frames, while several non-octave categories improved. The
+  net change was 109 more two-voice frames during annotated single notes.
+  A strong upper harmonic could escape the allocator guard as the lower
+  voice's fine pitch wandered, even though its nominal note stayed fixed.
+- `PXP_NOMINAL_OCTAVE_TEST` also checks the octave against the nominal lower
+  note after it has held about 100 ms and is below 110 Hz. Existing harmonic
+  evidence can still admit an independent octave. The original holdout
+  reached 28.8% extra voices (v66 28.9%), 40.9% both-note accuracy, all
+  2,669 solo entries at 11.8/45.2 ms median/p90, and all 129 comping entries
+  at 25.3/62.4 ms. Scale ghosts were 16.08% and the low-E sustains measured
+  17.71% / 9.80%, versus v66's 25.07% / 9.80%. The synthetic matrix still
+  reached both notes within 150 ms in 17/21 cases. The medium-pick +120 ms
+  case entered at 79.3 ms (previously 67.7 ms), and the simultaneous
+  case remained at 97.7 ms.
+- The separate audits still show entry regressions. On takes 144–167 the
+  candidate reached 1,702/1,726 solos against v66's 1,703, and 96/322
+  comping entries against 95. The missing solo entry is E4 at 16.836 s in
+  `05_Jazz3-150-C_solo`. It is a true major third above a held C4, and its
+  power repeatedly falls below the 6% second-voice floor during confirmation.
+  Letting a pending non-harmonic dip below that floor during confirmation
+  restored the E4 but
+  raised original-holdout extras to at least 29.1% and comping p90 to
+  67.8 ms. A fresh 72–95 slice reached 1,839/1,868 solo entries in both
+  builds and reduced extras from 21.2% to 20.9%, with 104/327 comping
+  entries versus v66's 106. The change remains opt-in pending those
+  entry regressions and a pedal check.
 - A phase check compared each harmonic's report-to-report phase advance
   with the root's advance and required greater disagreement in two even
   partials than in the odd partials. With a 1 Hz excess referred to the root,
@@ -756,6 +785,20 @@ half-ghost limit for this benchmark is 17.575%.
   The separate dark-tone trim brought the span to 1.91, 1.59, 1.63, 1.42 and
   1.42 dB at TONE 0, 25, 50, 75 and 100 respectively. Pedal listening and CPU
   verification are pending.
+
+To reproduce the opt-in nominal-octave host build and score both owner DIs:
+
+```sh
+cc -O2 -Iengine -Ifirmware \
+  -DPX_POLY_EVICT_TEST=1 -DPXP_EXTEND_GUARD=1 -DPXP_EVICT_RATIO=6 \
+  -DPX_POLY_OCTAVE_EVIDENCE_TEST=1 -DPXP_EVICT_FAST_RELEASE=1 \
+  -DPXP_OCT_ODD_LIMIT=0.10f -DPXP_OCT_SIXTH_FLOOR=0.025f \
+  -DPX_POLY_FADE_TEST=1 -DPXP_FADE_SETTLE=16 -DPXP_LATE_ROOT_TEST=9 \
+  -DPXP_NOMINAL_OCTAVE_TEST=1 tools/sim/pulse_poly_bench.c firmware/px_math.c \
+  -lm -o build/phase2b/poly-nominal-low
+PXP_SET='ACQB=0.06 SECOND=0.58' python3 tools/sim/poly_diag.py \
+  build/phase2b/poly-nominal-low --owner-di 'My Audio'
+```
 
 ## Parallel HQ and space-saver work
 

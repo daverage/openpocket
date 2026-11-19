@@ -18,6 +18,12 @@ typedef struct {
     float frequency, target, gain, sustain, power;
     float pending, note;            /* candidate being confirmed; accepted semitone bin */
     unsigned stable, missing, held, repick, events;
+#ifdef PX_POLY_EVICT_TEST
+    unsigned age;
+#ifdef PXP_EVICT_FAST_RELEASE
+    unsigned evicted;
+#endif
+#endif
 #ifdef PXP_TUNE
     unsigned acquisitions;                             /* (host benches: each start of a note) */
 #endif
@@ -239,11 +245,69 @@ static int pxp_harmonic(float hz, float other)
            px_abs(hz - 4.0f * other) < 0.085f * other;
 }
 
+#ifdef PX_POLY_EVICT_TEST
+#ifndef PXP_EVICT_MS
+#define PXP_EVICT_MS 100
+#endif
+#ifndef PXP_EVICT_RATIO
+#define PXP_EVICT_RATIO 1000.0f
+#endif
+#ifndef PXP_EVICT_TOL
+#define PXP_EVICT_TOL 0.021f
+#endif
+static int pxp_onset_harmonic(float hz, float root)
+{
+    return pxp_harmonic(hz, root) ||
+           px_abs(hz - 5.0f * root) < 0.105f * root ||
+           px_abs(hz - 6.0f * root) < 0.125f * root;
+}
+#endif
+
+static inline int pxp_blocks_new_harmonic(float hz, float root)
+{
+#if defined(PX_POLY_EVICT_TEST) && defined(PXP_EXTEND_GUARD)
+    return pxp_onset_harmonic(hz, root);
+#else
+    return pxp_harmonic(hz, root);
+#endif
+}
+
 static float pxp_power(int bin)
 {
     const px_erb_complex z = pxp_bank.state[bin];
     return z.r * z.r + z.i * z.i;
 }
+
+#ifdef PX_POLY_OCTAVE_EVIDENCE_TEST
+#ifndef PXP_OCT_ODD_LIMIT
+#define PXP_OCT_ODD_LIMIT 0.15f
+#endif
+#ifndef PXP_OCT_SIXTH_FLOOR
+#define PXP_OCT_SIXTH_FLOOR 0.015f
+#endif
+#ifndef PXP_OCT_ROOT_RATIO
+#define PXP_OCT_ROOT_RATIO 0.55f
+#endif
+/* Compare the even partials that support an independent octave with the
+ * odd partial that supports only the root. Use powers from the same report. */
+static int pxp_octave_evidence(int root)
+{
+    if (root + 31 >= PXR_BANDS) return 0;
+    const float octave = pxp_power(root + 12);
+    return octave > PXP_OCT_ROOT_RATIO * pxp_power(root) &&
+           pxp_power(root + 19) < PXP_OCT_ODD_LIMIT * octave &&
+           pxp_power(root + 24) > 0.04f * octave &&
+           pxp_power(root + 31) > PXP_OCT_SIXTH_FLOOR * octave;
+}
+
+static int pxp_has_octave_evidence(float root, float upper)
+{
+    if (px_abs(upper - 2.0f * root) >= 0.075f * root) return 0;
+    int bin = PXR_FIRST_MIDI - PXR_LOW;
+    while (bin + 1 < PXR_BANDS && pxp_bank.hz[bin] < 0.973f * root) ++bin;
+    return pxp_octave_evidence(bin);
+}
+#endif
 
 /* The lowest bass fundamentals often miss the peak shortlist. Look for
  * agreement between their even and odd harmonics, with root-band power
@@ -316,6 +380,19 @@ static int pxp_candidates(const px_track *track, pxp_candidate *candidates)
                                                   track->sal[i] * track->level, pxp_rank[bin] < 0 ? 9 : pxp_rank[bin]};
         }
     }
+#ifdef PX_POLY_OCTAVE_EVIDENCE_TEST
+    const int roots = count;
+    for (int i = 0; i < roots && count < PXT_NOTES; ++i) {
+        int bin = PXR_FIRST_MIDI - PXR_LOW;
+        while (bin < PXR_BANDS && pxp_bank.hz[bin] < candidates[i].note) ++bin;
+        if (!pxp_octave_evidence(bin)) continue;
+        const int at = bin + 12;
+        int duplicate = 0;
+        for (int j = 0; j < count; ++j) duplicate |= candidates[j].note == pxp_bank.hz[at];
+        if (!duplicate) candidates[count++] = (pxp_candidate){
+            pxp_bank.hz[at], pxp_frequency(at, 0.032f), pxp_power(at), 9};
+    }
+#endif
     memcpy(pxp.previous, pxp_bank.state, sizeof pxp.previous);
     pxp.ready = 1;
     return count;
@@ -337,6 +414,9 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
     for (int i = 0; i < 2; ++i) {
         pxp_note *v = &voices[i];
         if (!v->held) continue;
+#ifdef PX_POLY_EVICT_TEST
+        if (v->age < 255) ++v->age;
+#endif
         const int match = matches[i];
         if (match < 0) {
             if (++v->missing >= PXP_HOLD_N) { v->held = 0; v->repick = 0; }
@@ -351,7 +431,20 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
             v->repick = 1;
         v->power += 0.21f * (c->power - v->power);
         v->sustain = pxp_sustain(c->power);
-        v->target = c->hz;
+#ifdef PX_POLY_FADE_TEST
+        /* Phase refinement can cross the bin boundary without changing the
+         * nominal candidate. Limit that step on low, quiet notes. */
+        if (!v->repick && c->note < 110.0f && pxp.env < 0.01f
+#if defined(PXP_FADE_SETTLE) && defined(PX_POLY_EVICT_TEST)
+            && v->age >= PXP_FADE_SETTLE
+#endif
+           ) {
+            const float step = 0.012f * v->target;
+            const float delta = c->hz - v->target;
+            v->target += delta < -step ? -step : delta > step ? step : delta;
+        } else
+#endif
+            v->target = c->hz;
         v->note = c->note;
         v->missing = 0;
     }
@@ -365,17 +458,37 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
         /* v66: the other voice holds a note that still carries PXP_SECOND of the level: this one is a second note
          * (stricter); a held note that has faded leaves the new one the lead (as fast as the first) */
         const int second = voices[1 - i].held && voices[1 - i].power >= PXP_SECOND * track->level;
-        const float floor = track->level * (second && PXP_ACQ2 > PXP_ACQ ? PXP_ACQ2 : PXP_ACQ);
-        float power = floor;
+        const float base_floor = track->level * PXP_ACQ;
+        const float floor = second && PXP_ACQ2 > PXP_ACQ ? track->level * PXP_ACQ2 : base_floor;
+        float power = base_floor;
         for (int j = 0; j < count; ++j) {
             const pxp_candidate *c = &candidates[j];
-            if ((used & (1u << j)) || c->power <= floor) continue;
             const pxp_note *other = &voices[1 - i];
-            if (other->held && pxp_harmonic(c->note, other->target) &&
+            float entry_floor = floor;
+#if defined(PXP_LATE_ROOT_TEST) && defined(PX_POLY_EVICT_TEST)
+            /* Low notes can carry less energy than the held upper note.
+             * Keep the higher acquisition floor for candidates above it. */
+            if (second && c->rank <= PXP_LATE_ROOT_TEST && c->note < other->note)
+                entry_floor = base_floor;
+#endif
+            if ((used & (1u << j)) || c->power <= entry_floor) continue;
+            int guard = other->held;
+#ifdef PX_POLY_OCTAVE_EVIDENCE_TEST
+            guard &= !pxp_has_octave_evidence(other->note, c->note);
+#endif
+            int nominal_octave = 0;
+#if defined(PXP_NOMINAL_OCTAVE_TEST) && defined(PX_POLY_EVICT_TEST)
+            /* A settled low note can wander within the resonator bandwidth.
+             * Keep its octave subject to the harmonic guard through that drift. */
+            nominal_octave = other->age >= (unsigned)(0.10f * pxp.report_rate) &&
+                other->note < 110.0f && px_abs(c->note - 2.0f * other->note) < 0.01f * other->note;
+#endif
+            if (guard && (nominal_octave || pxp_blocks_new_harmonic(c->note, other->target)) &&
                 c->power < PXP_HGUARD * track->level) continue;
             /* v66: a harmonic of the other held note needs PXP_HREL of its power; a pitch within PXP_NEAR of it is
              * that note bending, not a new one */
-            if (other->held && PXP_HREL > 0.0f && pxp_harmonic(c->hz, other->target) && c->power < PXP_HREL * other->power) continue;
+            if (guard && PXP_HREL > 0.0f && (nominal_octave || pxp_blocks_new_harmonic(c->hz, other->target)) &&
+                c->power < PXP_HREL * other->power) continue;
             if (other->held && PXP_NEAR > 0.0f && px_abs(c->hz - other->target) < PXP_NEAR * other->target) continue;
             /* v66: the picker's order (harmonic sum) first, power within the same rank */
             if (PXP_BYRANK ? (c->rank > rank || (c->rank == rank && c->power <= power)) : c->power <= power) continue;
@@ -401,6 +514,26 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
             v->sustain = pxp_sustain(c->power);
             v->note = c->note;
             v->events |= PXP_ACQUIRED;
+#ifdef PX_POLY_EVICT_TEST
+            v->age = 0;
+#ifdef PXP_EVICT_FAST_RELEASE
+            v->evicted = 0;
+#endif
+            pxp_note *other = &voices[1 - i];
+            const float harmonic = c->hz * (int)(other->target / c->hz + 0.5f);
+            if (other->held && other->age <= PXP_EVICT_MS * 0.001f * pxp.report_rate &&
+#ifdef PX_POLY_OCTAVE_EVIDENCE_TEST
+                !pxp_has_octave_evidence(c->note, other->note) &&
+#endif
+                other->power < PXP_EVICT_RATIO * c->power &&
+                px_abs(other->target - harmonic) < PXP_EVICT_TOL * harmonic &&
+                pxp_onset_harmonic(other->target, c->hz)) {
+                other->held = other->repick = other->stable = 0;
+#ifdef PXP_EVICT_FAST_RELEASE
+                other->evicted = 1;
+#endif
+            }
+#endif
 #ifdef PXP_TUNE
             ++v->acquisitions;
 #endif
@@ -439,7 +572,11 @@ static inline float pxp_note_step(pxp_note *v, float attack, float release)
         v->events |= PXP_RESTRUCK;
     }
     const float target = v->held && !v->repick ? v->sustain : 0.0f;
-    const float k = v->repick || (!v->held && v->stable >= PXP_CONFIRM_N) ? pxp.dip :
+    const float k =
+#if defined(PX_POLY_EVICT_TEST) && defined(PXP_EVICT_FAST_RELEASE)
+                    v->evicted ? pxp.dip :
+#endif
+                    v->repick || (!v->held && v->stable >= PXP_CONFIRM_N) ? pxp.dip :
                     target > v->gain ? attack : release;
     v->gain += k * (target - v->gain);
     if (v->gain < 1e-5f && !v->held) { v->gain = 0.0f; return 0.0f; }
