@@ -452,6 +452,9 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
     bq_set(b, A * (ap + am * c + tsa), -2 * A * (am + ap * c), A * (ap + am * c - tsa),
            ap - am * c + tsa, 2 * (am - ap * c), ap - am * c - tsa);
 }
+#ifndef PX_MONO_LAYER
+#define PX_MONO_LAYER 0                                /* v60: MONO SYNTH on the shared note layer */
+#endif
 #include "px_track.h"                                  /* v49: the note tracker (band bank, salience, note layer) */
 #if defined(PX_RESONATOR_TEST) || defined(PX_LOWEST_TEST) || defined(PX_PULSE_TEST)
 #include "px_resonator_test.h"
@@ -2263,7 +2266,11 @@ static void rc_syn(px_engine *e)
 #ifdef PX_PULSE_TEST
         if (poly_synth_type(t)) pulse_poly_reset(e, 1);
 #endif
-        if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)) {
+        if (t == PX_SYN_BASS_HQ || t == PX_SYN_PWM_HQ || (t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION)
+#if PX_MONO_LAYER
+            || t == PX_SYN_MONO
+#endif
+            ) {
             memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq);
             pxt_reset(e, &pxa_trk, &pxa_lay);           /* v49 */
 #ifdef PX_RESONATOR_TEST
@@ -2641,7 +2648,11 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
 #ifdef PX_PULSE_TEST
             if (b == PX_B_SYN && poly_synth_type(p->type[b])) pulse_poly_reset(e, 0);
 #endif
-            if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ)) {
+            if (b == PX_B_SYN && (p->type[b] == PX_SYN_PWM_HQ || p->type[b] == PX_SYN_BASS_HQ
+#if PX_MONO_LAYER
+                                  || p->type[b] == PX_SYN_MONO
+#endif
+                                  )) {
                 memset(&e->syn_track_hq, 0, sizeof e->syn_track_hq); pxt_reset(e, &pxa_trk, &pxa_lay);
 #ifdef PX_RESONATOR_TEST
                 if (p->type[b] == PX_SYN_BASS_HQ) pxr_reset(e->sr);
@@ -3359,6 +3370,22 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
     case PX_SYN_MONO: {
         float a = px_abs(x);
         e->syn_env += (a - e->syn_env) * (a > e->syn_env ? e->syn_ea : e->syn_er);
+#if PX_MONO_LAYER
+        /* v60: the shared note layer (engine/px_track.h, as TRUMPET .. CELLO and the HQ synths) plays the note: its
+         * gate, pick and pitch replace syn_track's zero crossings; the oscillator and ladder are unchanged */
+        pxt_layer_run(&pxa_lay, &pxa_trk, x, pxt_run(e, &pxa_trk, x));
+        const int on = pxa_lay.gate;
+        if (pxa_lay.onset) e->syn_fenv = 1.0f;
+        e->syn_key = on;
+        if (on) {
+            /* a pick, a slur or a corrected octave jumps to the new pitch (as syn_track's snap did); bends and vibrato
+             * (the layer follows them within 120 cents a frame) glide */
+            e->syn_f0t = pxa_lay.f0;
+            const float r = e->syn_f0 > 0.0f ? e->syn_f0t / e->syn_f0 : 0.0f;
+            if (pxa_lay.onset || r < 0.944f || r > 1.059f) e->syn_f0 = e->syn_f0t;
+        }
+        e->syn_kg += ((on ? 1.0f : 0.0f) - e->syn_kg) * (on ? e->syn_ka : e->syn_kr);
+#else
         e->syn_slow += (e->syn_env - e->syn_slow) * e->syn_glk;           /* slower: re-attack detection */
         int on = e->syn_key ? (e->syn_env > e->syn_thr * 0.5f) : (e->syn_env > e->syn_thr * 1.5f);
         if (on && !e->syn_key) {
@@ -3370,6 +3397,7 @@ PX_INL static inline float syn_run(px_engine *e, int t, float x)
         if ((on && !e->syn_key) || e->syn_env > 1.6f * e->syn_slow + e->syn_thr) e->syn_fenv = 1.0f;
         e->syn_key = on;
         e->syn_kg += ((on && !e->syn_snap && e->syn_f0 > 0.0f ? 1.0f : 0.0f) - e->syn_kg) * (on ? e->syn_ka : e->syn_kr);
+#endif
         if (e->syn_kg < 1e-6f) e->syn_kg = 0.0f;
         e->syn_f0 += (e->syn_f0t - e->syn_f0) * e->syn_glk;
         float fr = e->syn_f0 * e->syn_mul, dt = fr / e->sr;

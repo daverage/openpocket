@@ -30,9 +30,10 @@ try {
         ["SAW POLY", ["DETUNE", "OCTAVE", "CUTOFF", "SWEEP", "RELEASE"], [100, 50, 60, 100, 50]],
         ["ARCADE POLY", ["WAVE", "OCTAVE", "CRUSH", "DECAY", "MIX"], [20, 67, 100, 60, 100]],
         ["FM POLY", ["RATIO", "INDEX", "DECAY", "RELEASE", "LEVEL"], [100, 100, 100, 50, 100]],
+        ["MONO SYNTH", null, [50, 50, 50, 50, 50]],          // v60: on the note layer in poly-test (load only)
     ].map(([name, params, knobs]) => {
         const type = lookup(syn, name);
-        assert.deepEqual(blocks[syn].types[type].params.map(p => p.name), params);
+        if (params) assert.deepEqual(blocks[syn].types[type].params.map(p => p.name), params);
         return {name, type, knobs, params};
     });
     const arcade = blocks[syn].types[specs[2].type];
@@ -82,7 +83,7 @@ try {
         console.log(JSON.stringify({name: spec.name, gateOn, peak, secondCore, safety, late, synth: end.prof?.[syn]}));
         assert.ok(secondCore && !safety && late === 0);
     }
-    for (const spec of specs.slice(1)) {
+    for (const spec of specs.slice(1, 4)) {
         assert.equal(await editor.put(temporary(spec, false)), 0);
         await pause(650);
         const start = await ping();
