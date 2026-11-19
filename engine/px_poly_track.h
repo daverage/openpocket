@@ -509,7 +509,15 @@ static void pxp_allocate(const px_track *track, const pxp_candidate *candidates,
         if (v->stable >= confirm && v->gain < 0.025f) {
             v->held = 1;
             v->missing = v->stable = 0;
-            v->target = v->frequency = c->hz;
+            float initial_hz = c->hz;
+#ifdef PXP_LOW_ENTRY_CENTER
+            /* Initial phase can reflect the previous low note. Start an
+             * arriving bass voice at its confirmed bin and let it glide. */
+            const pxp_note *incumbent = &voices[1 - i];
+            if (c->note < 165.0f && incumbent->held && c->note < incumbent->note)
+                initial_hz = c->note;
+#endif
+            v->target = v->frequency = initial_hz;
             v->power = c->power;
             v->sustain = pxp_sustain(c->power);
             v->note = c->note;

@@ -16,6 +16,26 @@ Some stages end with an owner listening gate. Work after a gate waits for the ve
 Host work that has independent inputs, such as capturing the original HQ comparison
 renders and measuring isolated octave voices, can run alongside the tracker work.
 
+## Tracking architecture decision
+
+The owner wants the polyphonic octave and octave fuzz, pure synth voices
+that stay on one intended note when another note or overtone is present,
+and ensembles that can genuinely play more than one independent note.
+These need one waveform octave processor and two note-tracking roles.
+Keep the waveform processor for the octave, fuzz, and waveform-based
+organ, strings, and choir sounds. Use the existing lead-note layer for
+pure synths and single acoustic instruments. Use one bounded note allocator
+for instruments that actually render independent voices. The existing Poly
+synth variants use that same allocator as STRING DUO.
+
+STRING ENSEMBLE and BRASS ENSEMBLE currently layer two timbres around one
+tracked lead pitch. Stage 5 now addresses independent notes in ensembles
+and stability in the mono synths. It supersedes the plan to make SQUARE,
+PWM and BASS HQ dual-tracked. The v67 build is an A/B for the existing
+experiment. Promotion requires evidence on the intended instrument role
+and the smallest set of rules that provides that behaviour.
+[Tracking architecture review](TRACKING-ARCHITECTURE-REVIEW.md)
+
 ## Required owner recordings
 
 Use both original DI takes as named inputs in every tracker baseline and candidate
@@ -54,8 +74,9 @@ pedal output latency, capture DI and wet together in one stereo take.
 ### Owner's rule for the HQ types
 
 Each HQ type (ORGAN, CHURCH ORGAN, STRINGS, CHOIR, SQUARE, PWM, BASS, POLY OCTAVE)
-must **sound the same as its original** and track one or more notes faster and more
-accurately, at a higher DSP cost.
+must **sound the same as its original** and improve the response for its intended
+role. The octave bank must handle chords. The pure synths must stay on one intended
+note with clean transitions even when the input includes another note or overtone.
 
 v63/v64 treated each pair as rivals and kept the one that measured better. That is
 the wrong test. It retired PWM SYNTH HQ to the original, which is backwards under
@@ -120,8 +141,8 @@ records that the browser page tests were skipped because Playwright was unavaila
 Poly synths, STRING DUO, MONO SYNTH, TRUMPET, the ensembles, and the HQ mono synths.
 
 **Reason this comes first:** everything later depends on a clean tracker.
-- Dual tracking for the HQ synths (stage 5) inherits these ghosts.
-- So does the STRING DUO redesign (stage 2).
+- The independently voiced ensembles in stage 5 and the STRING DUO redesign in
+  stage 2 inherit the same allocator's ghosts.
 - Retiring originals to HQ (stage 7) would lock them in.
 
 Prototype within the current memory budget and record the target map deltas.
@@ -227,20 +248,18 @@ second note becomes a second instrument playing.
 - **Reason.** "Single" prevents an extra instrument from sounding during solo
   playing. It still depends on the tracker for the primary note's pitch.
 
-### 2b. Lead plus second (redesign, after stage 3 or the memory decision)
-- The lead note comes from the single-note tracker, which the recordings show tracks
-  best (TRUMPET).
-- The poly tracker only adds a second note when it:
-  - is not an overtone of the lead,
-  - has its own pick or a level a single string's overtone would not reach,
-  - and holds for longer.
-- **Alternative:** cello from the lowest note, violin from the highest note that is
-  not an overtone. This needs a working lowest-note tracker, which is parked.
-- **Cost.** Two trackers running at once: more CPU, plus the single-note tracker's
-  low-RAM state alongside the poly bank. Measure on the pedal. If RAM doesn't fit,
-  this waits for section 9.
-- **Reason it waits.** Stage 1 may make the current design good enough. Redesign
-  only if the owner still hears wrong second notes in "auto".
+### 2b. Lead plus second (redesign if the listening gate calls for it)
+
+- Give one allocator both voice slots. Keep the established played pitch
+  while it remains credible. Admit the second only when there is evidence
+  for an independent note.
+- A separate mono policy running beside the allocator would duplicate
+  listening, could disagree about the lead, and adds state and compute.
+  Use the good single-note behaviour of TRUMPET as the comparison for Duo
+  playing one note.
+- Evaluate routing the two confirmed pitches by register when it improves
+  the voicing. The parked lowest-of-chord effect serves a different job.
+- Redesign only if the owner still hears wrong second notes in "auto".
 
 ---
 
@@ -319,36 +338,27 @@ indistinguishable on single notes.
 
 ---
 
-## Stage 5: dual tracking for SQUARE, PWM and BASS HQ
+## Stage 5: stable mono synths and independently voiced ensembles
 
-**Need:** these HQ types follow one note (the single-note tracker). They cannot do
-the "one or more notes" the owner expects, and lose to their originals on chords:
-- PWM HQ: 34.1% on pitch on chords, against 43.6% for the original.
-- SQUARE HQ: 40.2%, against 49.5% for the original.
-
-**What to do:**
-- Drive them from the two-voice poly tracker, `px_poly_track.h` after stage 1,
-  through the stage 4 renderers. The Poly synths already render two notes through
-  one ladder (`pulse_poly_block`). The HQ synths need two copies of their own
-  oscillator state.
-- BASS HQ: decide whether its sub-octaves should follow both notes or only the
-  lower. For a bass voice the lower note is probably right. That is the
-  lowest-note idea, but taken from the poly tracker's two voices, not the parked
-  tracker.
-
-**Cost:**
-- Two oscillators instead of one, with state of a few dozen bytes per voice.
-- The poly tracker's bank is shared with the Poly synths, and only one SYN type
-  runs at a time.
-- Expect about the Poly synths' CPU, 16–17% of a block.
-
-**Acceptance:** for each type, show a measurable tracking improvement over its
-original at matched settings, with solo and chord pitch, wobble and note-arrival
-time reported separately. Measure wet-output onset and pedal load with Smart Gate
-and representative chains before promoting a replacement.
-
-**Reason it follows stage 1:** a dual-tracked HQ synth built on v66's tracker would
-play the overtone ghosts the owner already dislikes.
+- **Pure synths.** Run MONO and the tracked SQUARE, PWM and BASS variants on
+  the existing lead-note policy. While the current note has credible
+  support, keep following it through a second string or an overtone. Let
+  a credible new pick or a persistent legato interval take over. Use the
+  originals as sound references, including the comparator and divider
+  voicing where it matters. Score intended-note retention, unwanted pitch
+  jumps, recovery after a mute, and attack on solos, bends, legato and
+  passages with a second note. BASS's sub-octaves derive from one lead.
+- **Independently voiced ensembles.** Use the existing two-note allocator
+  for STRING DUO and prototype independently played pitches for STRING
+  ENSEMBLE and BRASS ENSEMBLE with the same allocator. Share the renderer
+  where practical and keep each played note's onset, pitch, and release
+  independent. Preserve the current layered mono sound as the A/B
+  reference. Measure both notes and individual mutes on real dyads. The
+  organ, strings, and choir waveform effects already handle chord input.
+- **Acceptance.** Check matched wet output, audible arrival and peak block
+  load on the pedal with Smart Gate and a representative chain. Verify
+  per-voice memory for the acoustic ensembles before proposing additional
+  voices. Use the v67 A/B to determine which tracker rules are worth carrying.
 
 ---
 
@@ -553,7 +563,7 @@ each target memory section before estimating the benefit of a split.
   - the harmonic-fit second opinion (about 2.5 KB)
   - candidates below 60 Hz
 
-  If the stage 5 BASS HQ "lower of two notes" works, it may cover the same musical need.
+  Revisit the lowest-of-chord feature only if a distinct musical need remains.
 - **HQ octave phase coherence and transient handling** (Phase 2 stage 6): tested on
   the host in v64, neither a clear win. Closed unless the owner hears warble or
   clicks on POLY OCTAVE HQ.
@@ -581,7 +591,7 @@ each target memory section before estimating the benefit of a split.
 | 3 | Recover missed notes and low roots with a waveform check | next prototype | existing history first | Listen for low notes, chords and attacks |
 | 2 | Reassess Duo after v67. Add SPLIT if useful, or try lead plus second if still needed after the root work | as needed | measure tracker state | Listen on solos and genuine dyads |
 | 4, 6 | Capture original HQ references and isolated octave-voice scores alongside v67. Match HQ voicings | host and test build | measure per pair | Level-matched A/B |
-| 5, 7 | Dual tracking for SQUARE / PWM / BASS HQ, then qualify and migrate each pair | after tracker gate | measure per pair | Listen on solos and chords |
+| 5, 7 | Stable mono synths and independently voiced ensembles, then qualify each pair | after tracker gate | measure per pair | Listen on solos, interference and dyads |
 | 8 | Promote the accepted octave and tracked changes in batches, then delete superseded code | release | update section budgets | Presets, audio and pedal checks |
 | 9a | Group pedal/editor menus, with a separate decision on any cross-block move | after catalogue decisions | — | Preset and chain-order checks |
 | 9b, 9c | Refresh the space-saver spec now. Decide on a profile split after measuring a proven candidate | spec in parallel, split conditional | region-specific budget | Decide from pedal evidence |
@@ -799,6 +809,42 @@ cc -O2 -Iengine -Ifirmware \
 PXP_SET='ACQB=0.06 SECOND=0.58' python3 tools/sim/poly_diag.py \
   build/phase2b/poly-nominal-low --owner-di 'My Audio'
 ```
+
+### v67 test image
+
+Build `OP_CHANNEL=poly-test OP_TEST_VERSION=67 sh firmware/build.sh` in
+the Linux JieLi toolchain container. The recipe enables the Stage 1 tracker
+and brass experiments for this test version. It adds the confirmed-bin
+start for a low second voice below an existing held note. The original
+holdout still reached 2,669 solos and 129 second-note entries, with 28.8%
+extra comping voices. On takes 72–95 the latter change restored one entry,
+for 105/327 against v66's 106. Across the three slices (24, 72 and 144),
+the counts for five consecutive correct reports were 102/270, 81/327 and
+76/322 for v67 against 101/270, 80/327 and 77/322 for v66. Report that
+measure alongside the first-hit counts. One nominal-guard miss on the
+fresh slice was scored as a v66 first hit from a voice already fading before
+the annotated attack. Another involved pitch settling just over the 100 ms
+limit. A third lost the held low note while its partner entered.
+
+The channel-equivalent mono retest did not reproduce the earlier
+stricter-period trial. With the actual v67 flags and 6,187 held-out notes,
+v66 and v67 both scored 91.5%. Octave errors went from 120 to 121, so v67
+misses the mono acceptance gate. On the owner scale, correct frames rose
+from 86.41% to 87.06% and upper harmonics fell from 2.02% to 1.65%.
+The mono low-E results matched v66. Use the v66 mono layer as the baseline
+for the simpler continuity design.
+
+The isolated target build wrote BlackBox_967 and PocketX_967, with both
+package hashes verified against the manifest. Relative to v66, the app grew
+1,484 bytes, RAM use grew 16 bytes, and the RAM code window grew 28 bytes
+with 280 bytes free. The RAM/flash call check passed and standard DSP
+matched HEAD in 1,022 equivalence runs. The test image is a listening
+reference. The pedal's real-time load, audible latency and owner verdict
+are pending. Channel-equivalent host checks across both owner DIs and two
+bundled loops gave bit-identical v66/v67 output for POLY OCTAVE HQ,
+POLY OCT FUZZ and CHURCH ORGAN HQ. The general sweep's existing
+minimum-level octave-fuzz flag also reproduced on v66.
+[Architecture review and feature removals](TRACKING-ARCHITECTURE-REVIEW.md)
 
 ## Parallel HQ and space-saver work
 

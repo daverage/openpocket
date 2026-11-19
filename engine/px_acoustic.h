@@ -355,6 +355,21 @@ static inline float pxa_support(px_acoustic *s, float f)
     s->ens_lp[0] += k * (y - s->ens_lp[0]);
     s->ens_lp[1] += k * (s->ens_lp[0] - s->ens_lp[1]);
     s->ens_amp += ((s->gate ? s->lvl_t : 0.0f) - s->ens_amp) * (s->gate ? s->ens_k_att : s->rel_k);
+#ifdef PX_BRASS_BALANCE_TEST
+    if (s->ens_rel == 0.5f) {
+        /* The trumpet bank is louder relative to the horn around C5.
+         * Ease the extra horn gain in and out across that register. */
+        float boost = f < 520.0f ? (f - 170.0f) * (0.43f / 350.0f)
+                                 : (1050.0f - f) * (0.43f / 530.0f);
+        if (boost < 0.0f) boost = 0.0f;
+        /* The dark lead setting loses more level at the bottom of the range. */
+        if (s->tone < 15.0f && f < 390.0f) {
+            const float low = f < 165.0f ? 1.0f : (390.0f - f) * (1.0f / 225.0f);
+            boost -= 0.40f * low * (15.0f - s->tone) * (1.0f / 12.0f);
+        }
+        return s->ens_lp[1] * s->ens_amp * s->ens_level * (1.0f + boost);
+    }
+#endif
     return s->ens_lp[1] * s->ens_amp * s->ens_level;
 }
 #endif

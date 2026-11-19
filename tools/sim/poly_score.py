@@ -11,6 +11,7 @@ A voice counts as sounding when its gain is above 0.065 (docs/POLY-SYNTH-DESIGN.
 import argparse
 import csv
 from pathlib import Path
+from statistics import median
 import subprocess
 import tempfile
 import glob
@@ -53,7 +54,7 @@ if args.guitar:
     files=sorted((di/'mono').glob("*_comp_mix.wav"))[args.offset:args.offset + args.takes]
     if not files:
         parser.error('no GuitarSet comping takes at the requested offset')
-    raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]
+    raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]; sustained_entries=[]
     for path in files:
         x=read_di(path)
         notes=jams_notes(di/'annotation'/(path.stem.removesuffix('_mix')+'.jams'))
@@ -66,8 +67,16 @@ if args.guitar:
         raw.append(dyad_score(rows,notes)); voices.append(dyad_score(active,notes))
         raw_p.append(poly_score(rows,notes)); voice_p.append(poly_score(active,notes))
         entries_raw+=dyad_entry_delays(rows,notes); entries_voice+=dyad_entry_delays(active,notes)
+        sustained_entries += dyad_entry_delays(active, notes, reports=5)
     report_detector(f'Raw resonator, guitar {args.transpose:+d} semitones',raw,raw_p,entries_raw)
     report_detector(f'Pulse voices, guitar {args.transpose:+d} semitones',voices,voice_p,entries_voice)
+    sustained_hits = sorted(delay for delay in sustained_entries if delay is not None)
+    timing = ''
+    if sustained_hits:
+        p90 = sustained_hits[int(.9 * len(sustained_hits))]
+        timing = f', median {median(sustained_hits):.1f} ms, p90 {p90:.1f} ms'
+    print(f'second-note entries sustained for five reports: '
+          f'{len(sustained_hits)}/{len(sustained_entries)} within 100 ms{timing}')
 else:
     t=np.arange(int(1.8*RATE))/RATE
     def pluck(f, start, stop, level, shape=(1,.27,.16)):

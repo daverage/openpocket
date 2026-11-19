@@ -121,11 +121,13 @@ def dyad_score(rows, notes, intervals=None):
     return dyads, both, lowest, singles, extra
 
 
-def dyad_entry_delays(rows, notes):
+def dyad_entry_delays(rows, notes, *, reports=1):
     """First simultaneous hit after a second pitch enters a held note.
 
     Require a held note already sounding for 30 ms and both notes to last at
-    least 100 ms after entry. Return None for misses inside that window.
+    least 100 ms after entry. With reports > 1, time the first run of that
+    many consecutive paired reports completed inside the window. Return None
+    if no run qualifies.
     """
     from bisect import bisect_left
 
@@ -140,11 +142,17 @@ def dyad_entry_delays(rows, notes):
             continue
         expected = [440 * 2 ** ((m - 69) / 12) for m in (midi, next(iter(held)))]
         delay = None
-        for row in rows[bisect_left(times, start):bisect_left(times, start + 0.1)]:
+        consecutive = 0
+        for i in range(bisect_left(times, start), bisect_left(times, start + 0.1)):
+            row = rows[i]
             found = [row[f"n{i}"] for i in range(1, int(row["nn"]) + 1)]
             if all(any(abs(cents(f, wanted)) < 50 for f in found) for wanted in expected):
-                delay = 1000 * (row["t"] - start)
-                break
+                consecutive += 1
+                if consecutive == reports:
+                    delay = 1000 * (times[i - reports + 1] - start)
+                    break
+            else:
+                consecutive = 0
         delays.append(delay)
     return delays
 

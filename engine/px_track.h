@@ -83,6 +83,9 @@
 #define PXT_PD2     0.25f              /* .. and a multiple this good, */
 #define PXT_PDR     0.6f               /* .. and this much better: the note is the lower one */
 #endif
+#ifndef PXT_OCT_CHECK_MAX
+#define PXT_OCT_CHECK_MAX 700.0f
+#endif
 typedef struct { float f, a; } pxt_partial;
 typedef struct {
     /* the filter bank (coefficients: erb_band, made by erb_prepare: POLY OCTAVE HQ's bank, at 11.025 kHz) */
@@ -264,7 +267,7 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
         /* low notes: the waveform decides between the note and its octave or twelfth below (a guitar pickup's weak
          * fundamental makes the 2nd or 3rd harmonic the strongest partial) */
         float mono_f = 0.0f;                                   /* (the one-note pitch: the chord list keeps bf) */
-        if (k == 0 && bf < 700.0f) {
+        if (k == 0 && bf < PXT_OCT_CHECK_MAX) {
             const float P = pxt_rate / 4.0f / bf;              /* (the history: every 4th quarter-rate sample) */
             int w = (int)(2.0f * P); if (w < 24) w = 24; if (w > 120) w = 120;
             const float d1 = pxt_period(t, P, w);

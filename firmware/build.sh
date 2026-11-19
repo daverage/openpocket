@@ -61,6 +61,14 @@ if [ "$CHAN" = lowest-test ] || [ "$CHAN" = pulse-test ] || [ "$CHAN" = poly-tes
 fi
 [ "$CHAN" = pulse-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1"
 [ "$CHAN" = poly-test ] && DSPDEF="$DSPDEF -DPX_PULSE_TEST=1 -DPX_POLY_TEST=1 -DPX_MONO_LAYER=1 -DPX_ENSEMBLE_TEST=1 -DPX_ERB_LAYOUT2=1 -DPX_CONSOLIDATE_TEST=1 -DPX_SUB2_TEST=1"   # v60 MONO layer; v61 ensembles; v62 octave bank; v63/64 retired types; v64 OCT -2
+if [ "$CHAN" = poly-test ] && [ "$TESTVER" = 67 ]; then
+  DSPDEF="$DSPDEF -DPX_POLY_EVICT_TEST=1 -DPXP_EXTEND_GUARD=1 -DPXP_EVICT_RATIO=6
+    -DPX_POLY_OCTAVE_EVIDENCE_TEST=1 -DPXP_EVICT_FAST_RELEASE=1
+    -DPXP_OCT_ODD_LIMIT=0.10f -DPXP_OCT_SIXTH_FLOOR=0.025f
+    -DPX_POLY_FADE_TEST=1 -DPXP_FADE_SETTLE=16 -DPXP_LATE_ROOT_TEST=9
+    -DPXP_NOMINAL_OCTAVE_TEST=1 -DPXP_LOW_ENTRY_CENTER=1 -DPXP_ACQ2=0.06f -DPXP_SECOND=0.58f
+    -DPXT_OCT_CHECK_MAX=900.0f -DPX_BRASS_BALANCE_TEST=1"
+fi
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
@@ -68,6 +76,7 @@ $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF 
 $CC $FP -O2 -ffunction-sections -fno-builtin $DSPDEF $INC -c "$HERE/../engine/px_dsp.c" -o "$O/px_dsp.o"
 $CC $FP -O2 -fno-builtin -c "$HERE/px_math.c" -o "$O/px_math.o"
 BLEOBJ=""; MAPOPT=""
+[ "$CHAN" = poly-test ] && [ "$TESTVER" = 67 ] && MAPOPT="-Map $O/openpocket.map"
 if [ -n "$OP_BLE" ]; then
   MAPOPT="-Map $O/openpocket.map"
   # JieLi's LE controller (LLVM bitcode, Apache-2.0, third_party/jieli-ble) -> pi32v2 objects, and our context switch
