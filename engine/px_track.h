@@ -271,7 +271,13 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
             const float P = pxt_rate / 4.0f / bf;              /* (the history: every 4th quarter-rate sample) */
             int w = (int)(2.0f * P); if (w < 24) w = 24; if (w > 120) w = 120;
             const float d1 = pxt_period(t, P, w);
-            if (d1 > PXT_PD1) {
+#ifdef PXT_LOCAL_PERIOD_FIRST
+            /* The spectral estimate may be off enough to miss a nearby
+             * period minimum. Compare that before accepting a longer lag. */
+            if (d1 > PXT_PD1 && bf < PXT_REFINE_F)
+                mono_f = pxt_refine(t, bf);
+#endif
+            if (d1 > PXT_PD1 && mono_f <= 0.0f) {
                 int kb = 0; float db = 1.0f;
                 for (int q = 2; q <= 4; q++) {
                     if ((float)q * P + (float)w > (float)(PXT_DEC - 4) || bf / (float)q < PXT_FMIN) break;

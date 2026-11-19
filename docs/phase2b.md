@@ -423,6 +423,37 @@ cases also remained weak. Keep this host-only. The evidence justifies
 testing the held pitch before ranking, with a separate check that the
 pitch was correctly acquired and should survive a legato transition.
 
+### Short-period check before choosing an octave below
+
+Per-note comparison of the raw-band hold found five correct solo notes
+that became octave-down errors, two octave-up errors that became correct,
+and one octave error that moved to a different wrong pitch. In the new
+octave-down cases, the held low pitch persisted after the main estimator
+returned to the correct note. Requiring the held pitch to appear in the
+spectral shortlist before learning its reference level left the same
+122 octave errors. Requiring distinct spectral partials before accepting
+a longer period also finished at 122, reduced mean lead retention to
+39.3%, and reduced accuracy on the longer `mvave` DI.
+
+The simpler trial, `PXT_LOCAL_PERIOD_FIRST`, runs the existing local
+period refinement when the exact spectral lag gives a poor match, before
+the existing check of longer lags. With the hold rule absent, it reached
+5,664/6,187 correct and 119 octave errors versus v66's 5,660 and 120, at
+the same 6.3/40.0 ms median/p90. On solo takes 144–167 it matched v66 at
+1,658/1,720 correct and 26 octave errors. The scale DI, both low-E sustains
+and the synthetic minor-third and octave legato checks matched v66.
+Average interference retention was 45.5% versus v66's 45.1%. Combining
+the period check with the band hold again stopped both synthetic overtone
+jumps, but reached 121 octave errors. The period experiment is available
+for host comparison. Meaningful retention through a second string and
+stronger natural overtones remains unproven.
+
+To reproduce the local-period comparison on the poly-test mono path,
+build `tools/sim/mono_bench.c` with `-DPX_MONO_LAYER=1 -DPX_ERB_LAYOUT2=1`
+and `-DPXT_LOCAL_PERIOD_FIRST=1`. Run `mono_eval.py --offset 30 --solo 60`
+with the v66 and candidate benches, `mono_interference.py`, and
+`poly_diag.py --mono --owner-di 'My Audio'`.
+
 ---
 
 ## Stage 6: show where the band-bank HQ types actually win
