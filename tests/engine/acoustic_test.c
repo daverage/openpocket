@@ -15,8 +15,9 @@
 
 #define SR 44100.0f
 static px_engine E;
-static const int TYPES[4] = {PX_SYN_TRUMPET, PX_SYN_TRUMPET_MODEL, PX_SYN_CELLO, PX_SYN_CELLO_SECTION};
-static const char *TN[4] = {"TRUMPET", "TRUMPET MODEL", "CELLO", "CELLO SECTION"};
+#define NTYPES 3                              /* (v70: TRUMPET MODEL removed; a PX_LEAN build's TRUMPET is the model) */
+static const int TYPES[NTYPES] = {PX_SYN_TRUMPET, PX_SYN_CELLO, PX_SYN_CELLO_SECTION};
+static const char *TN[NTYPES] = {"TRUMPET", "CELLO", "CELLO SECTION"};
 
 static void set_type(int t)
 {
@@ -47,7 +48,7 @@ static float pitch_of(const float *y, int len, float lo, float hi)
 static void steady(int t, float fg, float ex, float *y, int n)
 {
     set_type(t);
-    if (t == PX_SYN_TRUMPET_MODEL) pxa_setup(&E, t, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f);
+    if (t == PX_SYN_TRUMPET && !pxa_sampled(t)) pxa_setup(&E, t, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f);   /* (the model) */
     px_acoustic *s = &E.syn_ac; pxa_rate_consts(s);
     for (int i = 0; i < n; i++) { s->gate = 1; s->onset = i == 0; s->vel = ex; s->expr = ex; s->f0s = fg; y[i] = pxa_voice(&E, s, t); }
 }
@@ -89,7 +90,7 @@ static void calibrate(void)
         float r = 1.0f;
         for (int it = 0; it < 6; it++) {
             pxa_bcal_tab[k] = r;
-            steady(PX_SYN_TRUMPET_MODEL, target / 2.0f, 0.7f, y, n);
+            steady(PX_SYN_TRUMPET, target / 2.0f, 0.7f, y, n);   /* (build with -DPX_LEAN=1: the model) */
             float m = pitch_of(y + (int)(0.5f * SR), (int)(0.3f * SR), target * 0.6f, target * 1.6f);
             r *= target / m;
         }
@@ -140,7 +141,7 @@ int main(int argc, char **argv)
     if (!levels) {
         /* 1. steady notes, the voice alone: within 10 cents */
         const float gm[3] = {40, 52, 64};                     /* guitar E2, E3, E4 */
-        for (int v = 0; v < 4; v++) for (int q = 0; q < 3; q++) {
+        for (int v = 0; v < NTYPES; v++) for (int q = 0; q < 3; q++) {
             const float fg = midi_hz(gm[q]);
             steady(TYPES[v], fg, 0.7f, y, n);
             const float want = fg * E.syn_ac.oct_mul, got = pitch_of(y + (int)(0.6f * SR), (int)(0.3f * SR), want * 0.7f, want * 1.4f);
@@ -148,20 +149,9 @@ int main(int argc, char **argv)
             const float c = cents(got, want);
             if (fabsf(c) > 10.0f || pk < 1e-3f) { bad++; printf("PROBLEM %s steady %.1f Hz: %.1f Hz (%+.0f cents, peak %.4f)\n", TN[v], want, got, c, pk); }
         }
-        /* Presets using the retired slot must render the same sampled voice as TRUMPET. */
-        pluck(55, 0.8f, 0.8f, x, n);
-        set_type(PX_SYN_TRUMPET);
-        engine_run(x, y, n);
-        set_type(PX_SYN_TRUMPET_MODEL);
-        engine_run(x, y + n, n);
-        if (memcmp(y, y + n, (size_t)n * sizeof *y)) {
-            bad++;
-            puts("PROBLEM retired trumpet slot differs from TRUMPET");
-        }
-
         /* 2. a plucked note through the whole engine (note layer + tracker): the instrument's pitch */
         const float pm[6] = {40, 45, 50, 55, 59, 64};
-        for (int v = 0; v < 4; v++) for (int q = 0; q < 6; q++) {
+        for (int v = 0; v < NTYPES; v++) for (int q = 0; q < 6; q++) {
             set_type(TYPES[v]);
             const int m = (int)(2.0f * SR);
             pluck(pm[q], 0.8f, 1.0f, x, m); engine_run(x, y, m);
@@ -183,7 +173,7 @@ int main(int argc, char **argv)
     if (!lx) { printf("PROBLEM no %s\n", loop); return 1; }
     float *ly = malloc(sizeof(float) * ln);
     set_type(PX_SYN_BRASS); engine_run(lx, ly, ln); const double ref = rms_db(ly, ln);
-    for (int v = 0; v < 4; v++) {
+    for (int v = 0; v < NTYPES; v++) {
         set_type(TYPES[v]); engine_run(lx, ly, ln); const double r = rms_db(ly, ln);
         if (levels) printf("%-14s %6.1f dB, BRASS %6.1f dB: gain x %.3f\n", TN[v], r, ref, pow(10, (ref - r) / 20));
         else if (fabs(r - ref) > 4.0) { bad++; printf("PROBLEM %s on %s: %.1f dB, BRASS %.1f dB\n", TN[v], loop, r, ref); }

@@ -89,6 +89,7 @@ const tests = {
     assert.equal(lit.rev, "focus"); assert.equal(lit.home, "on");
     assert.equal(backlights(state({ mode: "edit", block: FX_BLOCKS[0] })).fx, "focus");
     assert.equal(backlights(state({ mode: "tuner", block: BLOCK.rev })).rev, "off");
+    assert.ok(Object.values(backlights(state({ bypass: 1, preset: { on: some } }))).every((v) => v === "off"), "BYPASS: every light off");
   },
 };
 

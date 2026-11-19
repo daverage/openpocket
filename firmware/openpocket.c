@@ -753,7 +753,7 @@ static void app_main(void)
 #if !AUDIO_PROBE
         px_usb_service(now);             /* web installer: handshake, update, UBOOT soft key */
         px_midi_service();               /* USB-MIDI: Program / Control Change in, the pedal's own changes out */
-        lights_update(&PRESET, ui_mode == M_TUNER, now);   /* the button lights follow the blocks */
+        lights_update(&PRESET, ui_mode == M_TUNER, ui_byp, now);   /* the button lights follow the blocks */
         if (ui_mode != M_TUNER) {        /* DSP load in the status corner: "DSP 42%", "PEAK 150%" (bypassed), "SAFE 42%" */
             static uint32_t t_cpu;
             static uint8_t ld_shown;

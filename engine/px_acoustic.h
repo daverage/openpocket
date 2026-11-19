@@ -62,7 +62,7 @@ static inline int pxa_is(int t)
     if (t == PX_SYN_STRING_ENS || t == PX_SYN_BRASS_ENS) return 1;
     return t >= PX_SYN_TRUMPET && t <= PX_SYN_CELLO_SECTION;
 }
-static inline int pxa_instr(int t) { t = pxa_lead(t); return t == PX_SYN_TRUMPET || t == PX_SYN_TRUMPET_MODEL ? 0 : 1; }   /* 0 trumpet, 1 cello */
+static inline int pxa_instr(int t) { t = pxa_lead(t); return t == PX_SYN_TRUMPET ? 0 : 1; }   /* 0 trumpet, 1 cello */
 static inline int pxa_sampled(int t) { t = pxa_lead(t); return PXA_SAMPLES && (t == PX_SYN_TRUMPET || t == PX_SYN_CELLO_SECTION); }
 /* within c cents: the ratio a / b in [lo, hi] (no logarithm per sample) */
 static inline int pxa_near(float a, float b, float lo, float hi) { if (b <= 0.0f) return 0; float r = a / b; return r > lo && r < hi; }
@@ -126,9 +126,6 @@ static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, f
         s->bow = 0.15f + 0.6f * b;                             /* BOW (b): pressure */
         s->vib = 0.007f * c;                                   /* VIBRATO (c): up to 0.7 % (12 cents) */
         s->dyn_db = 18.0f;
-    } else if (t == PX_SYN_TRUMPET_MODEL) {
-        s->bright = b;                                         /* BRIGHT (b) */
-        s->dyn_db = 6.0f + 30.0f * c;                          /* DYNAMICS (c): 6 .. 36 dB */
     } else {
         /* TONE (b): the low-pass at full expression, 3 .. 43 harmonics; v49: wide open from the middle up (100 harmonics:
          * the recording as it is), so the brass keeps its bright upper partials */
@@ -151,7 +148,7 @@ static void pxa_setup(px_engine *e, int t, float a, float b, float c, float d, f
     }
     /* output: the level each voice gives at full expression, brought to the engine's other SYN voices (calibrated on
      * assets/loops/lead.wav against BRASS, tests/engine/acoustic_test.c) */
-    s->gain = t == PX_SYN_CELLO ? 0.25f * PXA_G_CELLO : t == PX_SYN_TRUMPET_MODEL ? 7.0f * PXA_G_TMODEL
+    s->gain = t == PX_SYN_CELLO ? 0.25f * PXA_G_CELLO
             : pxa_sampled(t) ? 1.4f * PXA_G_SAMPLE * (t == PX_SYN_TRUMPET ? PXA_G_TRUMPET : 1.0f) : 1.0f;
     if (!pxa_sampled(t) && t == PX_SYN_TRUMPET) s->gain = 7.0f * PXA_G_TMODEL;     /* (no bank: the model) */
     if (!pxa_sampled(t) && t == PX_SYN_CELLO_SECTION) s->gain = 0.25f * PXA_G_CELLO;

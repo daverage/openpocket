@@ -4,7 +4,8 @@
  *   FX                          lit while any block of the FX button's group is on (UI_FXB: gate, comp, SFX, EQ)
  *   AMP, CAB                    v70: lit while SYNTH (AMP) or OCTAVE (CAB) is on
  *   MOD, DLY, REV               lit while their block is on
- *   HOME                        blinks (2 Hz) while the tuner is open, dark otherwise
+ *   HOME                        lit while the pedal plays, blinks (2 Hz) while the tuner is open (v70)
+ *   (all)                       dark while BYPASS is engaged, except the tuner's blink (v70)
  * The bits are the LED map's, read on a BlackBox (2026-11-06): 0 HOME, 1 FX, 2 AMP, 3 MOD, 4 DLY, 5 REV, 6 CAB,
  * 7 none: the panel's order (a Pocket X may differ: not checked there yet). On the wire a 0 lights, so the byte
  * goes out inverted (as the stock firmware sends it), and only when it changes. Confirmed on a BlackBox: each
@@ -18,9 +19,14 @@
 enum { LT_HOME, LT_FX, LT_AMP, LT_MOD, LT_DLY, LT_REV, LT_CAB };      /* the light on each bit */
 #define LT_BLINK_MS 250u                                             /* the tuner's HOME blink: half a period */
 
-static uint8_t lights_of(const px_preset_t *p, int tuner, uint32_t now)   /* the lit lights, 1 = lit */
+/* the lit lights, 1 = lit. v70: HOME is lit while the pedal plays (not bypassed) and blinks in the tuner; with BYPASS
+ * engaged every light is off (the tuner's blink still shows) */
+static uint8_t lights_of(const px_preset_t *p, int tuner, int bypass, uint32_t now)
 {
     uint8_t v = 0;
+    const uint8_t home = tuner ? !((now / LT_BLINK_MS) & 1u) : !bypass;
+    if (home) v |= 1u << LT_HOME;
+    if (bypass) return v;
     for (int i = 0; i < UI_NFX; i++)
         if (p->on[UI_FXB[i]]) v |= 1u << LT_FX;
     if (p->on[PX_B_SYN]) v |= 1u << LT_AMP;           /* v70: the AMP button is SYNTH, CAB is OCTAVE */
@@ -28,7 +34,6 @@ static uint8_t lights_of(const px_preset_t *p, int tuner, uint32_t now)   /* the
     if (p->on[PX_B_DELAY]) v |= 1u << LT_DLY;
     if (p->on[PX_B_REVERB]) v |= 1u << LT_REV;
     if (p->on[PX_B_PITCH]) v |= 1u << LT_CAB;
-    if (tuner && !((now / LT_BLINK_MS) & 1u)) v |= 1u << LT_HOME;
     return v;
 }
 static void lights_show(uint8_t lit)                                 /* written only when the byte changes */
@@ -36,5 +41,5 @@ static void lights_show(uint8_t lit)                                 /* written 
     uint8_t wire = (uint8_t)~lit;
     if (wire != leds_byte) leds_write(wire);
 }
-static void lights_update(const px_preset_t *p, int tuner, uint32_t now) { lights_show(lights_of(p, tuner, now)); }
+static void lights_update(const px_preset_t *p, int tuner, int bypass, uint32_t now) { lights_show(lights_of(p, tuner, bypass, now)); }
 static void lights_off(void) { lights_show(0u); }

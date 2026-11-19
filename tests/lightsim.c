@@ -4,7 +4,7 @@
  *   cc -O1 -Wall -Iengine -Ifirmware -o build/lightsim tests/lightsim.c && build/lightsim
  * Checks: after leds_init the lights are enabled (PC7 low) with all of them dark; every one of the twelve blocks,
  * alone, lights exactly its button (the FX group's seven lights FX); all on lights the six effect buttons and not
- * HOME; HOME blinks at 2 Hz in the tuner and only there; bit 7 is never lit; the byte is written only when it
+ * HOME; HOME is lit while playing and blinks at 2 Hz in the tuner; BYPASS darkens all (v70); bit 7 is never lit; the byte is written only when it
  * changes; lights_off darkens all; only PC5, PC6, PC7 and PC8 are ever touched. */
 #include <stdint.h>
 #include <stdio.h>
@@ -75,40 +75,45 @@ int main(void)
     ok(enabled() && lit() == 0u, "after leds_init: the lights enabled, all dark");
 
     memset(&p, 0, sizeof p);
-    lights_update(&p, 0, 0);
-    ok(lit() == 0u && latches == 1u, "no block on: all dark, nothing written again");
+    lights_update(&p, 0, 0, 0);
+    ok(lit() == (1u << W_HOME) && latches == 2u, "no block on, playing: HOME lit, the rest dark");
+    lights_update(&p, 0, 1, 0);
+    ok(lit() == 0u, "BYPASS: every light dark");
     {
         int good = 1, every = 1;
         for (int b = 0; b < PX_NBLK; b++) {
             memset(&p, 0, sizeof p); p.on[b] = 1;
-            lights_update(&p, 0, 0);
-            if (lit() != want_of(b)) { printf("   block %d lit %02X, wanted %02X\n", b, lit(), want_of(b)); good = 0; }
+            lights_update(&p, 0, 0, 0);
+            if (lit() != (want_of(b) | 1u << W_HOME)) { printf("   block %d lit %02X, wanted %02X\n", b, lit(), want_of(b)); good = 0; }
             if (!want_of(b)) every = 0;
         }
         ok(good, "each block alone lights its own button");
-        ok(every, "every block has a light (the FX group's seven: FX)");
+        ok(every, "every block has a light (the FX group's four: FX)");
     }
     memset(&p, 0, sizeof p);
     for (int b = 0; b < PX_NBLK; b++) p.on[b] = 1;
-    lights_update(&p, 0, 0);
-    ok(lit() == 0x7Eu, "all on: FX AMP MOD DLY REV CAB lit, HOME dark");
+    lights_update(&p, 0, 0, 0);
+    ok(lit() == 0x7Fu, "all on, playing: HOME FX AMP MOD DLY REV CAB lit");
+    lights_update(&p, 0, 1, 0);
+    ok(lit() == 0u, "all on, BYPASS: every light dark");
+    lights_update(&p, 0, 0, 0);
     {
         unsigned long l0 = latches;
-        for (uint32_t t = 0; t < 2000u; t++) lights_update(&p, 0, t);
+        for (uint32_t t = 0; t < 2000u; t++) lights_update(&p, 0, 0, t);
         ok(latches == l0, "nothing changes: nothing written");
     }
     {
         int flips = 0, others = 1; uint8_t last = lit();
         for (uint32_t t = 0; t < 2000u; t++) {
-            lights_update(&p, 1, t);
+            lights_update(&p, 1, 0, t);
             if ((lit() ^ last) & (1u << W_HOME)) flips++;
             if ((lit() & 0x7Eu) != 0x7Eu) others = 0;
             last = lit();
         }
         ok(flips >= 7 && flips <= 9, "tuner: HOME blinks at 2 Hz");
         ok(others, "tuner: the effect lights stay as they are");
-        lights_update(&p, 0, 0);
-        ok(!(lit() & (1u << W_HOME)), "tuner closed: HOME dark");
+        lights_update(&p, 0, 0, 0);
+        ok(lit() & (1u << W_HOME), "tuner closed, playing: HOME lit again");
     }
     ok(!(lit() & 0x80u) && (q & 0x80u), "bit 7 never lit");
     lights_off();

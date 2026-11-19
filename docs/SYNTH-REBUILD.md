@@ -96,11 +96,11 @@ because Playwright is not installed here. They still describe the old layout.
 
 ## Next round (owner's requests)
 
-- Lights: HOME lit whenever the pedal is not bypassed (it keeps blinking in the tuner). While BYPASS is on, every
-  light is off. Firmware `firmware/px_lights.h`, the simulator's skin `tools/sim/pedal-input.js` `backlights()`,
-  and `tests/lightsim.c`.
-- Remove the three retired SYNTH slots that show no name (BASS SYNTH, PWM SYNTH HQ, TRUMPET MODEL: they play
-  their replacements).
+- Done: lights. HOME is lit while the pedal plays and blinks in the tuner. With BYPASS on, every light is off.
+- Done: the retired types are removed: BASS SYNTH, PWM SYNTH HQ and TRUMPET MODEL (SYNTH), and the delay-line
+  POLY OCTAVE (OCTAVE). SYNTH has 28 types now, OCTAVE 6. The 78 named types render bit-identically to before,
+  matched by name. The trumpet model stays for the Bluetooth test image, which has no sample bank. Type numbers
+  after the removed slots shifted, so a preset saved on an earlier v70 build plays a different type.
 - Watch Cello Ensemble, Trumpet and the ensembles in a full chain: one late block and 95-105 % peaks with no
   guitar playing (tools/synth_probe.mjs).
 - Install Playwright and update the browser page tests for the 9-block layout.

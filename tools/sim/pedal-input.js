@@ -81,5 +81,6 @@ export function backlights(state) {
   };
   const lit = { home: state.mode === "chain" ? "focus" : "on", fx: light(FX_BLOCKS) };
   for (const [name, block] of Object.entries(BLOCK)) lit[name] = light([block]);
+  if (state.bypass && state.mode !== "tuner") for (const k of Object.keys(lit)) lit[k] = "off";   // v70: BYPASS: all dark
   return lit;
 }
