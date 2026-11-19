@@ -332,3 +332,47 @@ and allocator constants in `tools/sim/pulse_poly_bench.c` for sweeps.
 BlackBox v59: peak 18–21%, or 23–24% with Smart Gate. There were no late
 blocks, no safety bypass and the second core stayed active. The saved
 presets kept their hash. The RAM code window has 392 bytes left.
+
+## v66 owner listening on v65, and the fixes
+
+The owner's verdicts on BlackBox v65: the Poly synths trigger randomly, and
+latency is high. Saw and Pulse track acceptably, except Pulse on low notes.
+FM is fun but tracks badly. STRING DUO's violin rarely sounds. STRING and
+BRASS ENSEMBLE track badly. CELLO ENSEMBLE's latency is good. STRING MACHINE
+and POLY OCT FUZZ are good. POLY OCTAVE HQ and OCT −2 are fine.
+
+`tools/sim/poly_latency.py` scores GuitarSet solos. On v65, 58% of voice
+starts were on pitches nobody played, 196 a minute on the dev takes. Most
+were a second voice starting while the first held a note: on that note's
+octave (517), within a semitone of it, as during a bend (350), or on
+whatever was still ringing. v66 changes the allocator in four ways:
+
+- A second note, started while the held note still carries half the
+  level, needs 6 reports instead of 3.
+- A voice never starts on a harmonic of the held note.
+- A voice never starts within 7.5% of the held note's pitch.
+- The quieter free voice takes a new note first, so it does not wait for
+  a releasing voice to dip.
+
+| Held-out GuitarSet | v65 | v66 |
+| --- | ---: | ---: |
+| Solo: false voice starts | 181/min (54%) | **118/min (45%)** |
+| Solo: latency to the right pitch, median / p90 | 12.5 / 44.6 ms | 11.8 / 45.2 ms |
+| Comping: extra voices on single notes | 36.0% | **28.9%** |
+| Comping: dyads, both pitches right | 45.7% | 40.9% |
+
+Shorter bank decays (10–18 ms instead of 22.7 ms) did not reduce latency
+and cost up to two-thirds of the dyads. The remaining latency is the
+three-report confirmation and the resonators' build-up. Synthetic fixtures
+show the cost: a held octave's upper note now enters after 142 ms, and
+fourths and fifths after 55–66 ms.
+
+STRING DUO's violin now plays the upper of two notes at its own pitch, and
+a single note from G3 up. The ensembles' support attack falls from 70 to
+20 ms (strings) and from 25 to 12 ms (brass). The support follows only
+pitch that has held for 8 ms. POLY OCT FUZZ LEVEL now reads 0–100, from
+silent through 0 dB at noon to +6 dB.
+
+BlackBox v66 passed the pedal check: 31 measurements, no late blocks.
+LOWEST OCTAVE HQ, the lowest-note mode from v54 that the `poly-test`
+channel keeps, measured 17% for the PITCH block.
