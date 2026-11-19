@@ -425,6 +425,7 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
            ap - am * c + tsa, 2 * (am - ap * c), ap - am * c - tsa);
 }
 #include "px_track.h"                                  /* v49: the note tracker (band bank, salience, note layer) */
+#include "px_mono.h"                                   /* Synth2: the one mono tracker's interface (pitch, onset, release) */
 #include "px_resonator_test.h"
 static float tan_pi(float fs, float f) { float w = PI_F * clampf_hz(fs, f) / fs; return sinf(w) / cosf(w); }
 static void bq_hp1(px_bq *b, float fs, float f)          /* first order (RC coupling, like the real circuits) */

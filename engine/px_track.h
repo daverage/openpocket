@@ -103,7 +103,12 @@ typedef struct {
     int frame, refractory;
     /* the waveform at 1/16 of the rate (2.76 kHz, 93 ms): the low notes' octave check (pxt_period) */
     px_bq d1, d2; float dec[PXT_DEC]; int dw, dn;
+    float fmin;                       /* Synth2: the lowest pitch it looks for; 0: PXT_FMIN (60 Hz). pxt_set_range sets it (a bass patch: 38 Hz) */
 } px_track;
+static inline float pxt_fmin(const px_track *t) { return t->fmin > 0.0f ? t->fmin : PXT_FMIN; }
+/* one tracker, two ranges: guitar (the default, 60 Hz, B1) or bass (38 Hz, E1 with room for a down-tuned bass). The 38 Hz range is worse for
+ * guitar on the pedal (v71: notes dropped an octave), so only a bass sound selects it. Takes effect on the next frame. */
+static inline void pxt_set_range(px_track *t, float fmin_hz) { t->fmin = fmin_hz; }
 
 /* band centre rotation e^{-i w_c} per half-rate sample, and centre frequency: computed once (shared by all trackers) */
 static px_erb_complex pxt_rot[PX_ERB_BANDS];
@@ -217,7 +222,7 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
         if (i > 0 && t->pow[i - 1] > p) continue;
         if (i + 1 < PX_ERB_BANDS && t->pow[i + 1] >= p) continue;
         const float f = t->freq[i];
-        if (f < PXT_FMIN * 0.97f) continue;
+        if (f < pxt_fmin(t) * 0.97f) continue;
         pxt_partial q = {f, sqrtf(p * pxt_wn[i])};     /* (power per Hz: wider bands do not make louder partials) */
         if (t->npart < PXT_PART) t->part[t->npart++] = q;
         else {                                            /* keep the strongest */
@@ -235,7 +240,7 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
         float best = 0.0f, bf = 0.0f; uint32_t bm = 0;
         for (int j = 0; j < n; j++) for (int h = 1; h <= 5; h++) {
             const float f0 = p[j].f / (float)h;
-            if (f0 < PXT_FMIN || f0 > PXT_FMAX) continue;
+            if (f0 < pxt_fmin(t) || f0 > PXT_FMAX) continue;
 #if PXT_SHARED_RESIDUAL
             int duplicate = 0;
             for (int j = 0; j < t->nnotes; ++j)
@@ -252,7 +257,7 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
             float nb = best, nf = bf; uint32_t nm = bm;             /* the lowest that passes, of /2 .. /5 */
             for (int d = 2; d <= 5; d++) {
                 const float lo = bf / (float)d;
-                if (lo < PXT_FMIN) break;
+                if (lo < pxt_fmin(t)) break;
 #if PXT_SHARED_RESIDUAL
                 int duplicate = 0;
                 for (int j = 0; j < t->nnotes; ++j)
@@ -283,7 +288,7 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
             if (d1 > PXT_PD1 && mono_f <= 0.0f) {
                 int kb = 0; float db = 1.0f;
                 for (int q = 2; q <= 4; q++) {
-                    if ((float)q * P + (float)w > (float)(PXT_DEC - 4) || bf / (float)q < PXT_FMIN) break;
+                    if ((float)q * P + (float)w > (float)(PXT_DEC - 4) || bf / (float)q < pxt_fmin(t)) break;
                     const float dq = pxt_period(t, (float)q * P, w);
                     if (dq < PXT_PD2 && dq < PXT_PDR * d1 && dq < db) { db = dq; kb = q; }
                 }
@@ -480,7 +485,9 @@ static pxt_layer pxa_lay, pxs_lay;
 static void pxt_reset(px_engine *e, px_track *t, pxt_layer *L)
 {
     pxt_prepare(e);
+    const float range = t->fmin;                       /* a reset starts a new note's state, not a new range */
     memset(t, 0, sizeof *t);
+    t->fmin = range;
     pxt_layer_init(L, e->sr);
 }
 
