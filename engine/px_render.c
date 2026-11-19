@@ -58,7 +58,7 @@ static void save_wav(const char *fn, const float *buf, int n, float sr)
 
 int main(int argc, char **argv)
 {
-    if(argc<3){ fprintf(stderr,"usage: %s in.wav out.wav [preset 1..%d] [synth type 1..%d] [its 1st knob 0..100]\n",argv[0],px_preset_count(),PX_SYN_COUNT); return 1; }
+    if(argc<3){ fprintf(stderr,"usage: %s in.wav out.wav [preset 1..%d] [synth type id 0..%d] [its 1st knob 0..100]\n",argv[0],px_preset_count(),PX_SYN_COUNT); return 1; }
     int npreset = argc>3 ? atoi(argv[3]) - 1 : 0;
     int n; float sr;
     float *in = load_wav(argv[1], &n, &sr);
@@ -66,7 +66,7 @@ int main(int argc, char **argv)
 
     static px_engine e; px_engine_init(&e, sr);
     px_preset_t p; px_preset_factory(&p, npreset);
-    if(argc>4){ p.type[PX_B_SYN] = (uint8_t)((atoi(argv[4]) - 1 + PX_SYN_COUNT) % PX_SYN_COUNT); p.on[PX_B_SYN] = 1; }
+    if(argc>4){ p.type[PX_B_SYN] = (uint8_t)atoi(argv[4]); p.on[PX_B_SYN] = px_syn_runs(p.type[PX_B_SYN]);   /* (a retired id: bypassed) */ }
     if(argc>5) p.p[PX_B_SYN][0] = (uint8_t)atoi(argv[5]);
     px_engine_set(&e, &p);
 

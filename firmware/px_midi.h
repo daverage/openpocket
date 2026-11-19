@@ -144,7 +144,7 @@ static int px_midi_cc_apply(px_preset_t *p, uint32_t cc, uint32_t val, uint32_t 
         p->on[t.blk] = !p->on[t.blk];
         return 1;
     case PXM_TYPE:
-        v = pxm_type_from_cc(val, (uint32_t)px_ntypes(t.blk));
+        v = (uint32_t)px_live_type(t.blk, (int)pxm_type_from_cc(val, (uint32_t)px_nlive(t.blk)));   /* Synth2: the slices count the live types */
         if (p->type[t.blk] == v) return 0;
         p->type[t.blk] = (uint8_t)v;
         return 1;
@@ -200,7 +200,7 @@ static uint32_t px_midi_tx_next(px_midi_tx_t *t, const px_midi_cfg_t *cfg, const
             t->seen.type[b] = cur->type[b];
             c.kind = PXM_TYPE; c.blk = (uint8_t)b; c.k = 0;
             return 0xBu | ((0xB0u | ch) << 8) | (px_cc_of(&c) << 16) |
-                   (pxm_type_to_cc(cur->type[b], (uint32_t)px_ntypes((int)b)) << 24);
+                   (pxm_type_to_cc((uint32_t)px_live_index((int)b, cur->type[b]), (uint32_t)px_nlive((int)b)) << 24);
         }
         for (k = 0; k < PX_NPAR; k++) {
             if (cur->p[b][k] != t->seen.p[b][k]) {

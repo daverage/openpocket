@@ -5,7 +5,7 @@
 #    no NaN; long runs (3 s pluck + 8 s silence): nothing runs away (only delays at FDBK 100 hold on, by design)
 #  - (not run here, it needs the git history: tests/equiv.sh REF, this tree's engine against commit REF's, bit for bit)
 #  - changes without clicks (v38): knob changes glide to exactly where a full set goes, blocks on / off fade, fewer clicks
-#  - acoustic voices (v48): TRUMPET, TRUMPET MODEL, CELLO, CELLO SECTION in tune, tracked, released, at BRASS's level
+#  - Synth2: POLY OCTAVE HQ and POLY OCT FUZZ bit for bit against the last v73 source (tests/protected.sh)
 #  - wet lanes (v39): the delay through its lane as inline bit for bit, the reverb's tail lag frames later, the pipeline
 #  - MIDI: the musical-MIDI code (firmware/px_midi.h) on a PC: decoder, CC map, messages sent, settings byte, clock
 #  - preset store: save / reload / power cut at every step of a save (firmware/px_store.h on a simulated flash)
@@ -37,8 +37,10 @@ $CC -O2 -Iengine tests/engine/sweep2.c engine/px_dsp.c firmware/px_math.c -lm -o
 $CC -O2 -Iengine tests/engine/long.c engine/px_dsp.c firmware/px_math.c -lm -o build/long && build/long | tail -1
 $CC -O2 -Iengine -Ifirmware tests/engine/change_test.c firmware/px_math.c -lm -o build/change_test && build/change_test | tail -1
 $CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/wet_test && build/wet_test | tail -1
-# v48: the tracked acoustic voices (engine/px_acoustic.h): tuning, plucked notes through the engine, release, level
-$CC -O2 -Iengine -Ifirmware tests/engine/acoustic_test.c firmware/px_math.c -lm -o build/acoustic_test && build/acoustic_test
+# Synth2: the SYNTH block's ids (tombstones bypassed, POLY OCT FUZZ running)
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/syn_ids_test.c firmware/px_math.c -lm -o build/syn_ids && build/syn_ids
+# Synth2: the protected effects against the v73 baseline (needs that commit in the clone's history)
+if git cat-file -e 0635880 2>/dev/null; then CC="$CC" tests/protected.sh 0635880; else echo "protected: commit 0635880 not in this clone, skipped"; fi
 echo "== preset store"
 $CC -O1 -Iengine tests/test_store.c engine/px_dsp.c firmware/px_math.c -lm -o build/test_store && build/test_store | tail -2
 echo "== audio callbacks' order (the output block is its interrupt's, whichever callback the driver calls first)"

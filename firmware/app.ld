@@ -26,8 +26,8 @@ SECTIONS
     .text : { KEEP(*(.text.crt0)) *(EXCLUDE_FILE(*libjl.a:*) .text*) *(EXCLUDE_FILE(*libjl.a:*) .rodata*) _etext_fw = .;
               *libjl.a:*(.text* .rodata*) *(.*_code) *(.*_const) . = ALIGN(4); *(.pxbank*) . = ALIGN(4); _etext = .; } > XIP
     /* (_etext_fw: the end of the firmware's own flash code; the Bluetooth controller library's (libjl.a) comes after
-     * it and never calls the RAM code: firmware/build.sh sends its memcpy / memset to flash copies. v48: .pxbank, the
-     * acoustic voices' samples (engine/px_acoustic_bank.h), after it too: data, read by loads, outside the call range) */
+     * it and never calls the RAM code: firmware/build.sh sends its memcpy / memset to flash copies. v48: .pxbank, a data bank
+     * (none since Synth2), after it too: data, read by loads, outside the call range) */
     .ram_text : { _rt_start = .; KEEP(*(.ram_text*))
                   . = ALIGN(4); _c1_start = .; KEEP(*(.c1_text*)) . = ALIGN(4); _c1_end = .;   /* the second core's loop */
                   _rt_end = .; } > RAMTEXT AT > XIP

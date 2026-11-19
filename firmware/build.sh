@@ -77,9 +77,9 @@ $CC -Os -c -x ir "$HERE/sdk/iis.bc" -o "$O/iis.o"
 # v40: the audio path runs from RAM, as the stock firmware's does (no flash fetches through the cache, which the two cores
 # share): its functions' sections are renamed .ram_text.dsp.* (tools/ramcode.py; the code itself is unchanged), and the
 # linker puts them in the RAM code window (firmware/app.ld). --plain: px_dsp.o's hand-written routines (NAM, filters).
-RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_block rv_front ps_voice_al ps_align
-  bq_block bq_block2 drive_buffer ps_voice_run syn_organ_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run
-  gate_run comp_run bq_chain lowest_pitch_run pxl_run pxr_advance lf_run lf_pick pulse_poly_block pulse_poly_voice_sample"
+RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_block rv_front ps_align
+  bq_block bq_block2 drive_buffer ps_voice_run pitch_run erb_octaves erb_bank pxt_run pxt_layer_run
+  gate_run comp_run bq_chain lowest_pitch_run pxl_run pxr_advance lf_run lf_pick"
 RAM_FW="a_enc a_dec a_block a_send a_collect a_commit dsp_block dsp_out dsp_load dsp_job
   fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire b_ticks memcpy memset"
 python3 "$HERE/../tools/ramcode.py" "$O/px_dsp.o" --plain $RAM_DSP

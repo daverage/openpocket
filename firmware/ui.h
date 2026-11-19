@@ -254,6 +254,8 @@ static void draw_hint(int force)
 }
 
 /* ===================================================== PLAY ======== */
+static const char *ui_type_label(int b, int t)   /* Synth2: a stored retired type has no name: shown as such, bypassed by the engine */
+{ return px_type_retired(b, t) ? "RETIRED TYPE" : px_type_name(b, t); }
 static void draw_play_top(int force)
 {
     if (force || uc.preset != cur_preset) {
@@ -265,7 +267,7 @@ static void draw_play_top(int force)
     /* v70: under the number, the SYNTH block's type, then the OCTAVE (pitch) block's */
     int at = PRESET.type[PX_B_SYN], ct = PRESET.type[PX_B_PITCH], ao = PRESET.on[PX_B_SYN], co = PRESET.on[PX_B_PITCH];
     if (force || at != uc.amp_t || ao != uc.amp_on) {
-        ft_box(94, P_NUM_Y + 4u, 142, ao ? px_type_name(PX_B_SYN, at) : "NO SYNTH", &FT_MD, ao ? BLK_COL[PX_B_SYN] : UI_DIM, UI_BG, 0);
+        ft_box(94, P_NUM_Y + 4u, 142, ao ? ui_type_label(PX_B_SYN, at) : "NO SYNTH", &FT_MD, ao ? BLK_COL[PX_B_SYN] : UI_DIM, UI_BG, 0);
         uc.amp_t = at; uc.amp_on = ao;
     }
     if (force || ct != uc.cab_t || co != uc.cab_on) {
@@ -311,7 +313,7 @@ static void draw_info(int force)       /* the selected block: label, model, on/o
     int m = ui_list_n(b, t, 0) ? ui_list_of(b, PRESET.p[b][0]) : -1;
     if (!force && uc.info_b == b && uc.info_t == t && uc.info_on == on && uc.info_m == m) return;
     char nm[12];
-    const char *tn = px_type_name(b, t);
+    const char *tn = ui_type_label(b, t);
     if (m >= 0) { ui_list_name(b, m, nm); tn = nm; }
     ft_box(0, P_INFO_Y, 8, "", &FT_MD, UI_TXT, UI_BG, 0);
     ft_box(8, P_INFO_Y, 54, px_block_label(b), &FT_MD, BLK_COL[b], UI_BG, 0);
@@ -348,7 +350,7 @@ static void draw_type(void)
     uint16_t bg = sel ? C_CARD : UI_BG, fg = ed ? UI_ACC : UI_TXT;
     ui_rbox(4, E_TYPE_Y - 2u, 232, 28, 5, bg, UI_BG);
     ft_box(8, E_TYPE_Y, 20, sel && many ? "<" : "", &FT_MD, UI_ACC, bg, 1);   /* (v42: no arrows on a block of one model) */
-    ft_box(28, E_TYPE_Y, 184, px_type_name((int)ui_blk, PRESET.type[ui_blk]), &FT_MD, fg, bg, 1);
+    ft_box(28, E_TYPE_Y, 184, ui_type_label((int)ui_blk, PRESET.type[ui_blk]), &FT_MD, fg, bg, 1);
     ft_box(212, E_TYPE_Y, 20, sel && many ? ">" : "", &FT_MD, UI_ACC, bg, 1);
 }
 static int ui_loading_row(int k)       /* the NAM amp's MODEL row while its model loads */

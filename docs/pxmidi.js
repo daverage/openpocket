@@ -65,7 +65,8 @@ export function resolve(mappings, msg, slot) {
 }
 
 // what a mapping does with a value: { do: "param", b, k, v } | { do: "on", b, v } | { do: "type", b, t } |
-// { do: "preset", step } | null (nothing: a pedal released, a toggle's 0). ctx: { on(b), ntypes(b) }
+// { do: "preset", step } | null (nothing: a pedal released, a toggle's 0). ctx: { on(b), ntypes(b), live?(b) }; live(b): the ids of the
+// block's types that are not retired (Synth2): the model slices count only these, as the firmware's do (px_midi.h)
 export function action(m, value, ctx) {
   const t = m.tgt, press = value >= 64;
   if (t.kind === "param") return { do: "param", b: t.b, k: t.k, v: fromCc(value) };
@@ -73,7 +74,10 @@ export function action(m, value, ctx) {
     if (t.mode === "toggle") return press ? { do: "on", b: t.b, v: ctx.on(t.b) ? 0 : 1 } : null;
     return { do: "on", b: t.b, v: press ? 1 : 0 };
   }
-  if (t.kind === "type") return { do: "type", b: t.b, t: typeFromCc(value, ctx.ntypes(t.b)) };
+  if (t.kind === "type") {
+    const live = ctx.live ? ctx.live(t.b) : null;
+    return { do: "type", b: t.b, t: live ? live[typeFromCc(value, live.length)] : typeFromCc(value, ctx.ntypes(t.b)) };
+  }
   if (t.kind === "preset") return press ? { do: "preset", step: t.step } : null;
   return null;
 }

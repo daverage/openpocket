@@ -13,7 +13,14 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -I"$B/ref/engine" -o "$B/ref-run" test
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -o "$B/new-run" tests/engine/protected.c firmware/px_math.c -lm
 "$B/ref-run" assets/loops > "$B/ref.txt"
 "$B/new-run" assets/loops > "$B/new.txt"
-if cmp -s "$B/ref.txt" "$B/new.txt"; then echo "protected: identical to $REF, $(tail -1 "$B/new.txt")"; exit 0; fi
-echo "protected: DIFFERS from $REF"
-diff "$B/ref.txt" "$B/new.txt" | head -8
-exit 1
+rc=0
+if cmp -s "$B/ref.txt" "$B/new.txt"; then echo "protected: identical to $REF, $(tail -1 "$B/new.txt")"
+else echo "protected: DIFFERS from $REF"; diff "$B/ref.txt" "$B/new.txt" | head -8; rc=1; fi
+# every other block, alone, every type x 8 settings (tests/engine/equiv.c section A): the SYNTH block's retired types are left out
+$CC -O2 -w -fno-builtin -ffp-contract=off -I"$B/ref/engine" -o "$B/eq-ref" tests/engine/equiv.c "$B/ref/firmware/px_math.c" -lm
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -o "$B/eq-new" tests/engine/equiv.c firmware/px_math.c -lm
+"$B/eq-ref" A | grep -v '^A blk 3 type \([0-9]\|1[0-5]\|1[7-9]\|2[0-9]\) \|runs$' > "$B/eq-ref.txt"
+"$B/eq-new" A | grep -v '^A blk 3 type \([0-9]\|1[0-5]\|1[7-9]\|2[0-9]\) \|runs$' > "$B/eq-new.txt"
+if cmp -s "$B/eq-ref.txt" "$B/eq-new.txt"; then echo "protected: the other blocks (alone) identical, $(wc -l < "$B/eq-new.txt") runs"
+else echo "protected: the other blocks DIFFER"; diff "$B/eq-ref.txt" "$B/eq-new.txt" | head -8; rc=1; fi
+exit $rc

@@ -37,7 +37,7 @@ The clock and the transport bytes have no channel and are always taken.
 ## The Control Change map
 
 Value scaling: a setting is 0 to 100 on the pedal and 0 to 127 in MIDI (`v * 127 / 100`, rounded; the way back is exact).
-On or off: 64 and above is on, below 64 is off; the pedal sends 127 or 0. A model number n of N models is the slice
+On or off: 64 and above is on, below 64 is off; the pedal sends 127 or 0. A model number n of N models (a retired type is not counted: the SYNTH block lists only its live models, in id order) is the slice
 `n * 128 / N` to `(n + 1) * 128 / N - 1` of 0 to 127; the pedal sends the middle of the slice. Send the highest value to get the
 last model.
 

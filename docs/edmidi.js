@@ -75,7 +75,7 @@ function fromController(input, data) {
   const hits = resolve(cfg.mappings, m, app.st.slot);
   if (!hits.length) { note(from, m, "not learned: click a control below, then move this one"); return; }
   for (const map of hits) {
-    const a = action(map, m.value, { on: (b) => app.st.preset.on[b], ntypes: (b) => blk(b).types.length });
+    const a = action(map, m.value, { on: (b) => app.st.preset.on[b], ntypes: (b) => blk(b).types.length, live: (b) => blk(b).types.flatMap((x, i) => x && x.name ? [i] : []) });
     note(from, m, a ? `→ ${tgtName(map.tgt)}${a.do === "param" ? ` ${a.v}` : a.do === "on" ? (a.v ? ": on" : ": off") : ""}` : `${tgtName(map.tgt)}: the switch released, nothing to do`, a ? "hit" : "");
     if (!a) continue;
     if (a.do === "param") { sendParam(a.b, a.k, a.v); redrawSoon(); }

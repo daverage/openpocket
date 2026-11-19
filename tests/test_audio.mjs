@@ -59,7 +59,7 @@ check("bypass passes the dry input, at MASTER", () => {
 });
 check("a preset change changes the spectrum", () => {
   // v70: the factory slots are placeholders (the gate only); the other sound is POLY OCT FUZZ on the SYNTH block
-  const fuzz = engine(0), on = [1, 0, 0, 1, 0, 0, 0, 0, 0], type = [0, 0, 0, 18, 0, 0, 0, 0, 0];
+  const fuzz = engine(0), on = [1, 0, 0, 1, 0, 0, 0, 0, 0], type = [0, 0, 0, 16, 0, 0, 0, 0, 0];
   const p = Array.from({ length: 9 }, () => [10, 20, 50, 0, 0]); p[3] = [0, 0, 80, 50, 60];
   fuzz.preset(presetBytes({ name: "FUZZ", on, type, p, order: [0, 1, 2, 3, 4, 5, 6, 7, 8] }));
   const clean = harmonics(tail(run(engine(0), IN)), 220), metal = harmonics(tail(run(fuzz, IN)), 220);

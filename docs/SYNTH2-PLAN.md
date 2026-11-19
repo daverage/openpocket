@@ -49,3 +49,23 @@ are checked against these figures at every stage.
 5 optional polyphonic texture -> 6 consolidation and the hardware test package (not flashed).
 
 Every result is labelled: source inspected / host tested / simulator tested / target compiled / pedal measured / user listening approved.
+
+## Stage 1 result: clean sweep (source inspected, host tested, target compiled; not run on a pedal)
+
+Removed: the Duo tracker and allocator, Pulse/Saw/Arcade/FM Poly, String Duo, the acoustic voices and their sample bank, and every other SYNTH type
+except POLY OCT FUZZ. Retired ids are tombstones (docs/SYNTH2-DEPENDENCIES.md). The SYNTH block's type list in the UI, editor and MIDI skips them.
+
+| Resource | v73 baseline | Stage 1 | Change |
+|---|---|---|---|
+| openpocket.bin | 315 976 B | 198 748 B | -117 228 B |
+| RAM code window: code | 61 896 B | 53 164 B | -8 732 B |
+| RAM code window: free | 24 112 B | 32 840 B | +8 728 B |
+| Pool tail, left before the RAM code | 90 928 B | 103 848 B | +12 920 B |
+| Low RAM | 13 104 B | 8 592 B | -4 512 B |
+| RAM | 44 876 B | 43 996 B | -880 B |
+| CPU0 / CPU1 worst case | not measured | not measured | (no pedal) |
+
+Checks run: `tests/protected.sh 0635880` (POLY OCTAVE HQ and POLY OCT FUZZ, 936 runs, and every other block alone, 408 runs: all bit-identical),
+`tests/engine/syn_ids_test.c` (all 256 ids), `make test` (exit 0; page tests skipped: no Playwright), `make wasm`, `make package-synth2` (PocketX_901).
+Changed on purpose: the factory SYNTH default type (ORGAN, off, is now POLY OCT FUZZ, off), `px_render`'s synth argument is now a type id, MIDI model slices
+count live types only, `tests/test_audio.mjs` used id 18 for "fuzz" (it was CELLO; fixed to 16).

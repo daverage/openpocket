@@ -66,6 +66,9 @@ await check("what a learned control does: settings, switches (flip or follow), t
   assert.deepEqual(action({ tgt: { kind: "on", b: 9, mode: "follow" } }, 0, ctx), { do: "on", b: 9, v: 0 });
   assert.deepEqual(action({ tgt: { kind: "on", b: 2, mode: "follow" } }, 64, ctx), { do: "on", b: 2, v: 1 });
   assert.deepEqual(action({ tgt: { kind: "type", b: 9 } }, 127, ctx), { do: "type", b: 9, t: 7 });
+  const live = { on: () => 0, ntypes: () => 30, live: () => [16, 28, 29] };     // Synth2: the retired types are not counted
+  assert.deepEqual(action({ tgt: { kind: "type", b: 3 } }, 0, live), { do: "type", b: 3, t: 16 });
+  assert.deepEqual(action({ tgt: { kind: "type", b: 3 } }, 127, live), { do: "type", b: 3, t: 29 });
   assert.deepEqual(action({ tgt: { kind: "preset", step: -1 } }, 100, ctx), { do: "preset", step: -1 });
   assert.equal(action({ tgt: { kind: "preset", step: 1 } }, 10, ctx), null);
 });

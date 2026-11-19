@@ -71,38 +71,18 @@ input and output coupling filters, inspired by the germanium JDF2. FUZZ sets gai
 The shared clipping model uses a fixed amount of work per sample in both blocks.
 [Dunlop JDF2 manual](https://www.jimdunlop.com/content/manuals/JDF2.pdf) · [Fuzz Face circuit measurements](https://www.gitec-forum-eng.de/wp-content/uploads/2019/02/poteg-10-08-05-5-fuzz-face.pdf) · [Embedded circuit-model research](https://doi.org/10.1007/978-1-4020-9823-9_7)
 
-### SYN — synths, keyboards and other guitars
+### SYN — Synth2
 Played with a normal guitar: no special pickup, no MIDI.
+
+Synth2 (docs/SYNTH2-PLAN.md) rebuilt this block. The only type that runs today is POLY OCT FUZZ; the monophonic ANALOG and ARCADE types arrive in later Synth2 builds.
 
 | Family | Type | Settings | How it works |
 |---|---|---|---|
-| Keyboards (chords OK) | ORGAN | 16', 8', 4', PERC, DRY | drawbars: −1 octave, the guitar's own pitch, +1 octave; key click; percussion (+19 semitones, decaying) |
-| | CHURCH ORGAN | 16', 8', 4', 2', DRY | pipe organ: slow speech, long release, slight celeste |
-| | STRINGS | ATTACK, RELEASE, OCTAVE, TONE, DRY | string machine: bowed swell, softened reed-like source, optional +1 octave, and a 3-voice ensemble |
-| | STRING MACHINE | ATTACK, RELEASE, OCTAVE, TONE, ENSEMBLE | an unshifted string voice with optional HQ octave up and optional three-tap ensemble |
-| | CHOIR | ATTACK, RELEASE, VOWEL, OCTAVE, DRY | the strings through vocal formants, "ooh" (0) to "aah" (100) |
-| Horns (chords OK) | POLY BRASS | ATTACK, RELEASE, BRIGHT, BITE, DRY | short swells, moderate waveshaping, and separate body and bite bands. DRY blends in clean guitar. |
 | Octave fuzz (chords OK) | POLY OCT FUZZ | DOWN, UP, FUZZ, TONE, LEVEL | mixes dry guitar and both HQ octave voices before the complete Drive Fuzz Face. With both octaves at zero and TONE and LEVEL at noon, it matches Drive Fuzz Face at the same FUZZ and noon LEVEL. TONE adjusts treble around a flat noon setting. LEVEL (0–100, v66) sets the fuzz output: 0 is silent, noon is 0 dB, 100 is +6 dB. |
-| Acoustic instruments (v48; one note at a time) | TRUMPET | OCTAVE, TONE, DYNAMICS, RELEASE, DRY | a trumpet played by your note: v49 keeps the attack of each University of Iowa recording (mf, ff) and continues it with a sustain synthesised from that recording's harmonics: it follows your pitch, bends and slides; pick strength chooses a soft or loud recording, and the string's level sets loudness and brightness. Sounds an octave above the guitar at OCTAVE 0 (−1 / 0 / +1). |
-| | BOWED CELLO | OCTAVE, BOW, VIBRATO, RELEASE, DRY | a physical model of a bowed string and cello body: the guitar's level controls bow speed; BOW sets pressure and VIBRATO adds movement. At the guitar's pitch at OCTAVE 0. |
-| | CELLO ENSEMBLE | OCTAVE, TONE, DYNAMICS, RELEASE, DRY | a sampled cello section (VSCO 2 CE, CC0), played from the guitar. At the guitar's pitch at OCTAVE 0. |
-| Synths that follow your note (one note at a time) | MONO SYNTH | WAVE, OCTAVE, CUTOFF, RESO, ENV | pitch tracker → band-limited saw / square / pulse → 24 dB resonant ladder filter with envelope |
-| Synths that follow the waveform (no delay) | PWM SYNTH | WIDTH, RATE, CUTOFF, RESO, MIX | the guitar turned into a pulse wave whose width moves, then the ladder filter |
-| | BASS SYNTH | OCT -1, OCT -2, CUTOFF, ENV, DRY | square waves one and two octaves down, filter swept by each attack |
-| Synths that follow your note (one note at a time) | PWM SYNTH HQ, BASS SYNTH HQ | same as their standard versions | a period tracker drives band-limited pulse oscillators. Acquisition takes a few cycles at the start of the note. |
-| Other guitars | 12-STRING | OCTAVE, DETUNE, TONE | thin octave strings, slightly out of tune, plus the doubled unison strings |
-| | ACOUSTIC | BODY, BASS, TREBLE, ROOM | magnetic pickup → flat-top: body resonance (parlour to jumbo), top, sparkle, body reflections |
-| | SITAR | KEY, BUZZ, SYMPATH, DECAY | bridge buzz (jawari) + 6 sympathetic strings tuned to KEY |
-| | BARITONE | TUNE, TONE, MIX | the whole guitar 1 to 12 semitones down |
 
-Old TRUMPET MODEL presets load as TRUMPET. The sample-free Bluetooth build still uses the physical model as TRUMPET’s fallback.
+**Retired types.** The 27 other SYNTH types of v29–v73 (organs, strings, choirs, MONO / PWM / BASS synths, 12-STRING, ACOUSTIC, SITAR, BARITONE, brass, trumpet, cello, STRING MACHINE, the Poly and Duo voices, the ensembles) are gone. Their numbers are never reused: a preset saved with one of them loads with the SYNTH block bypassed, keeps its stored type and its five settings untouched (until you pick another type and save), and shows RETIRED TYPE on the pedal and in the editor. The pedal and the editor skip retired types when you step through the list; MIDI model slices count only the live types.
 
-Keyboards hold the note while the string sounds (like a key held down) and release when it dies away or when you
-mute it. MONO SYNTH needs single notes: it finds the pitch in 30–80 ms and is accurate to a few cents.
-
-STRINGS HQ, CHOIR HQ, ORGAN HQ, and CHURCH ORGAN HQ use the same controls as their standard versions.
-Their octave layers use the phase-scaling filter bank from POLY OCTAVE HQ. HQ costs more DSP,
-so start by trying it with other blocks bypassed.
+The old implementations are on the `synth` branch.
 
 POLY OCTAVE HQ's **RANGE** dial limits the **OCT −1** voice. The default `FULL` keeps all bands.
 Turn up from `FULL` to select a cutoff from B1 to E5. Try E3 for the low E string through fret 12,

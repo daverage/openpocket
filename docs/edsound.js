@@ -172,10 +172,12 @@ function renderPage(fromPush) {
   sw.querySelector("span").textContent = is ? "On" : "Off";
   $("mvl").disabled = pos <= 0; $("mvr").disabled = pos >= p.order.length - 1;
   const sel = $("type");
-  if (sel.dataset.b !== String(b) || sel.options.length !== B.types.filter((t) => t.name).length) {
+  const retired = !(B.types[p.type[b]] && B.types[p.type[b]].name);       // Synth2: a stored retired type is bypassed by the pedal, its settings kept
+  if (sel.dataset.b !== String(b) || sel.dataset.t !== String(retired ? p.type[b] : "") || sel.options.length !== B.types.filter((t) => t.name).length + (retired ? 1 : 0)) {
     sel.textContent = "";
+    if (retired) sel.append(h("option", { value: p.type[b], text: "RETIRED TYPE (bypassed)" }));
     B.types.forEach((t, i) => { if (t.name) sel.append(h("option", { value: i, text: t.name })); });
-    sel.dataset.b = b;
+    sel.dataset.b = b; sel.dataset.t = retired ? p.type[b] : "";
   }
   sel.value = p.type[b];
   sel.setAttribute("aria-label", `${B.name} type`);

@@ -42,16 +42,24 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
        PX_SFX_SYNTH_HQ, PX_SFX_COUNT };
-enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, PX_SYN_PWM,
-       PX_SYN_12STR, PX_SYN_ACOUSTIC, PX_SYN_SITAR, PX_SYN_BARI, PX_SYN_BRASS, PX_SYN_STRINGS_HQ, PX_SYN_CHOIR_HQ,
-       PX_SYN_ORGAN_HQ, PX_SYN_CHURCH_HQ, PX_SYN_BASS_HQ, PX_SYN_OCT_FUZZ,
-       /* v48: tracked acoustic voices (engine/px_acoustic.h) */
-       PX_SYN_TRUMPET, PX_SYN_CELLO, PX_SYN_CELLO_SECTION, PX_SYN_STRING_MACHINE,
-       PX_SYN_PULSE_POLY,
-       PX_SYN_SAW_POLY, PX_SYN_ARCADE_POLY, PX_SYN_FM_POLY,
-       PX_SYN_STRING_ENS, PX_SYN_BRASS_ENS,            /* v61: one note, a sampled lead and a light support layer */
-       PX_SYN_STRING_DUO,                              /* v65: two tracked notes, a cello on the lower, a violin on the upper */
+/* SYNTH block type ids. Synth2 (docs/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
+ * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
+ * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
+ * type, and the UI skips it (px_type_name is ""). New Synth2 types are appended after PX_SYN_STRING_DUO. */
+enum { PX_SYN_X_ORGAN, PX_SYN_X_CHURCH, PX_SYN_X_STRINGS, PX_SYN_X_CHOIR, PX_SYN_X_MONO, PX_SYN_X_PWM,
+       PX_SYN_X_12STR, PX_SYN_X_ACOUSTIC, PX_SYN_X_SITAR, PX_SYN_X_BARI, PX_SYN_X_BRASS, PX_SYN_X_STRINGS_HQ,
+       PX_SYN_X_CHOIR_HQ, PX_SYN_X_ORGAN_HQ, PX_SYN_X_CHURCH_HQ, PX_SYN_X_BASS_HQ,
+       PX_SYN_OCT_FUZZ,
+       PX_SYN_X_TRUMPET, PX_SYN_X_CELLO, PX_SYN_X_CELLO_SECTION, PX_SYN_X_STRING_MACHINE,
+       PX_SYN_X_PULSE_POLY, PX_SYN_X_SAW_POLY, PX_SYN_X_ARCADE_POLY, PX_SYN_X_FM_POLY,
+       PX_SYN_X_STRING_ENS, PX_SYN_X_BRASS_ENS, PX_SYN_X_STRING_DUO,
        PX_SYN_COUNT };
+/* does this SYNTH type run? (1: a live type; 0: a tombstone, or an id beyond the catalogue: both are bypassed) */
+static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ; }
+int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI skips it, the engine bypasses it) */
+int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
+int         px_live_type(int blk, int i);              /* the i-th live type's id (0..px_nlive-1) */
+int         px_live_index(int blk, int type);          /* a live type's place among the live types; 0 for a tombstone */
 enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
        PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO, PX_MOD_COUNT };
@@ -123,29 +131,7 @@ typedef struct {
     int armed, gate, crossed;
 } px_synth_tracking;
 
-/* v48: the state of the tracked acoustic voices (engine/px_acoustic.h); it shares the SYN ensemble buffer (syn_cb) */
-#define PXA_HIST 160
-typedef struct { int smp, active, fade; float pos, gain, rise; } px_acoustic_player;   /* v49: rise, its fade-in */
-typedef struct {
-    px_synth_tracking hi;
-    px_bq lo1, lo2, u0, u1, u2, h1, h2, body[6];
-    float k_ea, k_er, k_ha, k_hr, k_hs, k_xa, k_xr, k_att, k_fade10, k_fade20, k_fade5, k_bow_a, k_bow_r, k_br_a, k_br_r;
-    float env, envs, hf, hfs, f0s, onset_peak, held_f0, cand_f0, ref_b[2], vel, peak_ref, expr;
-    int key, state, cand_n, peak_n, stable_b[2], refractory, hw, hist_n, sel, sel_n, gate, onset, nbody, held;
-    float hist[PXA_HIST];
-    float oct_mul, rel_k, dry, bow, vib, bright, tone, dyn_db, gain, sr, inv_sr;
-    px_acoustic_player pl[3]; float root_f, lp, root_t;   /* v49: root_t, since its last change of recording */
-    int nw, bw, ow; unsigned tick; uint32_t rnd;
-    float str_lp, bowv, vib_ph, vib_amt, held_t, noise_lp, kick_p, kick_a; int kick_n;   /* v49: kick, the string set going */
-    float lip_y1, lip_y2, lip_a1, lip_g, dc_x, dc_y, breath, out_lp, fb, last_f, amp, lvl_t;
-    float mp;                                         /* v49: the brass's blowing pressure for the note's pitch */
-    /* v61: the ensembles' support layer, rendered beside the lead from the same note (engine/px_acoustic.h) */
-    float ens_ph[2], ens_amp, ens_lp[2], ens_vib, ens_rel, ens_level, ens_k_att, ens_det, ens_tone0, ens_tone1,
-          ens_vib_amt, ens_vib_inc, ens_f, ens_cand; int ens_n;   /* v66: ens_f the settled pitch */
-} px_acoustic;
-
 #define PX_PS_N 2048                   /* pitch shifter buffer (46 ms) */
-#define PX_SYN_CB 1024                 /* SYN: ensemble / doubler / body reflections (23 ms) */
 #define PX_DLY_N 45056                 /* v40: 2.04 s of delay at half rate (22.05 kHz, 16-bit: 88 KB), as the stock */
 #define PX_RV_M 16384                  /* reverb memory: one 16-bit ring (32 KB) at half rate, laid out per type */
 #define PX_GL_MAX 64                   /* v38: the most settings that glide (px_dsp.c: GL_F) */
@@ -179,29 +165,15 @@ typedef struct {
     float sfx_a, sfx_b, sfx_c, sfx_d, sfx_mix, sfx_qd;
     int   sfx_pat, crush_n, crush_k; float crush_v, crush_q;
     px_bq sfx_f1, sfx_f2;
-    px_synth_tracking sfx_track, syn_track_hq;
+    px_synth_tracking sfx_track;
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
-    /* synth / instrument block (v29) */
-    float syn_buf[PX_PS_N]; int syn_w;                 /* shifter source (organ, strings...); sitar: string combs */
+    /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
     px_hb syn_fuzz_os[4];
     px_drive_state syn_fuzz;
     float syn_fuzz_tone;
-    union { float syn_cb[PX_SYN_CB]; px_acoustic syn_ac; }; int syn_cw;   /* v48: syn_ac (px_acoustic.h) */
-    float syn_ph[3], syn_off[3][2], syn_inc[3], syn_W[3], syn_lvl[3]; int syn_nv;
-    float syn_dry, syn_out, syn_d8;                    /* dry guitar, effect level, organ 8' (the guitar's own pitch) */
-    float syn_env, syn_slow, syn_ea, syn_er, syn_sr2;  /* envelope (fast, slow), coefficients */
-    float syn_kg, syn_ka, syn_kr, syn_thr; int syn_key;   /* key gate: gain, attack, release, threshold, held */
-    float syn_perc, syn_pk, syn_plvl, syn_click, syn_clk; uint32_t syn_rnd; int syn_snap;
-    float syn_lfo[3], syn_linc[2], syn_cdep[2], syn_cbase;
-    px_bq syn_f[6]; int syn_nf;
-    float syn_lp, syn_lpk, syn_hp, syn_hpk;
-    /* tracker + oscillator + ladder filter (mono / pwm / bass synths) */
-    float syn_t1, syn_t2, syn_prev, syn_cnt, syn_per, syn_p1, syn_p2, syn_f0, syn_f0t, syn_glk, syn_oph, syn_mul;
-    float syn_wave, syn_lad[4], syn_cut, syn_res, syn_ea2, syn_fenv, syn_fdk, syn_amp, syn_ff, syn_ff2, syn_sq;
-    float syn_pwm, syn_pw0, syn_pwd;
-    /* sitar */
-    int   syn_cl[6], syn_cp[6], syn_c0[6], syn_type; float syn_cs[6], syn_cfb, syn_cdamp, syn_buzz, syn_sym;
+    float syn_lvl[3], syn_out;                         /* octave up / down levels, effect level */
+    float syn_lp, syn_lpk; int syn_type;               /* tone low-pass; the type last set up */
     /* eq */
     px_bq eq[5]; int eq_n;
     /* modulation */

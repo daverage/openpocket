@@ -74,40 +74,6 @@ static int hq_octave_inaccurate(float ratio)
     return !(energy > 0.0f && 2.0f * target / ((float)sample_rate * energy) > (ratio < 1.0f ? 0.7f : 0.5f));
 }
 
-static int mono_retrigger_broken(void)
-{
-    const float sample_rate = 44100.0f, first = 82.41f, second = 146.83f;
-    px_preset_t preset;
-    px_engine_init(&e, sample_rate);
-    px_preset_factory(&preset, 0);
-    memset(preset.on, 0, sizeof preset.on);
-    preset.on[PX_B_SYN] = 1;
-    preset.type[PX_B_SYN] = PX_SYN_MONO;
-    px_engine_set(&e, &preset);
-
-    float input, output;
-    for (int i = 0; i < 10000; i++) {
-        input = 0.2f * sinf(i * 6.2831853f * first / sample_rate);
-        px_engine_process(&e, &input, &output, 1);
-    }
-    if (e.syn_kg < 0.8f || fabsf(e.syn_f0 - first) > 1.0f) return 1;
-
-    input = 0.0f;
-    for (int i = 0; i < 15000; i++) px_engine_process(&e, &input, &output, 1);
-    if (e.syn_key) return 1;
-
-    int waited_for_pitch = 0;
-    for (int i = 0; i < 4000; i++) {
-        input = 0.2f * sinf(i * 6.2831853f * second / sample_rate);
-        px_engine_process(&e, &input, &output, 1);
-        if (!e.syn_key) continue;
-        if (!e.syn_snap) return !waited_for_pitch || fabsf(e.syn_f0 - second) > 3.0f;
-        if (e.syn_kg != 0.0f) return 1;
-        waited_for_pitch = 1;
-    }
-    return 1;
-}
-
 static int run(int blocks, float amp){
   float in[64], out[64]; int nan = 0; static unsigned seed = 1;
   for (int b = 0; b < blocks; b++) {
@@ -153,7 +119,6 @@ int main(void){
       if (run(40, 1.0f) | run(20, 0.0f) | run(10, 3.0f)) { bad++; printf("PROBLEM order preset %d x%d\n", pr, x); px_engine_init(&e,44100.0f); }
     }
   }
-  if (mono_retrigger_broken()) { bad++; puts("PROBLEM MONO SYNTH played stale pitch or failed to acquire the new note"); }
   if (hq_octave_inaccurate(2.0f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the doubled chord frequencies"); }
   if (hq_octave_inaccurate(0.5f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the halved chord frequencies"); }
   if (poly_oct_fuzz_missing_at_minimum_level()) { bad++; puts("PROBLEM POLY OCT FUZZ lost its distortion at minimum LEVEL"); }
