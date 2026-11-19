@@ -306,6 +306,81 @@ diagnostic reached 80/270 versus 78/270 on v67. That diagnostic complements
 the audible score. The slower first-hit median and missing lower-first
 octave keep both release variants host-only.
 
+#### Reproduction and entry inspection (2026-11-19, second pass)
+
+The holdout, owner DI and synthetic results above reproduce exactly when
+the bench is built with the full v67 `DSPDEF` list from
+`firmware/build.sh` and run with `PXP_SET='ACQB=0.06 SECOND=0.58'`. Pass
+the flags through a shell that splits words. zsh passes an unquoted `$F`
+as one argument, which defines only the first macro and silently scores
+something between v66 and v67.
+
+The recorded-pair clips were temporary files. Re-extracting them with
+`ffmpeg -ss ONSET -t DURATION` from the GuitarSet solo annotations gave
+different pair results. A sweep of clip start from −30 to +3 ms moved
+the lower-first octave between no entry and 71–205 ms. In the same
+v67 build, the muted pitch remained for 100% of the tail in two to five
+of the six orders, depending on the offset. Across all 60 offset and order
+combinations, the latched cap gave identical entry times and reduced
+each of those full tails to 17–37%. The exception was one combination
+that never admitted the second voice.
+The cap does not apply there, and the lone release still rang through the
+tail. The tail result holds up. Single pair entry times are anecdotal.
+
+A per-entry diff of the holdout explains most of the first-hit loss.
+v67 credits a release tail as an entry when the new note repeats a pitch
+that was just played. The unheld, decaying voice matches the new pitch
+within 0–3 ms, as at 5.987 s in `01_Jazz1-130-D` (1.3 → 42.0 ms) and
+7.604 s in `01_Jazz3-150-C` (0.2 → 20.5 ms). In 20.316 s of `00_SS3-84-Bb`
+and 19.723 s of `01_Funk2-108-Eb`, neither build re-attacks the voice.
+v67 counts a hit and the cap does not. Two losses are real. At 30.776 s
+in `00_SS3-84-Bb` and 31.150 s in `00_SS2-88-F`, the allocator releases a
+note that is still sounding. The long v67 tail hides that release.
+`poly_score.py` now also reports entries whose new pitch comes from a
+held voice. In this score, the entering pitch comes from a held voice
+and the other pitch is sounding.
+
+| Duo build | First hit | From a held voice | Five reports | Both held |
+|---|---|---|---|---|
+| v66 | 123, 27.1 ms | 117, 32.4 ms | 115 | 75 |
+| v67 | 125, 28.2 ms | 119, 32.8 ms | 119 | 78 |
+| cap whenever partner held | 118, 30.4 ms | 116, 33.0 ms | 109 | 80 |
+| cap latched at note-off | 123, 31.4 ms | 120, 33.9 ms | 116 | 80 |
+
+On the owner DIs, the latched cap kept scale ghosts at 12.52% and the
+correct-note-absent rate within 0.05 points of v67. Two-voice time fell
+from 50.13% to 34.99%. Low-E ghosts fell from 24.36% / 11.92% to
+19.96% / 9.21%. Its remaining cost is the two allocator dropouts. The
+listening question is whether the shorter mute tail is worth hearing
+those dropouts.
+
+The lower-first octave fails in the allocator, not the picker. The
+picker lists 63.0 about 28 ms after the upper note starts.
+`pxp_octave_evidence` never passes during the overlap at either clip
+offset. Octave/root power rises from about 0.45 before the entry to
+1.3–1.9 after it, and the fifth stays below 0.01 of the octave. The
+double octave (needs > 0.04 × octave, measured 0.001–0.03) and sixth
+(needs > 0.025 × octave, mostly 0.006–0.02) checks fail. Any admission
+comes from the level guard. It occurred at 74 ms at one offset and
+not at all at the other.
+
+A host trial kept only the octave/root and fifth checks
+(`PXP_OCT_TWO_CUES`, under `build/phase2b/duo-release/oct2`). The recorded
+lower-first octave entered at 30.9 ms with 91.9% overlap. Its reverse
+held 83.9% of the overlap instead of 16.1%. At the quietest synthetic
+level, the octave entered at two more offsets. At the 0.13 level, the
+−120 ms overlap rose from 8.8% to 87.0%. Holdout octaves entered at 9.926 s in
+`00_SS2-88-F`, 21.879 s in `01_BN1-129-Eb` and 24.765 s in `00_SS1-100-C#`.
+Entries from a held voice fell from 119 to 116, and five-report entries
+fell from 119 to 113. The losses included five fourths or thirds and
+two lower octaves. An admitted octave occupies the second slot when the
+next real note arrives. The first low-E sustain also lost its correct
+pitch at 6.124 s instead of 7.015 s.
+The static spectral shape cannot separate a held note's own second
+harmonic from an added octave. The rise in octave/root power after the
+held note settles is the stronger cue. Test it next as a replacement for
+the four static checks.
+
 ---
 
 ## Stage 3: check the octave on the waveform

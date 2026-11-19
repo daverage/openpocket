@@ -60,7 +60,7 @@ if args.guitar:
     files=sorted((di/'mono').glob("*_comp_mix.wav"))[args.offset:args.offset + args.takes]
     if not files:
         parser.error('no GuitarSet comping takes at the requested offset')
-    raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]; sustained_entries=[]; held_entries=[]
+    raw=[]; voices=[]; raw_p=[]; voice_p=[]; entries_raw=[]; entries_voice=[]; sustained_entries=[]; held_entries=[]; articulated_entries=[]
     for path in files:
         x=read_di(path)
         notes=jams_notes(di/'annotation'/(path.stem.removesuffix('_mix')+'.jams'))
@@ -75,6 +75,7 @@ if args.guitar:
         entries_raw+=dyad_entry_delays(rows,notes); entries_voice+=dyad_entry_delays(active,notes)
         sustained_entries += dyad_entry_delays(active, notes, reports=5)
         held_entries += dyad_entry_delays(reference(rows, held=True), notes)
+        articulated_entries += dyad_entry_delays(active, notes, new_rows=reference(rows, held=True))
     report_detector(f'Raw resonator, guitar {args.transpose:+d} semitones',raw,raw_p,entries_raw)
     voice_name = 'String Duo' if args.type == 'duo' else args.type.capitalize()
     report_detector(f'{voice_name} voices, guitar {args.transpose:+d} semitones',voices,voice_p,entries_voice)
@@ -85,6 +86,10 @@ if args.guitar:
         timing = f', median {median(sustained_hits):.1f} ms, p90 {p90:.1f} ms'
     print(f'second-note entries sustained for five reports: '
           f'{len(sustained_hits)}/{len(sustained_entries)} within 100 ms{timing}')
+    articulated = sorted(delay for delay in articulated_entries if delay is not None)
+    timing = f', median {median(articulated):.1f} ms' if articulated else ''
+    print(f'second-note entries from a held voice, not a release tail: '
+          f'{len(articulated)}/{len(articulated_entries)} within 100 ms{timing}')
     print(f'second-note entries with both voices held: '
           f'{sum(delay is not None for delay in held_entries)}/{len(held_entries)} within 100 ms')
 else:
