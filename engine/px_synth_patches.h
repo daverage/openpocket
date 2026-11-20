@@ -17,17 +17,19 @@ typedef struct {
     uint8_t noise;               /* 1: the adapter's own xorshift noise voice (the Arcade Poly noise of the synth branch) instead of Felucca's engine */
 } px_patch;
 enum { PX_PATCH_SLOTS = 10 };
+/* Fix pass 4: CLASSIC, FATSAW, PULSE, PWM and SWEEP have the second oscillator at MIX 16 (was 64, 64, 40, 30, 64) and their trims lowered by the loudness this adds (0.6-1.8 dB): detuned
+ * near-equal oscillators beat at 1-3 Hz, 6-10 dB deep, a phaser-like swell on a steady note; at 16 it is 3-4.4 dB. The other ANALOG patches are as written. */
 static const px_patch PX_ANALOG_PATCHES[PX_PATCH_SLOTS] = {
     /* name       WAVE DTN MIX NOIS CUT RES DRV KTR     ATK DEC SUS REL  fenv semis trim pwm */
-    {"CLASSIC", {0, 10, 64, 0, 90, 30, 10, 64}, {4, 70, 100, 50},  20,   0, 64,  0},   /* saw lead (Felucca's SAW LEAD) */
-    {"FATSAW",  {0, 28, 64, 0, 85, 20, 20, 64}, {6, 70, 110, 55},  15,   0, 56,  0},   /* two detuned saws */
-    {"PULSE",   {1,  8, 40, 0, 75, 25, 10, 64}, {3, 70, 100, 45},  15,   0, 60,  0},   /* square lead */
-    {"PWM",     {4,  6, 30, 0, 80, 25,  0, 64}, {4, 70, 100, 50},  10,   0, 60, 70},   /* pulse width sweeping */
+    {"CLASSIC", {0, 10, 16, 0, 90, 30, 10, 64}, {4, 70, 100, 50},  20,   0, 54,  0},   /* saw lead (Felucca's SAW LEAD) */
+    {"FATSAW",  {0, 28, 16, 0, 85, 20, 20, 64}, {6, 70, 110, 55},  15,   0, 47,  0},   /* two detuned saws */
+    {"PULSE",   {1,  8, 16, 0, 75, 25, 10, 64}, {3, 70, 100, 45},  15,   0, 52,  0},   /* square lead */
+    {"PWM",     {4,  6, 16, 0, 80, 25,  0, 64}, {4, 70, 100, 50},  10,   0, 56, 70},   /* pulse width sweeping */
     {"SQ BASS", {1,  0,  0, 0, 50, 70, 40, 64}, {0, 60,  40, 30},  30, -12, 58,  0},   /* square bass (Felucca's SQR BASS), an octave down */
     {"SUB",     {3,  0,  0, 0, 40,  0, 20,  0}, {0, 60, 100, 20},   0, -12, 68,  0},   /* deep sine sub, an octave down */
     {"MOOG",    {6,  0, 40, 0, 35, 85, 30, 80}, {0, 55,  50, 35},  45, -12, 58,  0},   /* saw + sub square, resonant filter swept by each note */
     {"ACID",    {0,  0,  0, 0, 50,100, 25, 64}, {0, 55,  20, 30},  48, -12, 54,  0},   /* Felucca's ACID: saw, full resonance, a fast sweep */
-    {"SWEEP",   {0, 14, 64, 0, 30, 50, 10, 64}, {50, 90, 100, 70}, 60,   0, 60,  0},   /* slow filter-sweep lead */
+    {"SWEEP",   {0, 14, 16, 0, 30, 50, 10, 64}, {50, 90, 100, 70}, 60,   0, 49,  0},   /* slow filter-sweep lead */
     {"SYNC",    {5, 30, 64, 0, 70, 25, 10, 64}, {3, 70, 100, 50},  25,   0, 56, 40},   /* hard-synced saw */
 };
 /* ARCADE: Felucca LOFI. CHIP 0 4BIT 1 4B/2 2 8BIT 3 1BIT 4 STEP (the stepped chip envelope: CRSH is then its DCY); WAVE 0 PLS 1 TRI 2 SAW 3 NOIS 4 WRAM (DUTY / 8 = the wave table);

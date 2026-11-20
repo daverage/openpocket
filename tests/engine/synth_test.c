@@ -397,6 +397,16 @@ static void ensemble_suite(void)
         }
         g_type = PX_SYN_ENSEMBLE;
     }
+    {   /* fix pass 4: ANALOG's detuned patches (CLASSIC, FATSAW, PULSE, PWM, SWEEP) do not swell and fade on a steady note: the peak level swings less than 5.5 dB (SWEEP 6.5: its filter envelope is slow by design) */
+        static const int PAT[5] = {0, 1, 2, 3, 8}; static const char *const NM[5] = {"CLASSIC", "FATSAW", "PULSE", "PWM", "SWEEP"};
+        g_type = PX_SYN_ANALOG;
+        for (int b = 0; b < 5; b++) for (int k = 0; k < 3; k++) {
+            const uint8_t q[5] = {(uint8_t)(PAT[b] * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+            string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
+            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < (b == 4 ? 6.5f : 5.5f), "ANALOG %s on %.0f Hz: no beating swell (%.1f dB; SWEEP also moves its filter slowly by design)", NM[b], NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
+        }
+    }
     g_type = PX_SYN_ANALOG;
 }
 int main(void)
