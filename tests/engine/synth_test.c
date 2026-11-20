@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 #include "px_dsp.c"
 #define FS_ 44100.0f
 static px_engine e;
@@ -759,19 +760,55 @@ static void legato_suite(void)
             float lo = 1e9f; for (int i = (int)(0.5f * FS_); i < (int)(1.4f * FS_); i += 441) { double r = 0; for (int j = 0; j < 441; j++) r += ys[i + j] * ys[i + j]; r = sqrt(r / 441); if (r < lo) lo = (float)r; }
             { const int na = (int)trk[0].v[0].age; CHECK(ty ? na >= 8 : na <= 3, "%s: the note was started %d times by 30 picks (a follow patch keeps one note, a restarting one starts most)", ty ? "SWEEP" : "CLASSIC", na); }
             CHECK(ty ? 1 : lo > 0.004f, "FOLLOW lead patch: no dip to silence between the picks of a fast run (quietest 10 ms %.4f)", lo); } }
-    {   /* SFX APPLAUSE: every room makes a bounded, finite crowd at a sensible level, a bigger room is denser (a lower crest), MIX 0 leaves the guitar alone */
-        static float xa[44100 * 4], ya[44100 * 4]; const int NL = 44100 * 4; float crest_pub = 0, crest_sta = 0;
-        for (int m = 0; m < 5; m++) { px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE;
-            { uint8_t q[5] = {(uint8_t)(m * 25), 50, 30, 100, 0}; memcpy(pr.p[PX_B_SFX], q, 5); }
-            px_engine e2; px_engine_init(&e2, FS_); px_engine_set(&e2, &pr); memset(xa, 0, sizeof xa); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&e2, xa + at, ya + at, 64);
-            double r = 0; float pk = 0; int bad = 0; for (int i = 22050; i < NL; i++) { r += ya[i] * ya[i]; if (fabsf(ya[i]) > pk) pk = fabsf(ya[i]); if (!(fabsf(ya[i]) < 4.0f)) bad = 1; } r = sqrt(r / (NL - 22050));
-            const float db = 20.0f * log10f((float)r + 1e-9f), crest = 20.0f * log10f(pk / ((float)r + 1e-9f)); if (m == 0) crest_pub = crest; if (m == 4) crest_sta = crest;
-            CHECK(!bad && db > -34.0f && db < -10.0f, "APPLAUSE room %d: finite, rms %.1f dBFS (-34..-10)", m, db); }
-        CHECK(crest_sta + 4.0f < crest_pub, "APPLAUSE: the stadium is denser than the pub (crest %.1f against %.1f dB)", crest_sta, crest_pub);
-        px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE; { uint8_t q[5] = {50, 50, 0, 0, 0}; memcpy(pr.p[PX_B_SFX], q, 5); }
-        px_engine e3, e4; px_engine_init(&e3, FS_); px_engine_set(&e3, &pr); px_engine_init(&e4, FS_); pr.on[PX_B_SFX] = 0; px_engine_set(&e4, &pr);
-        for (int i = 0; i < 4096; i++) xa[i] = 0.2f * sinf(0.05f * (float)i); for (int at = 0; at < 4096; at += 64) { px_engine_process(&e3, xa + at, ya + at, 64); px_engine_process(&e4, xa + at, ya + 8192 + at, 64); }
-        float d = 0; for (int i = 0; i < 4096; i++) d += fabsf(ya[i] - ya[8192 + i]); CHECK(d < 1e-3f, "APPLAUSE with MIX 0 is the guitar (difference %.5f)", d); }
+    {   /* SFX APPLAUSE (docs/APPLAUSE.md): silent until the guitar attacks; one event per attack; rearms; every room bounded and finite */
+        enum { NL = 44100 * 14 }; static float xa[NL], ya[NL];
+        px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE;
+        { uint8_t q[5] = {50, 50, 30, 100, 0}; memcpy(pr.p[PX_B_SFX], q, 5); }
+        #define AP_RENDER(p_) do { px_engine ee; px_engine_init(&ee, FS_); px_engine_set(&ee, p_); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&ee, xa + at, ya + at, 64); } while (0)
+        #define AP_NOTE(t0, amp, secs) for (int i = 0; i < (int)((secs) * FS_) && (int)((t0) * FS_) + i < NL; i++) { const float tt = (float)i / FS_; xa[(int)((t0) * FS_) + i] += (amp) * expf(-tt * 9.0f) * (sinf(6.2832f * 196.0f * tt) + 0.5f * sinf(6.2832f * 392.0f * tt)); }
+        /* rms (dB) of ya over [s0, s1) seconds */
+        #define AP_DB(s0, s1) ({ double r_ = 0; int n_ = 0; for (int i = (int)((s0) * FS_); i < (int)((s1) * FS_); i++) { const float w_ = ya[i] - apg * xa[i]; r_ += w_ * w_; n_++; } 20.0f * log10f((float)sqrt(r_ / (n_ ? n_ : 1)) + 1e-9f); })
+        float apg = 0.4f;                              /* the guitar's share at MIX 100: the rest is the crowd */
+        memset(xa, 0, sizeof xa); AP_RENDER(&pr);
+        { int z = 0; for (int i = 0; i < NL; i++) if (fabsf(ya[i]) > 1e-7f) z = 1; CHECK(!z, "APPLAUSE enabled with silence: absolute silence"); }
+        for (int i = 0; i < NL; i++) xa[i] = 0.002f * sinf(0.3f * (float)i) * sinf(0.00017f * (float)i); AP_RENDER(&pr);
+        CHECK(AP_DB(0.0f, 14.0f) < -50.0f, "APPLAUSE: continuous low-level noise does not trigger (%.1f dB)", AP_DB(0.0f, 14.0f));
+        /* one attack at 1 s: nothing before, an event after, silence at the end; further notes during the applause do not extend it */
+        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.3f, 1.0f); AP_RENDER(&pr);
+        { const float pre = AP_DB(0.0f, 1.0f), mid = AP_DB(3.0f, 4.0f), end = AP_DB(11.0f, 14.0f);
+          CHECK(pre < -50.0f && mid > -34.0f && mid < -8.0f && end < -80.0f, "APPLAUSE: one attack = one event (before %.0f, during %.1f, after %.0f dB)", pre, mid, end); }
+        { float pk = 0; int bad = 0; for (int i = 0; i < NL; i++) { if (fabsf(ya[i]) > pk) pk = fabsf(ya[i]); if (!(fabsf(ya[i]) < 4.0f)) bad = 1; } CHECK(!bad && pk < 1.5f, "APPLAUSE: finite, peak %.2f", pk); }
+        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.3f, 1.0f); for (int k = 0; k < 4; k++) AP_NOTE(2.0f + 0.7f * (float)k, 0.3f, 0.6f); AP_RENDER(&pr);
+        { const float end = AP_DB(10.0f, 14.0f); CHECK(end < -80.0f, "APPLAUSE: notes played during the applause do not restart it (%.0f dB at 10 s)", end); }
+        /* it rearms: a second attack at 9 s starts a second event */
+        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.3f, 1.0f); AP_NOTE(8.0f, 0.3f, 1.0f); AP_RENDER(&pr);
+        { const float gap = AP_DB(6.5f, 7.9f), second = AP_DB(10.0f, 11.5f); CHECK(gap < -50.0f && second > -34.0f, "APPLAUSE: it ends and rearms (gap %.0f dB, second event %.1f dB)", gap, second); }
+        /* a note ringing when the effect is enabled never triggers: the guitar sustains at a steady level, then falls quiet */
+        memset(xa, 0, sizeof xa); for (int i = 0; i < (int)(3.0f * FS_); i++) xa[i] = 0.2f * sinf(6.2832f * 196.0f * (float)i / FS_);
+        AP_RENDER(&pr); CHECK(AP_DB(0.0f, 14.0f) < -50.0f, "APPLAUSE: a sustained note does not trigger (%.1f dB)", AP_DB(0.0f, 14.0f));
+        /* a distorted, chordal attack triggers; and the trigger does not depend on the MIX */
+        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.15f, 1.0f); for (int i = 0; i < NL; i++) xa[i] = tanhf(xa[i] * 12.0f) * 0.25f; { px_preset_t p2 = pr; p2.p[PX_B_SFX][3] = 20; apg = 1.0f - 0.12f; AP_RENDER(&p2); apg = 0.4f; }
+        CHECK(AP_DB(3.0f, 4.0f) > -50.0f, "APPLAUSE: a distorted attack triggers at a low MIX (%.1f dB)", AP_DB(3.0f, 4.0f));
+        /* switching away mid-event leaves nothing: a type change and back is disarmed and silent */
+        { px_engine ee; px_engine_init(&ee, FS_); px_engine_set(&ee, &pr); memset(xa, 0, sizeof xa); AP_NOTE(0.2f, 0.3f, 1.0f);
+          for (int at = 0; at + 64 <= 44100 * 2; at += 64) px_engine_process(&ee, xa + at, ya + at, 64);
+          px_preset_t p3 = pr; p3.type[PX_B_SFX] = PX_SFX_CRUSH; px_engine_set(&ee, &p3); px_engine_set(&ee, &pr);
+          memset(xa, 0, sizeof xa); float m = 0; for (int at = 0; at + 64 <= 44100; at += 64) { px_engine_process(&ee, xa + at, ya + at, 64); for (int i = 0; i < 64; i++) if (fabsf(ya[at + i]) > m) m = fabsf(ya[at + i]); }
+          CHECK(m < 0.005f, "APPLAUSE: after an effect switch there are no stuck voices (%.2g)", m); }
+        /* the five rooms at three crowd sizes: finite, a sensible level during the event; the stadium is denser than the pub */
+        { float crest_pub = 0, crest_sta = 0;
+          for (int m = 0; m < 5; m++) for (int cw = 0; cw < 3; cw++) { px_preset_t p4 = pr; { uint8_t q[5] = {(uint8_t)(m * 25), (uint8_t)(cw * 50), 30, 100, 0}; memcpy(p4.p[PX_B_SFX], q, 5); }
+              memset(xa, 0, sizeof xa); AP_NOTE(0.5f, 0.3f, 1.0f); AP_RENDER(&p4);
+              float pk = 0; int bad = 0; for (int i = 0; i < NL; i++) { if (fabsf(ya[i]) > pk) pk = fabsf(ya[i]); if (!(fabsf(ya[i]) < 4.0f)) bad = 1; }
+              const float db = AP_DB(2.5f, 3.5f), crest = 20.0f * log10f(pk / (powf(10.0f, db / 20.0f) + 1e-9f));
+              if (m == 0 && cw == 1) crest_pub = crest; if (m == 4 && cw == 1) crest_sta = crest;
+              CHECK(!bad && db > -36.0f && db < -10.0f, "APPLAUSE room %d crowd %d: finite, event rms %.1f dBFS (-36..-10)", m, cw * 50, db);
+              if (getenv("AP_WAV")) { char fn[64]; snprintf(fn, sizeof fn, "build/applause_r%d_c%d.raw", m, cw * 50); FILE *fo = fopen(fn, "wb"); if (fo) { fwrite(ya, sizeof(float), (size_t)(8 * 44100), fo); fclose(fo); } } }
+          CHECK(crest_sta + 3.0f < crest_pub, "APPLAUSE: the stadium is denser than the pub (crest %.1f against %.1f dB)", crest_sta, crest_pub); }
+        /* MIX 0 leaves the guitar alone */
+        { px_preset_t p5 = pr; p5.p[PX_B_SFX][3] = 0; static float yb[4096]; px_engine e3, e4; px_engine_init(&e3, FS_); px_engine_set(&e3, &p5); px_engine_init(&e4, FS_); pr.on[PX_B_SFX] = 0; px_engine_set(&e4, &pr); pr.on[PX_B_SFX] = 1;
+          for (int i = 0; i < 4096; i++) xa[i] = 0.2f * sinf(0.05f * (float)i); for (int at = 0; at < 4096; at += 64) { px_engine_process(&e3, xa + at, ya + at, 64); px_engine_process(&e4, xa + at, yb + at, 64); }
+          float d = 0; for (int i = 0; i < 4096; i++) d += fabsf(ya[i] - yb[i]); CHECK(d < 1e-3f, "APPLAUSE with MIX 0 is the guitar (difference %.5f)", d); } }
     g_type = PX_SYN_ANALOG;
 }
 int main(void)

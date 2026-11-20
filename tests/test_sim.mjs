@@ -36,7 +36,7 @@ const png = async (path = "/api/screen.png") => Buffer.from(await (await fetch(s
 let info = await get("/api/info");
 ok(info.kind === "pedal" && info.port === "OpenPocket" && info.controls.includes("fs_up"), `info: ${info.kind} on port "${info.port}"`);
 let s = await state();
-ok(s.slot === 0 && s.name === "PRESET 01" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
+ok(s.slot === 0 && s.name === "SQUARE LEAD" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
 ok(s.preset.p.length === 9 && s.preset.order.length === 9 && s.dsp.load === 42 && s.writes_ok === 1, "state: 9 blocks, the DSP load, flash writes allowed");
 
 // ---- 2. footswitches and the screen ----
@@ -45,7 +45,7 @@ ok(shot0.length === 240 * 240 * 2, "screen.rgb565: 240 x 240 x 2 bytes");
 await act("/api/press/fs_up");
 s = await state();
 const shot1 = await png("/api/screen.rgb565");
-ok(s.slot === 1 && s.name === "PRESET 02" && s.last_press === "fs_up" && s.presses === 1, `footswitch up: slot 2 "${s.name}"`);
+ok(s.slot === 1 && s.name === "SQ HQ BASS" && s.last_press === "fs_up" && s.presses === 1, `footswitch up: slot 2 "${s.name}"`);
 ok(s.frame !== f0 && !shot0.equals(shot1), "the screen was redrawn (frame counter and pixels changed)");
 const p = await png("/api/screen.png?scale=2");
 ok(p.subarray(1, 4).toString() === "PNG" && p.readUInt32BE(16) === 480 && p.readUInt32BE(20) === 480, "screen.png?scale=2: a 480 x 480 PNG");

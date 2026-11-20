@@ -143,6 +143,7 @@ typedef struct {
 #define PX_RV_M 16384                  /* reverb memory: one 16-bit ring (32 KB) at half rate, laid out per type */
 #define PX_GL_MAX 64                   /* v38: the most settings that glide (px_dsp.c: GL_F) */
 
+typedef struct { float env, k, a2, f, q, lp, bp; int d2, on; } px_ap_voice_t;   /* an APPLAUSE clap voice */
 typedef struct {
     float sr;
     px_preset_t cur;
@@ -173,7 +174,13 @@ typedef struct {
     int   sfx_pat, crush_n, crush_k; float crush_v, crush_q;
     px_bq sfx_f1, sfx_f2;
     px_synth_tracking sfx_track;
-    uint32_t ap_rng; float ap_clap, ap_field, ap_ph, ap_dens, ap_ckd, ap_fkr, ap_d, ap_sw, ap_inc, ap_g;   /* APPLAUSE: the noise generator, the claps' and the room's levels, the swell's phase */
+    /* APPLAUSE (v80?): a guitar-triggered crowd. The detector reads the dry guitar; IDLE -> REACTION -> BUILD -> SUSTAIN -> DECAY -> IDLE;
+     * 12 clap voices (a resonant band, a sharp impact, a second hand contact), 6 individual clappers and a stochastic background */
+    uint32_t ap_rng; float ap_field, ap_dens, ap_cms, ap_fkr, ap_d, ap_sw, ap_g, ap_bri;
+    float ap_ka1, ap_kr1, ap_ka2, ap_kr2, ap_e1, ap_e2, ap_lvl, ap_wv, ap_wt;
+    int   ap_live, ap_state, ap_armed, ap_t, ap_dur, ap_qual, ap_quiet, ap_wn, ap_ncl, ap_nq, ap_qn, ap_act;
+    float ap_next[6], ap_per[6], ap_cam[6];
+    px_ap_voice_t ap_vc[12];
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
