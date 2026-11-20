@@ -20,8 +20,8 @@ else echo "protected: DIFFERS from $REF"; diff "$B/ref.txt" "$B/new.txt" | head 
 # PITCH type 5 (LOWEST OCTAVE HQ: its gain was raised on purpose in Synth2 fix pass 1; tests/engine/lowest_gain_test.c measures that change)
 $CC -O2 -w -fno-builtin -ffp-contract=off -I"$B/ref/engine" -o "$B/eq-ref" tests/engine/equiv.c "$B/ref/firmware/px_math.c" -lm
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -o "$B/eq-new" tests/engine/equiv.c firmware/px_math.c -lm
-"$B/eq-ref" A | grep -v '^A blk 3 type \([0-9]\|1[0-5]\|1[7-9]\|2[0-9]\) \|^A blk 2 type 5 \|runs$' > "$B/eq-ref.txt"
-"$B/eq-new" A | grep -v '^A blk 3 type \([0-9]\|1[0-5]\|1[7-9]\|2[0-9]\) \|^A blk 2 type 5 \|runs$' > "$B/eq-new.txt"
+"$B/eq-ref" A | grep -v '^A blk 3 type \([0-9]\|1[0-5]\|1[7-9]\|2[0-9]\|3[0-9]\) \|^A blk 2 type 5 \|runs$' > "$B/eq-ref.txt"
+"$B/eq-new" A | grep -v '^A blk 3 type \([0-9]\|1[0-5]\|1[7-9]\|2[0-9]\|3[0-9]\) \|^A blk 2 type 5 \|runs$' > "$B/eq-new.txt"
 if cmp -s "$B/eq-ref.txt" "$B/eq-new.txt"; then echo "protected: the other blocks (alone) identical, $(wc -l < "$B/eq-new.txt") runs"
 else echo "protected: the other blocks DIFFER"; diff "$B/eq-ref.txt" "$B/eq-new.txt" | head -8; rc=1; fi
 exit $rc

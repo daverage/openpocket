@@ -436,6 +436,7 @@ static void bq_highshelf(px_bq *b, float fs, float f, float db)
 static void px_synth_run(px_engine *e, const float *in, float *out, int n);   /* px_synth_adapter.h, included at the end */
 static void px_s2_reset(px_engine *e, int type, const uint8_t *q);
 static void px_s2_set_q(int type, const uint8_t *q);
+static void px_s2_dry(float *g0, float *g1);
 #include "px_resonator_test.h"
 static float tan_pi(float fs, float f) { float w = PI_F * clampf_hz(fs, f) / fs; return sinf(w) / cosf(w); }
 static void bq_hp1(px_bq *b, float fs, float f)          /* first order (RC coupling, like the real circuits) */
@@ -500,13 +501,14 @@ static const tdef T_SFX[PX_SFX_COUNT] = {
 static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
 static const char *const PN_ANALOG[] = {"PATCH", "CUTOFF", "RESONANCE", "ENVELOPE", "LEVEL"};
 static const char *const PN_ARCADE[] = {"PATCH", "CHARACTER", "SWEEP", "DECAY", "MIX"};
+static const char *const PN_ARCADE_SPLIT[] = {"LOWER", "UPPER", "SPLIT", "DECAY", "MIX"};
 #define SYN_TOMB {"", 0, 0}
 static const tdef T_SYN[PX_SYN_COUNT] = {
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
-    {"ANALOG", 5, PN_ANALOG}, {"ARCADE", 5, PN_ARCADE},
+    {"ANALOG", 5, PN_ANALOG}, {"ARCADE", 5, PN_ARCADE}, {"ARCADE SPLIT", 5, PN_ARCADE_SPLIT},
 };
 int px_type_retired(int b, int t) { return b == PX_B_SYN && !px_syn_runs(t); }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
@@ -732,6 +734,14 @@ int px_param_text(int b, int t, int k, int v, char *buf)
     case PX_B_SYN:
         if (t == PX_SYN_ANALOG && k == 0) { put_str(buf, PX_ANALOG_PATCHES[px_patch_slot(v)].name); return 1; }
         if (t == PX_SYN_ARCADE && k == 0) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
+        if (t == PX_SYN_ARCADE_SPLIT && k <= 1) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
+        if (t == PX_SYN_ARCADE_SPLIT && k == 2) {                         /* the note the two ranges meet at: notes from it up play UPPER */
+            const int note = px_split_note(v);
+            const char *name = NOTE_TXT[note % 12];
+            put_str(buf, name);
+            put_int(buf + (name[1] ? 2 : 1), note / 12 - 1, 0);
+            return 1;
+        }
         break;
     case PX_B_DELAY:
         if (k == 0) { put_int(buf, (int)(dly_ms(t, v) + 0.5f), 0); int i = 0; while (buf[i]) i++;
@@ -2389,7 +2399,9 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         }
         /* v40.4: the blocks that run over the block pass by pass (above); the others sample by sample, below */
         if (sblk == PX_B_SYN && px_syn_mono(syn_t)) {
-            for (int k = 0; k < n; ++k) xb[k] = sy[k] * strim;
+            float g0, g1; px_s2_dry(&g0, &g1);             /* ARCADE's guitar share: the signal that reaches this block (the blocks before it in the order have worked on it) */
+            const float dg = (g1 - g0) / (float)n;
+            for (int k = 0; k < n; ++k) xb[k] = (sy[k] + xb[k] * (g0 + dg * (float)k)) * strim;
             goto faded;
         }
         if (sblk == PX_B_SYN && syn_t == PX_SYN_OCT_FUZZ) {

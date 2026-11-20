@@ -26,11 +26,15 @@ static track_t trk[NPART];
 #include "../third_party/felucca-engines/src/eng_lofi.c"
 #include "px_synth_patches.h"
 
+#define PX_ARCADE_SPLIT_AS PX_SYN_ARCADE
 #define PX_S2_OUT 0.30f                                /* float output per Felucca full scale at LEVEL noon, trim 1.0 (set on the host against the loops' level) */
 
 typedef struct {
     px_mono mono;                                      /* the tracker (px_mono.h) */
-    int type;                                          /* PX_SYN_ANALOG or PX_SYN_ARCADE */
+    int type;                                          /* PX_SYN_ANALOG, PX_SYN_ARCADE or PX_SYN_ARCADE_SPLIT */
+    int arc;                                           /* 1: Felucca LOFI (ARCADE, ARCADE SPLIT) */
+    uint8_t sq[5]; int split_note, upper;              /* ARCADE SPLIT: its settings, the split note, which range the sounding note is in */
+    float dry_c;                                       /* the guitar's share as it is now (ramped: a MIX change makes no click) */
     float dry;                                         /* ARCADE's MIX: the clean guitar's share of the output */
     const engine_t *eng;
     const px_patch *patch;
@@ -52,12 +56,12 @@ static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000
  * ANALOG: PATCH, CUTOFF, RESONANCE, ENVELOPE, LEVEL. ARCADE: PATCH, CHARACTER (the DUTY: pulse width / wave table), SWEEP (the pitch sweep down),
  * DECAY (a stepped patch's staircase, else the envelope's decay and release times), MIX (guitar against synth). 50 = the patch as written. */
 static inline int px_s2_clamp127(float v) { const int i = (int)(v + (v < 0.0f ? -0.5f : 0.5f)); return i < 0 ? 0 : i > 127 ? 127 : i; }
-static void px_s2_set(px_s2 *s, int type, const uint8_t *q)
+static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
 {
-    const int arc = type == PX_SYN_ARCADE;
+    const int arc = type != PX_SYN_ANALOG;
     const px_patch *pa = &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
-    s->type = type; s->patch = pa; s->eng = arc ? &ENG_LOFI : &ENG_ANALOG;
+    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : &ENG_ANALOG;
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
@@ -87,6 +91,13 @@ static void px_s2_set(px_s2 *s, int type, const uint8_t *q)
     s->sus = pa->env[2] / 127.0f;
     s->fenv_amp = (float)pa->fenv;
 }
+static void px_s2_set(px_s2 *s, int type, const uint8_t *q)
+{
+    if (type != PX_SYN_ARCADE_SPLIT) { px_s2_apply(s, type, q); return; }
+    memcpy(s->sq, q, 5); s->split_note = px_split_note(q[2]);
+    const uint8_t qq[5] = {q[s->upper ? 1 : 0], 50, 50, q[3], q[4]};       /* the sounding range's patch, its macros at noon, DECAY and MIX shared */
+    px_s2_apply(s, PX_ARCADE_SPLIT_AS, qq); s->type = type;
+}
 static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
 {
     px_s2 *s = &px_s2_st;
@@ -94,6 +105,7 @@ static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
     memset(trk, 0, sizeof trk);
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
     px_s2_set(s, type, q);
+    s->dry_c = s->dry;
 }
 /* semitones (MIDI, 69 = 440 Hz) -> Felucca's pitch16 (1/16 semitone) and the residual in its fine units (1/4096 of the increment) */
 static inline void px_s2_pitch(float semis, int32_t *pitch16, int32_t *fine, int round_to_step)
@@ -138,6 +150,10 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
 {
     track_t *t = &trk[0];
     voice_t *v = &t->v[0];
+    if (s->pend_on && s->f0 > 0.0f && s->type == PX_SYN_ARCADE_SPLIT) {        /* the note's range picks its patch (the notes from the split up are UPPER) */
+        const int up = (int)(12.0f * 1.442695f * logf(s->f0 * (1.0f / 440.0f)) + 69.5f) >= s->split_note;
+        if (up != s->upper) { s->upper = up; px_s2_set(s, PX_SYN_ARCADE_SPLIT, s->sq); }
+    }
     if (s->f0 > 0.0f) {
         const float target = 12.0f * 1.442695f * logf(s->f0 * (1.0f / 440.0f)) + 69.0f + (float)s->patch->semis;
         if (s->pend_on || s->pitch_cur == 0.0f) s->pitch_cur = target;               /* a new note: there, no glide from the last */
@@ -150,7 +166,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
         v->note = (uint8_t)((int)(s->pitch_cur + 0.5f) & 127); v->vel = 100; v->gate = 1; v->active = 1; v->stage = 1; v->age++;
         if (!sounding) s->env = 0.0f;                                                  /* a voice still sounding keeps its level: the attack starts from it, no click */
         s->stage = 1;
-        px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->type == PX_SYN_ARCADE); v->pitch_cur = v->pitch16;
+        px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
         if (!sounding) v->env = v->env_out = 0;
         s->eng->note_on(t, v);
         if (sounding) {                                                                 /* Felucca's retrigger rule: keep the phases and the filter */
@@ -182,7 +198,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     const float amp = shape * vg * (0.6f + 0.4f * s->expr_r);                          /* and the string's own decay */
     vmod_t m;
     memset(&m, 0, sizeof m);
-    px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->type == PX_SYN_ARCADE); v->pitch_cur = v->pitch16;
+    px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
     const uint32_t base = pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047));
     m.pitch16 = v->pitch16; m.fine = v->fine; m.inc = base + (uint32_t)((int32_t)(base >> 12) * v->fine);
     m.amp0 = (int32_t)(s->last_amp * 32767.0f); m.amp1 = (int32_t)(amp * 32767.0f); s->last_amp = amp;
@@ -197,6 +213,8 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     for (int i = 0; i < CTL; i++) s->ring[i] = (float)s->out[i] * g;
     s->blk++;
 }
+/* ARCADE's guitar share, ramped over the n samples: the caller mixes it with the signal that reaches the SYNTH block (after the blocks before it in the order) */
+static inline void px_s2_dry(float *g0, float *g1) { px_s2 *s = &px_s2_st; *g0 = s->dry_c; s->dry_c += (s->dry - s->dry_c) * 0.25f; *g1 = s->dry_c; }
 /* n samples of the clean guitar in, n samples of synth out (the previous control block's render: a fixed 32 samples later) */
 PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n)
 {
@@ -207,7 +225,7 @@ PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n
         if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; }
         if (o.release) s->pend_off = 1;
         s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f;
-        out[k] = s->ring[s->rpos] + in[k] * s->dry;
+        out[k] = s->ring[s->rpos];                                                  /* (the dry guitar is added where the block stands in the chain: px_s2_dry) */
         s->rpos++;
         if (++s->cnt == CTL) {
             px_s2_block(s);                                                              /* writes ring[] for the next 32 samples */

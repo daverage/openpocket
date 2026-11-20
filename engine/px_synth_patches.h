@@ -45,5 +45,7 @@ static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
     {"NOISE",   {0, 3,  0, 40,  0,  0, 0, 100}, {0, 40,  90, 30},  0,   0,140, 0, 1},   /* crushed noise, rate follows the note; xorshift as in Arcade Poly, sustains while held */
     {"MIN ARP", {2, 0, 64,  0,  0,  0, 3, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit minor arpeggio */
 };
+/* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */
+static inline int px_split_note(int v) { v = v < 0 ? 0 : v > 100 ? 100 : v; return 40 + (v * 36 + 50) / 100; }
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }
 #endif

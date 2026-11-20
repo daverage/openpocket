@@ -232,11 +232,50 @@ static void pass1_suite(void)
         CHECK(held > 0.5f * early, "NOISE is still playing 1.1 s into a held note (%.4f against %.4f)", held, early);
     }
 }
+/* Synth2: ARCADE's dry share follows the chain (the signal at the SYNTH block), ARCADE SPLIT plays a patch for each range */
+static void routing_split_suite(void)
+{
+    g_type = PX_SYN_ARCADE;
+    {   static const float NOTE[1] = {196.0f}, ST[1] = {0.1f};
+        string(x, N_, NOTE, ST, 1, 0.5f, 0.99997f, 0);
+        const uint8_t q[5] = {15, 50, 50, 50, 0};                                  /* MIX 0: the guitar alone */
+        px_preset_t a; preset_of(&a, q); px_preset_t b = a;
+        for (int z = 0; z < PX_NBLK; z++) { a.on[z] = b.on[z] = 0; }
+        a.on[PX_B_EQ] = b.on[PX_B_EQ] = 1; a.on[PX_B_SYN] = 1; b.on[PX_B_SYN] = 0;
+        for (int k = 0; k < 5; k++) a.p[PX_B_EQ][k] = b.p[PX_B_EQ][k] = 0;           /* every band down 12 dB: the guitar before the SYNTH block is 12 dB quieter */
+        uint8_t o[PX_NBLK]; int n = 0; o[n++] = PX_B_EQ; o[n++] = PX_B_SYN; for (int z = 0; z < PX_NBLK; z++) if (z != PX_B_EQ && z != PX_B_SYN) o[n++] = (uint8_t)z;
+        memcpy(a.order, o, sizeof o); memcpy(b.order, o, sizeof o);
+        render(&a, x, y, N_, 64); render(&b, x, y2, N_, 64);
+        const float ra = rms(y, 22050, 22050), rb = rms(y2, 22050, 22050);
+        CHECK(fabsf(ra / rb - 1.0f) < 0.05f, "ARCADE's dry share comes after the blocks before it (EQ -12 dB): %.4f against the EQ alone %.4f", ra, rb);
+    }
+    {   g_type = PX_SYN_ARCADE_SPLIT;
+        static const float NOTES[2] = {110.0f, 329.63f}; static const float ST[1] = {0.1f};
+        const uint8_t q[5] = {25, 15, 42, 50, 100};                                 /* LOWER 8BIT BS (an octave down), UPPER CHIP, split at G3 (55) */
+        CHECK(px_split_note(42) == 55, "SPLIT 42 is G3 (%d)", px_split_note(42));
+        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_ARCADE_SPLIT, 2, 42, buf); CHECK(!strcmp(buf, "G3"), "SPLIT reads as a note name (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_ARCADE_SPLIT, 0, 25, buf); CHECK(!strcmp(buf, "8BIT BS"), "LOWER reads as a patch name (%s)", buf);
+        for (int k = 0; k < 2; k++) {
+            px_preset_t p; preset_of(&p, q);
+            string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99997f, 0); render(&p, x, y, N_, 64);
+            const float want = k == 0 ? 55.0f : NOTES[1], got = f0_of(y, (int)(0.5f * FS_), 4096, want * 0.7f, want * 1.4f);
+            CHECK(got > 0 && fabsf(cents(got, want)) < 25.0f, "ARCADE SPLIT on %.1f Hz plays %.1f Hz (got %.1f)", NOTES[k], want, got);
+        }
+        {   /* the two notes in turn: the range follows each note */
+            static const float H[2] = {110.0f, 329.63f}, S2[2] = {0.1f, 2.0f};
+            string(x, N_, H, S2, 2, 0.5f, 0.9998f, 0); px_preset_t p; preset_of(&p, q); render(&p, x, y, N_, 64);
+            const float a = f0_of(y, (int)(1.2f * FS_), 4096, 38.0f, 80.0f), b = f0_of(y, (int)(2.7f * FS_), 4096, 230.0f, 460.0f);
+            CHECK(a > 0 && b > 0, "a low then a high note: each in its own range (%.1f, %.1f Hz)", a, b);
+        }
+    }
+    g_type = PX_SYN_ARCADE;
+}
 int main(void)
 {
     analog_suite();
     arcade_suite();
     pass1_suite();
+    routing_split_suite();
     printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade synth ok", bad);
     return bad != 0;
 }
