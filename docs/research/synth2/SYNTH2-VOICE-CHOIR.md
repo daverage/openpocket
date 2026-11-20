@@ -1,6 +1,6 @@
 # Synth2: the original FM-1 synth's VOICE engine as the choir
 
-Status: **host-only evaluation. Not in the firmware, not compiled for the target, not flashed, not listened to by anyone.** Reproduce with `sh tools/research/voice_eval/run.sh` (the engine file is an unmodified copy with its provenance in `tools/research/voice_eval/README.md`). Listening files: `build/choir-voice/` (76 files, not committed).
+Status: **integrated as the CHOIR type (id 33, test build 916): host tested, built for the target, not flashed, not listened to by anyone, pedal CPU not measured.** Reproduce with `sh tools/research/voice_eval/run.sh` (the engine file is an unmodified copy with its provenance in `tools/research/voice_eval/README.md`). Listening files: `build/choir-voice/` (76 files, not committed).
 
 ## Why this engine
 
@@ -22,6 +22,10 @@ Licence: GPL-3.0-only (`guysoft/blackbox-fm1`, commit `312f1035`, copyright Leo 
 
 Whether it sounds like a choir. The objective evidence is the right one (real, fixed formants, a glottal source, breath, steady level across the range), and it is the engine the original synth uses for exactly this sound; whether the result is convincing, and whether the 476 ms attack suits playing, is for the ear. It is mono (one note from the tracker), as all of this is.
 
-## If it is accepted
+## Integrated (build 916)
 
 A new SYNTH type CHOIR (id 33) is the cleanest: PATCH = the vowel (AH, EH, EE, OH, OO and mixes of them: VOWL / VOWL2 / TALK pairs), VOICING = the singers (the ENSEMBLE stacks, reusing `PX_STACKS`), SPREAD, TONE (the formant shift), LEVEL; vendored `eng_formant.c` and `fe_env_tables.h` under `third_party/` with the licence notice (and a NOTICE.md line). Before that: a target build to measure the cost of the 64-bit arithmetic (a float or 32-bit resonator rewrite if it is too dear), and the listening test.
+
+Done: `third_party/felucca-host/` (the unmodified engine, `fe_env_tables.h`, `gen_env_tables.py`, `PINNED.md`, a NOTICE.md line); `PX_VOWELS` (ten vowel patches: AH, EH, EE, OH, OO, OO>AH, AH>OO, AH>EE, MIXED, BREATHY; the vowels' positions are Felucca's A 0, E 32, I 64, O 95, U 127; ATK 72 / REL 92 instead of Felucca's 85 / 95 (190 ms / 800 ms against 476 ms / 980 ms), a delayed vibrato of 10 cents); the adapter's CHOIR type reuses the ENSEMBLE stacks (each voice a singer with its own drift and vibrato) and TONE shifts the formants +-5 semitones; trims set so the vowels sit near -18 dBFS gated RMS on the loops (BREATHY about 2 dB lower). Existing types: 150 renders bit-identical to the previous commit; protected effects identical.
+Tests (`choir_suite`): the names; AH's strongest harmonic is in the F1 region (520-820 Hz) at 110, 165 and 220 Hz and the level is within 3 dB across them; EE has more than 10 dB more energy above 2 kHz (relative to 250-1000 Hz) than OO; OO>AH opens and AH>OO closes over each note (the spectrum's centre of mass moves 60 Hz or more); 600 vowel x singers x spread x tone combinations finite and bounded (peak 0.81); silence in, silence out; deterministic and call-size independent; a hard mute stops all five singers within 400 ms.
+Target (`make package-synth2`): openpocket.bin 228 748 B (+5 KB: the engine runs from flash), RAM code 62 712 B unchanged (23 296 B free), low RAM unchanged. **Pedal CPU is unmeasured**: the engine does 64-bit multiply-accumulates in its four resonators; read the DSP meter with CHOIR OPEN (five singers), and tell me if it is too dear (a float or 32-bit resonator rewrite is the fallback).

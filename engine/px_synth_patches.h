@@ -95,6 +95,24 @@ static const px_stack PX_STACKS[PX_PATCH_SLOTS] = {
     {"OPEN",    5, {{-12, -4, 52, 72}, {0, 0, 60, 64}, {7, 4, 52, 76}, {12, -5, 48, 84}, {16, 5, 44, 92}}, 58}, /* an open major voicing: sub octave, root, fifth, octave, tenth */
 };
 static inline int px_stack_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }
+/* CHOIR (Synth2 stage G): the original FM-1 synth's VOICE engine (Klatt formant synthesis: third_party/felucca-host/eng_formant.c, GPL-3.0-only), sung vowels, one singer a voice. PATCH picks the vowel; the SINGERS
+ * (VOICING) are the ENSEMBLE stacks (PX_STACKS), each voice a singer with its own drift and vibrato. e[] = VOWL, VOWL2, TALK, SHIFT, BUZZ, BREATH, Q, RAND (src: Felucca's CHOIR AAH preset, 0 40 22 60); VOWL 0 A, 32 E, 64 I, 95 O, 127 U
+ * (a position along them); TALK moves the mouth from VOWL to VOWL2 after each note starts (a time: 80 is 330 ms); RAND moves both towards the note's random vowel. Attack and release: ATK 72 / REL 92 (190 ms / 800 ms by Felucca's
+ * tables; Felucca's CHOIR AAH has 85 / 95: 476 ms / 980 ms: shortened for a guitar). The ten slots are final once defined. Names: at most 7 characters. */
+static const px_patch PX_VOWELS[PX_PATCH_SLOTS] = {
+    /* name       VOWL VOWL2 TALK SHIFT BUZZ BRTH Q RAND     ATK DEC SUS REL  fenv semis trim pwm noise eng vib vdel ftype */
+    {"AH",      {  0,   0,   0, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},   /* Felucca CHOIR AAH's vowel */
+    {"EH",      { 32,  32,   0, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},
+    {"EE",      { 64,  64,   0, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},
+    {"OH",      { 95,  95,   0, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},
+    {"OO",      {127, 127,   0, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},
+    {"OO>AH",   {127,   0,  80, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},   /* the mouth opens from OO to AH over each note (330 ms): the choir's "ooh-aah" */
+    {"AH>OO",   {  0, 127,  80, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},
+    {"AH>EE",   {  0,  64,  80, 0, 40, 22, 60,  0}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},
+    {"MIXED",   {  0,   0,   0, 0, 40, 22, 60, 70}, {72, 90, 115, 92}, 0, 0, 44, 0, 0, 3, 10, 20, 0},   /* every note (and every singer) sings its own random vowel: Felucca's RAND */
+    {"BREATHY", {  0,  95,  88, 3, 50, 120, 50, 0}, {50, 90, 110, 90}, 0, 0, 64, 0, 0, 3,  0,  0, 0},   /* Felucca WHISPER: breath at the top, the vowel drifting from A to O, a little higher */
+};
+static inline int px_vowel_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }
 /* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */
 static inline int px_split_note(int v) { v = v < 0 ? 0 : v > 100 ? 100 : v; return 40 + (v * 36 + 50) / 100; }
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }

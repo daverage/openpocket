@@ -28,6 +28,9 @@ static track_t trk[NPART];
 #include "../third_party/felucca-engines/src/eng_analog.c"
 #include "../third_party/felucca-engines/src/eng_lofi.c"
 #include "../third_party/felucca-engines/src/eng_wheel.c"
+#include "../third_party/felucca-host/fe_env_tables.h"                /* ENV_LIN: the VOICE engine's TALK morph reads it */
+#define FELUCCA_CPU2 0
+#include "../third_party/felucca-host/eng_formant.c"      /* the original FM-1 synth's VOICE engine (GPL-3.0-only, third_party/felucca-host/PINNED.md) */
 #include "px_synth_patches.h"
 
 #define PX_ARCADE_SPLIT_AS PX_SYN_ARCADE
@@ -82,19 +85,22 @@ static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000
 static inline int px_s2_clamp127(float v) { const int i = (int)(v + (v < 0.0f ? -0.5f : 0.5f)); return i < 0 ? 0 : i > 127 ? 127 : i; }
 static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
 {
-    const int ens2 = type == PX_SYN_ENSEMBLE;                                          /* ENSEMBLE: the INSTRUMENT patches, played by a stack of voices */
+    const int cho = type == PX_SYN_CHOIR;                                              /* CHOIR: the VOICE engine's vowels, sung by a stack of singers */
+    const int ens2 = type == PX_SYN_ENSEMBLE || cho;                                   /* ENSEMBLE: the INSTRUMENT patches, played by a stack of voices */
     const int ens = type == PX_SYN_INSTRUMENT || ens2;
     const int arc = type == PX_SYN_ARCADE || type == PX_SYN_ARCADE_SPLIT;
-    const px_patch *pa = ens ? &PX_INSTRUMENT_PATCHES[px_inst_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
+    const px_patch *pa = cho ? &PX_VOWELS[px_vowel_slot(q[0])] : ens ? &PX_INSTRUMENT_PATCHES[px_inst_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
     const float mt = ens2 ? m3 : m1;                                                   /* TONE: INSTRUMENT's second setting, ENSEMBLE's fourth */
-    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT and ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
+    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng == 3) ? &ENG_FORMANT : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT and ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = pa->ftype;
     float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (INSTRUMENT), else tm */
     if (ens) {                                                                              /* INSTRUMENT: PATCH, TONE, ATTACK, RELEASE, LEVEL */
-        if (pa->eng) {                                                                      /* WHEEL: TONE tilts the drawbars: up = upper bars +5 and body +1.5, sub bars -5 (one level is about 3 dB); 50 = as written */
+        if (pa->eng == 3) {                                                                 /* VOICE: TONE shifts all the formants (the singer's size), +-5 semitones */
+            t0->p[P_E3] = (int16_t)((int)pa->e[3] + (int)((mt - 0.5f) * 10.0f + (mt < 0.5f ? -0.5f : 0.5f)));
+        } else if (pa->eng) {                                                               /* WHEEL: TONE tilts the drawbars: up = upper bars +5 and body +1.5, sub bars -5 (one level is about 3 dB); 50 = as written */
             const float tn = (mt - 0.5f) * 2.0f, rh = tn < 0.0f ? -0.5f : 0.5f;
             t0->p[P_E1] = (int16_t)((int)pa->e[1] - (int)(tn * 5.0f + rh));
             t0->p[P_E2] = (int16_t)((int)pa->e[2] + (int)(tn * 1.5f + rh));
@@ -170,7 +176,8 @@ static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
     px_s2 *s = &px_s2_st;
     memset(s, 0, sizeof *s);
     memset(trk, 0, sizeof trk);
-    memset(drw_t, 0, sizeof drw_t); memset(drw_v, 0, sizeof drw_v);                     /* WHEEL's own state (eng_wheel.c: rotors, bar gains, phases) */
+    memset(drw_t, 0, sizeof drw_t); memset(drw_v, 0, sizeof drw_v);
+    formant_nz = 0x2545F491;                                                              /* the VOICE engine's breath-noise seed (eng_formant.c) */                     /* WHEEL's own state (eng_wheel.c: rotors, bar gains, phases) */
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
     for (int i = 0; i < PX_S2_NV; i++) { s->vcut[i] = -1; s->grp[i] = (uint8_t)i; }
     px_s2_set(s, type, q);

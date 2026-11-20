@@ -502,6 +502,7 @@ static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"}
 static const char *const PN_ANALOG[] = {"PATCH", "CUTOFF", "RESONANCE", "ENVELOPE", "LEVEL"};
 static const char *const PN_INSTRUMENT[] = {"PATCH", "TONE", "ATTACK", "RELEASE", "LEVEL"};
 static const char *const PN_ENSEMBLE[] = {"PATCH", "VOICING", "SPREAD", "TONE", "LEVEL"};
+static const char *const PN_CHOIR[] = {"VOWEL", "SINGERS", "SPREAD", "TONE", "LEVEL"};
 static const char *const PN_ARCADE[] = {"PATCH", "CHARACTER", "SWEEP", "DECAY", "MIX"};
 static const char *const PN_ARCADE_SPLIT[] = {"LOWER", "UPPER", "SPLIT", "DECAY", "MIX"};
 #define SYN_TOMB {"", 0, 0}
@@ -513,6 +514,7 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ANALOG", 5, PN_ANALOG}, {"ARCADE", 5, PN_ARCADE}, {"ARCADE SPLIT", 5, PN_ARCADE_SPLIT},
     {"INSTRUMENT", 5, PN_INSTRUMENT},
     {"ENSEMBLE", 5, PN_ENSEMBLE},
+    {"CHOIR", 5, PN_CHOIR},
 };
 int px_type_retired(int b, int t) { return b == PX_B_SYN && !px_syn_runs(t); }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
@@ -737,6 +739,8 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_SYN:
         if (t == PX_SYN_ANALOG && k == 0) { put_str(buf, PX_ANALOG_PATCHES[px_patch_slot(v)].name); return 1; }
+        if (t == PX_SYN_CHOIR && k == 0) { put_str(buf, PX_VOWELS[px_vowel_slot(v)].name); return 1; }
+        if (t == PX_SYN_CHOIR && k == 1) { put_str(buf, PX_STACKS[px_stack_slot(v)].name); return 1; }
         if (t == PX_SYN_ENSEMBLE && k == 0) { put_str(buf, PX_INSTRUMENT_PATCHES[px_inst_slot(v)].name); return 1; }
         if (t == PX_SYN_ENSEMBLE && k == 1) { put_str(buf, PX_STACKS[px_stack_slot(v)].name); return 1; }
         if (t == PX_SYN_INSTRUMENT && k == 0) { put_str(buf, PX_INSTRUMENT_PATCHES[px_inst_slot(v)].name); return 1; }

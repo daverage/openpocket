@@ -283,6 +283,58 @@ static float peak_hz(const float *v, int a, int len, float f)
     for (int c = -100; c <= 100; c += 2) { const double ff = f * pow(2.0, c / 1200.0); const float l = gz_db(v, a, len, ff); if (l > best) { best = l; bf = (float)ff; } }
     return bf;
 }
+/* CHOIR (Synth2 stage G): the original FM-1 synth's VOICE engine, sung vowels, a stack of singers */
+static void choir_suite(void)
+{
+    g_type = PX_SYN_CHOIR;
+    static const float H[1] = {110.0f}, ST[1] = {0.1f};
+    {   char buf[8]; px_param_text(PX_B_SYN, PX_SYN_CHOIR, 0, 35, buf); CHECK(!strcmp(buf, "OH"), "CHOIR VOWEL 35 reads OH (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_CHOIR, 0, 55, buf); CHECK(!strcmp(buf, "OO>AH"), "CHOIR VOWEL 55 reads OO>AH (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_CHOIR, 1, 65, buf); CHECK(!strcmp(buf, "MAJOR"), "CHOIR SINGERS 65 reads MAJOR (%s)", buf);
+        CHECK(px_nparams(PX_B_SYN, PX_SYN_CHOIR) == 5 && !strcmp(px_type_name(PX_B_SYN, PX_SYN_CHOIR), "CHOIR"), "CHOIR has five controls"); }
+    {   /* formants: AH's strongest harmonic is in the F1 region whatever the pitch (110, 165, 220 Hz); the level is steady across the range; EE has far more energy above 2 kHz relative to 250-1000 Hz than OO */
+        static const float NT[3] = {110.0f, 165.0f, 220.0f}; float lv[3];
+        for (int k = 0; k < 3; k++) {
+            const uint8_t q[5] = {5, 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, &NT[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            float best = -1e9f, bf = 0; for (int h = 1; h <= 14; h++) { const float l = gz_db(y, 2 * 44100, 32768, NT[k] * h); if (NT[k] * h > 300.0f && NT[k] * h < 1300.0f && l > best) { best = l; bf = NT[k] * h; } }
+            CHECK(bf > 520.0f && bf < 820.0f, "CHOIR AH on %.0f Hz: the strongest harmonic is in the F1 region (%.0f Hz)", NT[k], bf);
+            lv[k] = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f); }
+        CHECK(fabsf(lv[0] - lv[1]) < 3.0f && fabsf(lv[1] - lv[2]) < 3.0f && fabsf(lv[0] - lv[2]) < 3.0f, "CHOIR AH: the level is steady across 110-220 Hz (%.1f %.1f %.1f dBFS)", lv[0], lv[1], lv[2]);
+        float ratio[2];
+        for (int vi = 0; vi < 2; vi++) { const uint8_t q[5] = {(uint8_t)(vi ? 25 : 45), 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            double hi = 0, lo = 0; for (int h = 1; h <= 40; h++) { const double f = 110.0 * h; const double e = pow(10.0, gz_db(y, 2 * 44100, 32768, f) / 10.0); if (f > 2000 && f < 3200) hi += e; if (f > 250 && f < 1000) lo += e; }
+            ratio[vi] = (float)(10.0 * log10((hi + 1e-12) / (lo + 1e-12))); }
+        CHECK(ratio[1] > ratio[0] + 10.0f, "CHOIR EE has far more energy above 2 kHz than OO (high-to-low %.1f dB against %.1f dB)", ratio[1], ratio[0]); }
+    {   /* TALK: OO>AH opens the mouth after each note starts: the spectrum's centre of mass (harmonics 2-18) rises from the first 50 ms to 1.5 s later; AH>OO falls */
+        for (int vi = 0; vi < 2; vi++) { const uint8_t q[5] = {(uint8_t)(vi ? 65 : 55), 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            int on = 0; float pk = 0; for (int i = 0; i < N_; i++) if (fabsf(y[i]) > pk) pk = fabsf(y[i]); while (on < N_ && fabsf(y[on]) < 0.05f * pk) on++;
+            double c[2]; for (int w = 0; w < 2; w++) { const int a = on + (w ? 66150 : 882); double sw = 0, sf = 0; for (int h = 2; h <= 18; h++) { const double f = 110.0 * h; const double e = pow(10.0, gz_db(y, a, 2048, f) / 10.0); sw += e; sf += e * f; } c[w] = sf / (sw + 1e-12); }   /* (short windows: the morph takes 330 ms) */
+            CHECK(vi ? c[1] < c[0] - 60.0 : c[1] > c[0] + 60.0, "CHOIR %s: the mouth %s (centre of mass %.0f Hz early, %.0f Hz later)", vi ? "AH>OO" : "OO>AH", vi ? "closes" : "opens", c[0], c[1]); } }
+    {   /* every vowel x singers x spread x tone: finite and bounded; silence in, silence out */
+        static const float Hh[2] = {98.0f, 196.0f}, Sh[2] = {0.05f, 0.8f}; static const uint8_t SP[3] = {0, 50, 100}, TN[2] = {0, 100}; float peak_all = 0; int n = 0;
+        string(x, 44100, Hh, Sh, 2, 0.7f, 0.99995f, 0);
+        for (int pa = 0; pa < 10; pa++) for (int vo = 0; vo < 10; vo++) for (int sp = 0; sp < 3; sp++) for (int tn = 0; tn < 2; tn++) {
+            const uint8_t q[5] = {(uint8_t)(pa * 10 + 5), (uint8_t)(vo * 10 + 5), SP[sp], TN[tn], 50}; px_preset_t p; preset_of(&p, q); render(&p, x, y, 44100, 64);
+            int ok = 1; float pk = 0; for (int i = 0; i < 44100; i++) { if (y[i] != y[i]) ok = 0; if (fabsf(y[i]) > pk) pk = fabsf(y[i]); }
+            if (!ok || pk > 2.0f) { bad++; printf("FAIL CHOIR vowel %d singers %d spread %d tone %d: %s peak %.2f\n", pa, vo, SP[sp], TN[tn], ok ? "too loud" : "NaN", pk); }
+            if (pk > peak_all) peak_all = pk; n++; }
+        { const uint8_t q[5] = {85, 95, 50, 50, 50}; px_preset_t p; preset_of(&p, q); static float z[8192]; memset(z, 0, sizeof z); render(&p, z, y2, 8192, 64);
+          for (int i = 0; i < 8192; i++) if (fabsf(y2[i]) > 1e-6f) { bad++; printf("FAIL CHOIR: not silent on silence\n"); break; } }
+        printf("CHOIR: %d vowel/singers/macro combinations: all finite, loudest peak %.2f\n", n, peak_all); }
+    {   /* deterministic, call-size independent */
+        static const float H2[2] = {146.83f, 196.0f}, ST2[2] = {0.1f, 1.2f}; const uint8_t q[5] = {75, 55, 60, 40, 50}; px_preset_t p; preset_of(&p, q);
+        string(x, N_, H2, ST2, 2, 0.4f, 0.99995f, 0); render(&p, x, y, N_, 64); render(&p, x, y2, N_, 64);
+        CHECK(!memcmp(y, y2, sizeof y), "CHOIR: the same settings and input give the same output");
+        const int n = (N_ / 64) * 64; render(&p, x, y2, n, 48); float d = 0; for (int k = 0; k < n; k++) { const float a = fabsf(y[k] - y2[k]); if (a > d) d = a; }
+        CHECK(d == 0.0f, "CHOIR: the output does not depend on the call size (%g)", d); }
+    {   /* every singer stops: a hard mute stops all five within 400 ms; the tail falls after the guitar stops */
+        float ph = 0, env = 0.5f; const int tm = 44100; for (int i = 0; i < 44100 * 3; i++) { ph += 110.0f / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f; float g = env; if (i >= tm) g = env * expf(-(float)(i - tm) / FS_ * 1000.0f / 6.0f); else env *= 0.99997f;
+            x[i] = i < 2000 ? 0.0f : g * 0.4f * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)); }
+        const uint8_t q[5] = {5, 95, 50, 50, 50}; px_preset_t p; preset_of(&p, q); render(&p, x, y, 44100 * 3, 64);
+        const float before = rms(y, tm - 4410, 2048), after = rms(y, tm + (int)(0.40f * FS_), 2048);
+        CHECK(after < 0.03f * before, "CHOIR OPEN: after a hard mute every singer is 30 dB down within 400 ms (%.1f dB)", 20.0f * log10f(after / (before + 1e-9f))); }
+    g_type = PX_SYN_ANALOG;
+}
 /* ENSEMBLE (Synth2 stage F): the INSTRUMENT patches played by a stack of voices from the one tracked note */
 static void ensemble_suite(void)
 {
@@ -587,6 +639,7 @@ int main(void)
     routing_split_suite();
     instrument_suite();
     ensemble_suite();
-    printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + instrument + ensemble synth ok", bad);
+    choir_suite();
+    printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + instrument + ensemble + choir synth ok", bad);
     return bad != 0;
 }
