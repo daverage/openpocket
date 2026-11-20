@@ -283,24 +283,24 @@ static float peak_hz(const float *v, int a, int len, float f)
     for (int c = -100; c <= 100; c += 2) { const double ff = f * pow(2.0, c / 1200.0); const float l = gz_db(v, a, len, ff); if (l > best) { best = l; bf = (float)ff; } }
     return bf;
 }
-/* ENSEMBLE (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/research/synth2/SYNTH2-ENSEMBLE.md) */
+/* INSTRUMENT (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/research/synth2/SYNTH2-INSTRUMENT.md) */
 static void ensemble_suite(void)
 {
-    g_type = PX_SYN_ENSEMBLE;
+    g_type = PX_SYN_INSTRUMENT;
     static const float NOTES[3] = {82.41f, 164.81f, 329.63f}, ST[1] = {0.1f};
-    for (int b = 0; b < PX_ENS_DEFINED; b++) for (int k = 0; k < 3; k++) {
+    for (int b = 0; b < PX_INST_DEFINED; b++) for (int k = 0; k < 3; k++) {
         const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
         string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99997f, 0); render(&p, x, y, N_, 64);
-        const float got = PX_ENSEMBLE_PATCHES[b].eng ? peak_hz(y, (int)(1.0f * FS_), 8192, NOTES[k]) : f0_of(y, (int)(1.0f * FS_), 4096, NOTES[k] * 0.7f, NOTES[k] * 1.4f);   /* (WHEEL: the 8' bar) */
-        CHECK(got > 0 && fabsf(cents(got, NOTES[k])) < 25.0f, "ENSEMBLE %s on %.1f Hz: pitch within 25 cents (%.1f)", PX_ENSEMBLE_PATCHES[b].name, NOTES[k], got);
+        const float got = PX_INSTRUMENT_PATCHES[b].eng ? peak_hz(y, (int)(1.0f * FS_), 8192, NOTES[k]) : f0_of(y, (int)(1.0f * FS_), 4096, NOTES[k] * 0.7f, NOTES[k] * 1.4f);   /* (WHEEL: the 8' bar) */
+        CHECK(got > 0 && fabsf(cents(got, NOTES[k])) < 25.0f, "INSTRUMENT %s on %.1f Hz: pitch within 25 cents (%.1f)", PX_INSTRUMENT_PATCHES[b].name, NOTES[k], got);
     }
     {   /* the patch identity: ten slots (0..4 the ANALOG-engine patches, 5..9 the WHEEL organs), all final; names read from the table */
-        CHECK(px_ens_slot(0) == 0 && px_ens_slot(9) == 0 && px_ens_slot(10) == 1 && px_ens_slot(49) == 4 && px_ens_slot(50) == 5 && px_ens_slot(59) == 5 && px_ens_slot(90) == 9 && px_ens_slot(100) == 9, "ENSEMBLE slots: 10 values each, 100 in the last");
-        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 50, buf); CHECK(!strcmp(buf, "ORGAN"), "ENSEMBLE patch 50 reads ORGAN (%s)", buf);
-        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 100, buf); CHECK(!strcmp(buf, "SOFTORG"), "ENSEMBLE patch 100 reads SOFTORG (%s)", buf);
-        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 10, buf); CHECK(!strcmp(buf, "STRINGS"), "ENSEMBLE patch 10 reads STRINGS (%s)", buf);
-        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 20, buf); CHECK(!strcmp(buf, "BRASS"), "ENSEMBLE patch 20 reads BRASS (%s)", buf);
-        CHECK(px_nparams(PX_B_SYN, PX_SYN_ENSEMBLE) == 5 && !strcmp(px_type_name(PX_B_SYN, PX_SYN_ENSEMBLE), "ENSEMBLE"), "ENSEMBLE has five controls");
+        CHECK(px_inst_slot(0) == 0 && px_inst_slot(9) == 0 && px_inst_slot(10) == 1 && px_inst_slot(49) == 4 && px_inst_slot(50) == 5 && px_inst_slot(59) == 5 && px_inst_slot(90) == 9 && px_inst_slot(100) == 9, "INSTRUMENT slots: 10 values each, 100 in the last");
+        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_INSTRUMENT, 0, 50, buf); CHECK(!strcmp(buf, "ORGAN"), "INSTRUMENT patch 50 reads ORGAN (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_INSTRUMENT, 0, 100, buf); CHECK(!strcmp(buf, "SOFTORG"), "INSTRUMENT patch 100 reads SOFTORG (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_INSTRUMENT, 0, 10, buf); CHECK(!strcmp(buf, "STRINGS"), "INSTRUMENT patch 10 reads STRINGS (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_INSTRUMENT, 0, 20, buf); CHECK(!strcmp(buf, "BRASS"), "INSTRUMENT patch 20 reads BRASS (%s)", buf);
+        CHECK(px_nparams(PX_B_SYN, PX_SYN_INSTRUMENT) == 5 && !strcmp(px_type_name(PX_B_SYN, PX_SYN_INSTRUMENT), "INSTRUMENT"), "INSTRUMENT has five controls");
     }
     {   /* ATTACK and RELEASE: longer at 100 than at 0 (STRINGS, E3 for 1.2 s then silence) */
         static const float H[1] = {164.81f}; string(x, N_, H, ST, 1, 0.5f, 0.99990f, 0); memset(x + (int)(1.3f * FS_), 0, sizeof(float) * (N_ - (int)(1.3f * FS_)));
@@ -314,7 +314,7 @@ static void ensemble_suite(void)
             pk = 0; for (int i2 = 0; i2 < (int)(1.2f * FS_); i2++) if (fabsf(y[i2]) > pk) pk = fabsf(y[i2]);
             int e0 = (int)(1.3f * FS_), r = e0; while (r < N_ - 512 && rms(y, r, 512) > 0.1f * pk * 0.7f) r += 256; t_rel[j] = (float)(r - e0) / FS_;
         }
-        printf("ENSEMBLE STRINGS: time to half level ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_att[0], t_att[1], t_rel[0], t_rel[1]);
+        printf("INSTRUMENT STRINGS: time to half level ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_att[0], t_att[1], t_rel[0], t_rel[1]);
         CHECK(t_att[1] - 0.1f > 1.6f * (t_att[0] - 0.1f), "ATTACK 100 is slower than 0 (from the pick at 0.1 s)");
         CHECK(t_rel[1] > 1.5f * t_rel[0], "RELEASE 100 is longer than 0");
     }
@@ -323,25 +323,25 @@ static void ensemble_suite(void)
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
             static const float H[1] = {164.81f}; string(x, 44100 * 3, H, ST, 1, 0.5f, 0.99999f, 196.0f); render(&p, x, y, 44100 * 3, 64);
             const float f2 = f0_of(y, (int)(1.5f * FS_), 4096, 120, 260), w2 = 164.81f + 31.19f * 1.5f / 3.0f;
-            CHECK(f2 > 0 && fabsf(cents(f2, w2)) < 50.0f, "ENSEMBLE %s follows a slide (%.1f Hz, want %.1f)", PX_ENSEMBLE_PATCHES[b].name, f2, w2);
+            CHECK(f2 > 0 && fabsf(cents(f2, w2)) < 50.0f, "INSTRUMENT %s follows a slide (%.1f Hz, want %.1f)", PX_INSTRUMENT_PATCHES[b].name, f2, w2);
             static const float H2[2] = {110.0f, 110.0f}, ST2[2] = {0.1f, 1.0f}; string(x, 44100 * 2, H2, ST2, 2, 0.5f, 0.9999f, 0); memset(x + 44100 * 2, 0, sizeof(float) * (N_ - 44100 * 2));
             render(&p, x, y, N_, 64);
             const float mid = rms(y, (int)(0.8f * FS_), 4096), soon = rms(y, (int)(2.3f * FS_), 4096), late = rms(y, (int)(4.8f * FS_), 4096);
-            CHECK(mid > 0.005f, "ENSEMBLE %s sounds while the guitar plays (%.4f)", PX_ENSEMBLE_PATCHES[b].name, mid);
+            CHECK(mid > 0.005f, "INSTRUMENT %s sounds while the guitar plays (%.4f)", PX_INSTRUMENT_PATCHES[b].name, mid);
             /* the pad and strings release is long by design (Felucca REL 90-95: a time constant of 1.4-1.7 s): the tail must keep falling, and RELEASE 0 must end it */
-            CHECK(late < 0.5f * soon && late < 0.35f * mid, "ENSEMBLE %s's tail keeps falling after the guitar stops (%.4f, %.4f, %.4f)", PX_ENSEMBLE_PATCHES[b].name, mid, soon, late);
+            CHECK(late < 0.5f * soon && late < 0.35f * mid, "INSTRUMENT %s's tail keeps falling after the guitar stops (%.4f, %.4f, %.4f)", PX_INSTRUMENT_PATCHES[b].name, mid, soon, late);
             const uint8_t q0[5] = {(uint8_t)(b * 10 + 5), 50, 50, 0, 50}; px_preset_t p0; preset_of(&p0, q0); render(&p0, x, y, N_, 64);
             const float end0 = rms(y, (int)(4.8f * FS_), 4096), mid0 = rms(y, (int)(0.8f * FS_), 4096);
-            CHECK(end0 < 0.05f * mid0, "ENSEMBLE %s with RELEASE 0 has ended 2.8 s after the guitar (%.5f against %.4f): no stuck note", PX_ENSEMBLE_PATCHES[b].name, end0, mid0);
+            CHECK(end0 < 0.05f * mid0, "INSTRUMENT %s with RELEASE 0 has ended 2.8 s after the guitar (%.5f against %.4f): no stuck note", PX_INSTRUMENT_PATCHES[b].name, end0, mid0);
         }
     }
     {   /* the same five bytes, the same sound, and the call size does not matter */
         static const float H[2] = {146.83f, 196.0f}, ST2[2] = {0.1f, 1.2f}; const uint8_t q[5] = {30, 60, 40, 55, 50}; px_preset_t p; preset_of(&p, q);
         string(x, N_, H, ST2, 2, 0.4f, 0.99995f, 0); render(&p, x, y, N_, 64); render(&p, x, y2, N_, 64);
-        CHECK(!memcmp(y, y2, sizeof y), "ENSEMBLE: the same settings and input give the same output");
+        CHECK(!memcmp(y, y2, sizeof y), "INSTRUMENT: the same settings and input give the same output");
         const int n = (N_ / 64) * 64; render(&p, x, y2, n, 48);
         float d = 0; for (int k = 0; k < n; k++) { const float a = fabsf(y[k] - y2[k]); if (a > d) d = a; }
-        CHECK(d == 0.0f, "ENSEMBLE: the output does not depend on the call size (%g)", d);
+        CHECK(d == 0.0f, "INSTRUMENT: the output does not depend on the call size (%g)", d);
     }
     {   /* every patch (and the reserved slots), the macros at 0 / 50 / 100: finite, bounded, silent on silence */
         static const float H[2] = {98.0f, 196.0f}, ST2[2] = {0.05f, 0.8f}; static const uint8_t V[3] = {0, 50, 100}; float peak_all = 0; int n = 0;
@@ -350,19 +350,19 @@ static void ensemble_suite(void)
             const uint8_t q[5] = {(uint8_t)(pa * 10 + 5), V[a], V[b], V[c], V[d]}; px_preset_t p; preset_of(&p, q);
             render(&p, x, y, 44100, 64);
             int ok = 1; float pk = 0; for (int i = 0; i < 44100; i++) { if (y[i] != y[i]) ok = 0; if (fabsf(y[i]) > pk) pk = fabsf(y[i]); }
-            if (!ok || pk > 2.0f) { bad++; printf("FAIL ENSEMBLE patch %d macros %d %d %d %d: %s peak %.2f\n", pa, V[a], V[b], V[c], V[d], ok ? "too loud" : "NaN", pk); }
+            if (!ok || pk > 2.0f) { bad++; printf("FAIL INSTRUMENT patch %d macros %d %d %d %d: %s peak %.2f\n", pa, V[a], V[b], V[c], V[d], ok ? "too loud" : "NaN", pk); }
             if (pk > peak_all) peak_all = pk; n++;
             static float z[8192]; memset(z, 0, sizeof z); render(&p, z, y2, 8192, 64);
-            for (int i = 0; i < 8192; i++) if (fabsf(y2[i]) > 1e-6f) { bad++; printf("FAIL ENSEMBLE patch %d: not silent on silence\n", pa); break; }
+            for (int i = 0; i < 8192; i++) if (fabsf(y2[i]) > 1e-6f) { bad++; printf("FAIL INSTRUMENT patch %d: not silent on silence\n", pa); break; }
         }
-        printf("ENSEMBLE: %d patch/macro combinations: all finite, loudest peak %.2f\n", n, peak_all);
+        printf("INSTRUMENT: %d patch/macro combinations: all finite, loudest peak %.2f\n", n, peak_all);
     }
     {   /* fix pass 2: a steady note does not swell and fade (the detuned oscillators' beating): the peak level swings less than 5 dB (the ANALOG-engine patches; the organs have their rotary: below) */
         for (int b = 0; b < 5; b++) for (int k = 0; k < 3; k++) {
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
             string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
             float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
-            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 5.0f, "ENSEMBLE %s on %.0f Hz: no beating swell (%.1f dB)", PX_ENSEMBLE_PATCHES[b].name, NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
+            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 5.0f, "INSTRUMENT %s on %.0f Hz: no beating swell (%.1f dB)", PX_INSTRUMENT_PATCHES[b].name, NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
         }
     }
     {   /* fix pass 2: a hard mute followed by a thump does not play another note, and the voice is released at the mute */
@@ -397,8 +397,8 @@ static void ensemble_suite(void)
             CHECK(fabsf(worst) < 30.0f, "a damped, sharpening %.0f Hz string: the tracked pitch stays put (worst %+.0f cents)", F[fi], worst);
         }
     }
-    {   /* fix pass 3: after a hard mute the synth stops fast whatever the patch's release (ANALOG CLASSIC and the long ENSEMBLE STRINGS and SOFTPAD): 30 dB down within 300 ms */
-        struct { int type, patch; const char *nm; } C[5] = {{PX_SYN_ANALOG, 5, "ANALOG CLASSIC"}, {PX_SYN_ENSEMBLE, 15, "ENSEMBLE STRINGS"}, {PX_SYN_ENSEMBLE, 5, "ENSEMBLE SOFTPAD"}, {PX_SYN_ENSEMBLE, 55, "ENSEMBLE ORGAN"}, {PX_SYN_ENSEMBLE, 95, "ENSEMBLE SOFTORG"}};
+    {   /* fix pass 3: after a hard mute the synth stops fast whatever the patch's release (ANALOG CLASSIC and the long INSTRUMENT STRINGS and SOFTPAD): 30 dB down within 300 ms */
+        struct { int type, patch; const char *nm; } C[5] = {{PX_SYN_ANALOG, 5, "ANALOG CLASSIC"}, {PX_SYN_INSTRUMENT, 15, "INSTRUMENT STRINGS"}, {PX_SYN_INSTRUMENT, 5, "INSTRUMENT SOFTPAD"}, {PX_SYN_INSTRUMENT, 55, "INSTRUMENT ORGAN"}, {PX_SYN_INSTRUMENT, 95, "INSTRUMENT SOFTORG"}};
         for (int ci = 0; ci < 5; ci++) {
             g_type = C[ci].type; float ph = 0, env = 0.5f; const int tm = 44100;
             for (int i = 0; i < 44100 * 3; i++) {
@@ -410,7 +410,7 @@ static void ensemble_suite(void)
             const float before = rms(y, tm - 4410, 2048), after = rms(y, tm + (int)(0.40f * FS_), 2048);
             CHECK(after < 0.03f * before, "%s: after a hard mute the synth is 30 dB down within 400 ms (%.1f dB)", C[ci].nm, 20.0f * log10f(after / (before + 1e-9f)));
         }
-        g_type = PX_SYN_ENSEMBLE;
+        g_type = PX_SYN_INSTRUMENT;
     }
     {   /* fix pass 4: ANALOG's detuned patches (CLASSIC, FATSAW, PULSE, PWM, SWEEP) do not swell and fade on a steady note: the peak level swings less than 5.5 dB (SWEEP 6.5: its filter envelope is slow by design) */
         static const int PAT[5] = {0, 1, 2, 3, 8}; static const char *const NM[5] = {"CLASSIC", "FATSAW", "PULSE", "PWM", "SWEEP"};
@@ -425,16 +425,16 @@ static void ensemble_suite(void)
     {   /* Stage B: the WHEEL organ patches (PATCH 50..100): the drawbar structure, the percussion, TONE, ATTACK, RELEASE, the rotary, and the level */
         static const float H[1] = {110.0f}; static const double R9[9] = {0.5, 1.5, 1, 2, 3, 4, 5, 6, 8};
         float lv[5][9];
-        g_type = PX_SYN_ENSEMBLE;
+        g_type = PX_SYN_INSTRUMENT;
         for (int b = 5; b < 10; b++) {
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
             string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
             for (int k = 0; k < 9; k++) lv[b - 5][k] = gz_db(y, 2 * 44100, 88200, 110.0 * R9[k]);
             /* the rotary and the percussion do not change the loudness much: the RMS (20 ms windows) over 2..4 s swings less than 4 dB */
             float lo = 1e9f, hi = 0; for (int i = 2 * 44100; i + 882 < 4 * 44100; i += 441) { const float r = rms(y, i, 882); if (r < lo) lo = r; if (r > hi) hi = r; }
-            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 4.0f, "WHEEL %s: the rotary leaves the loudness steady (%.1f dB)", PX_ENSEMBLE_PATCHES[b].name, 20.0f * log10f(hi / (lo + 1e-9f)));
+            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 4.0f, "WHEEL %s: the rotary leaves the loudness steady (%.1f dB)", PX_INSTRUMENT_PATCHES[b].name, 20.0f * log10f(hi / (lo + 1e-9f)));
             const float lvl = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f);
-            CHECK(lvl > -22.0f && lvl < -14.0f, "WHEEL %s: level near the ANALOG patches' (%.1f dBFS)", PX_ENSEMBLE_PATCHES[b].name, lvl);
+            CHECK(lvl > -22.0f && lvl < -14.0f, "WHEEL %s: level near the ANALOG patches' (%.1f dBFS)", PX_INSTRUMENT_PATCHES[b].name, lvl);
         }
         float mx, mn;
         mx = -1e9f; mn = 1e9f; for (int k = 0; k < 9; k++) { if (lv[0][k] > mx) mx = lv[0][k]; if (lv[0][k] < mn) mn = lv[0][k]; }

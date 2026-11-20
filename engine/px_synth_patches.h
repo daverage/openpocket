@@ -15,7 +15,7 @@ typedef struct {
     uint8_t trim;                /* level trim, 64 = 1.0 */
     uint8_t pwm;                 /* pulse-width sweep (the WAVE PWM and SYNC), 0 none .. 127 */
     uint8_t noise;               /* 1: the adapter's own xorshift noise voice (the Arcade Poly noise of the synth branch) instead of Felucca's engine */
-    uint8_t eng;                 /* ENSEMBLE only: 0 Felucca ANALOG, 1 Felucca WHEEL (e[] is then REG, SUB, BODY, TOP, PERC, CLICK, DRV, ROTR) */
+    uint8_t eng;                 /* INSTRUMENT only: 0 Felucca ANALOG, 1 Felucca WHEEL (e[] is then REG, SUB, BODY, TOP, PERC, CLICK, DRV, ROTR) */
 } px_patch;
 enum { PX_PATCH_SLOTS = 10 };
 /* Fix pass 4: CLASSIC, FATSAW, PULSE, PWM and SWEEP have the second oscillator at MIX 16 (was 64, 64, 40, 30, 64) and their trims lowered by the loudness this adds (0.6-1.8 dB): detuned
@@ -48,15 +48,15 @@ static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
     {"NOISE",   {0, 3,  0, 40,  0,  0, 0, 100}, {0, 40,  90, 30},  0,   0,140, 0, 1},   /* crushed noise, rate follows the note; xorshift as in Arcade Poly, sustains while held */
     {"MIN ARP", {2, 0, 64,  0,  0,  0, 3, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit minor arpeggio */
 };
-/* ENSEMBLE: Felucca ANALOG again, patches for sustained instrument colours, played by the same mono tracker (one note at a time: NOT polyphonic,
+/* INSTRUMENT: Felucca ANALOG again, patches for sustained instrument colours, played by the same mono tracker (one note at a time: NOT polyphonic,
  * a chord does not make a string section). The first three are Felucca's own ANALOG presets (src/eng_analog.c at the pin: SOFT PAD, STRINGS, BRASS)
  * with E0..E7, ATK/DEC/SUS/REL and the filter-envelope amount copied as they stand; Felucca's chorus / reverb "FX" and pattern fields are not used
  * (OpenPocket's MOD, DELAY and REVERB blocks come after the SYNTH block for that). Fix pass 2: MIX (the second oscillator's level) is 16, not Felucca's 64: with no chorus after it, the two detuned saws beat at 1-3 Hz at 8-10 dB depth (a phaser-like swell on a steady note); at 16 it is 3-4 dB. SLOW STR and BRS LEAD are variations of STRINGS and BRASS (marked).
  * The slot is PATCH / 10 as for ANALOG: slots 0..4 (PATCH 0-49) are the ANALOG-engine patches, slots 5..9 (PATCH 50-100) the WHEEL organs (stage B). All ten
  * are defined and final, a defined slot is never reassigned, reordered or renamed, and the table is full. Slots 5..9 played BRSLEAD in builds 907-911, so a preset
  * saved then with PATCH 50 or more changes sound. Names: at most 7 characters. */
-enum { PX_ENS_DEFINED = 10 };
-static const px_patch PX_ENSEMBLE_PATCHES[PX_PATCH_SLOTS] = {
+enum { PX_INST_DEFINED = 10 };
+static const px_patch PX_INSTRUMENT_PATCHES[PX_PATCH_SLOTS] = {
     /* name       WAVE DTN MIX NOIS CUT RES DRV KTR     ATK DEC SUS REL  fenv semis trim pwm */
     {"SOFTPAD", {0, 20, 16, 4, 60, 10,  0, 32}, {80, 90, 110, 95},  10,   0, 64, 0},   /* Felucca SOFT PAD */
     {"STRINGS", {0, 25, 16, 0, 70, 10,  0, 32}, {70, 90, 115, 90},   5,   0, 64, 0},   /* Felucca STRINGS */
@@ -71,7 +71,7 @@ static const px_patch PX_ENSEMBLE_PATCHES[PX_PATCH_SLOTS] = {
     {"REEDORG", {10, 0, 0, 0, 0, 20, 10, 0}, {8, 64, 127, 40},   0,   0, 86, 0, 0, 1},   /* the REED registration (a falling slope), no rotary: a reed organ */
     {"SOFTORG", { 1, 0,-2, 0, 0, 10,  0, 1}, {8, 64, 127, 55},   0,   0, 125, 0, 0, 1},   /* Felucca SOFT FLUTE: one soft flute bar, slow rotary */
 };
-static inline int px_ens_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_ENS_DEFINED ? PX_ENS_DEFINED - 1 : s); }
+static inline int px_inst_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_INST_DEFINED ? PX_INST_DEFINED - 1 : s); }
 /* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */
 static inline int px_split_note(int v) { v = v < 0 ? 0 : v > 100 ? 100 : v; return 40 + (v * 36 + 50) / 100; }
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }

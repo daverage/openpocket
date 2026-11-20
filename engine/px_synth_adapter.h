@@ -61,16 +61,16 @@ static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000
 static inline int px_s2_clamp127(float v) { const int i = (int)(v + (v < 0.0f ? -0.5f : 0.5f)); return i < 0 ? 0 : i > 127 ? 127 : i; }
 static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
 {
-    const int ens = type == PX_SYN_ENSEMBLE;
+    const int ens = type == PX_SYN_INSTRUMENT;
     const int arc = type == PX_SYN_ARCADE || type == PX_SYN_ARCADE_SPLIT;
-    const px_patch *pa = ens ? &PX_ENSEMBLE_PATCHES[px_ens_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
+    const px_patch *pa = ens ? &PX_INSTRUMENT_PATCHES[px_inst_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
-    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
+    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT: ANALOG, or WHEEL for the organ patches) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
-    float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (ENSEMBLE), else tm */
-    if (ens) {                                                                              /* ENSEMBLE: PATCH, TONE, ATTACK, RELEASE, LEVEL */
+    float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (INSTRUMENT), else tm */
+    if (ens) {                                                                              /* INSTRUMENT: PATCH, TONE, ATTACK, RELEASE, LEVEL */
         if (pa->eng) {                                                                      /* WHEEL: TONE tilts the drawbars: up = upper bars +5 and body +1.5, sub bars -5 (one level is about 3 dB); 50 = as written */
             const float tn = (m1 - 0.5f) * 2.0f, rh = tn < 0.0f ? -0.5f : 0.5f;
             t0->p[P_E1] = (int16_t)((int)pa->e[1] - (int)(tn * 5.0f + rh));

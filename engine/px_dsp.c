@@ -78,9 +78,9 @@ static inline float wrap1(float ph) { if (ph >= 1.0f) ph -= 1.0f; else if (ph < 
 static float onepole_k(float sr, float sec) { return 1.0f - expf(-1.0f / (sec * sr)); }
 
 /* HQ octave (and v49 note tracker) analysis: complex band-pass filters (Noga's transform of the cookbook low-pass,
- * Thuillier's phase scaling; docs/POLYPHONIC-PITCH-RESEARCH.md). v49: 29 bands from 60 Hz, each ERB_S0 + ERB_SC x
+ * Thuillier's phase scaling; docs/research/POLYPHONIC-PITCH-RESEARCH.md). v49: 29 bands from 60 Hz, each ERB_S0 + ERB_SC x
  * its centre from the next and ERB_WIDTH of that wide, at a quarter of the rate after two half-band stages
- * (docs/NOTE-TRACKING.md). The coefficients
+ * (docs/archive/NOTE-TRACKING.md). The coefficients
  * depend only on the rate: shared by every engine and every user (PITCH, SYN, the tracker), each with its own state. */
 #define ERB_LOW   60.0f                                /* the first band's centre (Hz) */
 #define ERB_S0    37.5f                                /* the spacing to the next band: ERB_S0 + ERB_SC x centre (Hz) */
@@ -89,7 +89,7 @@ static float onepole_k(float sr, float sec) { return 1.0f - expf(-1.0f / (sec * 
 static px_erb_band erb_band[PX_ERB_BANDS];
 static float erb_hb[8], erb_fc[PX_ERB_BANDS], erb_bw[PX_ERB_BANDS], erb_rate;
 /* v62 (poly-test): the octave voices get their own bank, 26 bands 60 Hz + 2% apart and 0.7 of the spacing wide
- * (docs/OCTAVE-LAYOUT-v62.md: less added wobble, faster low notes); the note tracker keeps erb_band */
+ * (docs/archive/OCTAVE-LAYOUT-v62.md: less added wobble, faster low notes); the note tracker keeps erb_band */
 #define ERB_O_BANDS 26
 #define ERB_O_S0    60.0f
 #define ERB_O_SC    0.02f
@@ -171,7 +171,7 @@ static inline float erb_inverse_root(float power)
 static float erb_host_mask[ERB_O_BANDS];
 #endif
 #ifdef ERB_HOST_EXPERIMENTS
-/* v64 host experiments (tools/sim/octave_banks.c, docs/OCTAVE-LAYOUT-v62.md): reconstruction weighting by each
+/* v64 host experiments (tools/research/octave_banks.c, docs/archive/OCTAVE-LAYOUT-v62.md): reconstruction weighting by each
  * band's dominance over its neighbours, (p_i / max(p_i-1, p_i, p_i+1))^beta from the previous sample's powers;
  * and ducking the octave voices after a pick (erb_octaves2) */
 static float erb_host_beta, erb_host_pw[ERB_O_BANDS + 2], erb_host_duck_ms, erb_host_duck_ratio = 2.0f, erb_host_duck_depth;
@@ -229,7 +229,7 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
         const unsigned negative = imag < 0.0f;
         unsigned phase = state->half_phase[i];
         /* v64: two octaves down, |z| cos((a + 2 pi k) / 4): k counts the crossings of the negative real axis modulo 4
-         * (tools/sim/sub2_proto.c); a band whose -24 would sound under 35 Hz fades out (a low E's 20.6 Hz) */
+         * (tools/research/sub2_proto.c); a band whose -24 would sound under 35 Hz fades out (a low E's 20.6 Hz) */
         if (real < 0.0f && (phase & 1) != negative) state->quarter[i] = (uint8_t)((state->quarter[i] + (negative ? 1 : 3)) & 3);
         if (state->down2 != 0.0f) {
             const float floor2 = (0.25f * erb_ofc[i] - 30.0f) * 0.1f;
@@ -500,7 +500,7 @@ static const tdef T_SFX[PX_SFX_COUNT] = {
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
 static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
 static const char *const PN_ANALOG[] = {"PATCH", "CUTOFF", "RESONANCE", "ENVELOPE", "LEVEL"};
-static const char *const PN_ENSEMBLE[] = {"PATCH", "TONE", "ATTACK", "RELEASE", "LEVEL"};
+static const char *const PN_INSTRUMENT[] = {"PATCH", "TONE", "ATTACK", "RELEASE", "LEVEL"};
 static const char *const PN_ARCADE[] = {"PATCH", "CHARACTER", "SWEEP", "DECAY", "MIX"};
 static const char *const PN_ARCADE_SPLIT[] = {"LOWER", "UPPER", "SPLIT", "DECAY", "MIX"};
 #define SYN_TOMB {"", 0, 0}
@@ -510,7 +510,7 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     {"ANALOG", 5, PN_ANALOG}, {"ARCADE", 5, PN_ARCADE}, {"ARCADE SPLIT", 5, PN_ARCADE_SPLIT},
-    {"ENSEMBLE", 5, PN_ENSEMBLE},
+    {"INSTRUMENT", 5, PN_INSTRUMENT},
 };
 int px_type_retired(int b, int t) { return b == PX_B_SYN && !px_syn_runs(t); }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
@@ -735,7 +735,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_SYN:
         if (t == PX_SYN_ANALOG && k == 0) { put_str(buf, PX_ANALOG_PATCHES[px_patch_slot(v)].name); return 1; }
-        if (t == PX_SYN_ENSEMBLE && k == 0) { put_str(buf, PX_ENSEMBLE_PATCHES[px_ens_slot(v)].name); return 1; }
+        if (t == PX_SYN_INSTRUMENT && k == 0) { put_str(buf, PX_INSTRUMENT_PATCHES[px_inst_slot(v)].name); return 1; }
         if (t == PX_SYN_ARCADE && k == 0) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
         if (t == PX_SYN_ARCADE_SPLIT && k <= 1) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
         if (t == PX_SYN_ARCADE_SPLIT && k == 2) {                         /* the note the two ranges meet at: notes from it up play UPPER */
@@ -1308,7 +1308,7 @@ static void rc_reverb(px_engine *e)
 }
 
 
-/* ---- SYN: the SYNTH block (Synth2). Only POLY OCT FUZZ runs; every other legacy type is a tombstone (docs/SYNTH2-PLAN.md) ---- */
+/* ---- SYN: the SYNTH block (Synth2). Only POLY OCT FUZZ runs; every other legacy type is a tombstone (docs/research/synth2/SYNTH2-PLAN.md) ---- */
 static float opk(float sr, float hz) { float k = 2.0f * PI_F * hz / sr; return k > 0.9f ? 0.9f : k; }   /* one-pole */
 static void syn_fuzz_reset(px_engine *e)
 {
@@ -2341,7 +2341,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     for (int i = 0; i < PX_NBLK; i++) {
         int b = e->ord[i];
         if (b != PX_B_GATE && !p->on[b]) continue;
-        if (b == PX_B_SYN && !px_syn_runs(syn_t)) continue;   /* Synth2: a retired SYNTH type is bypassed (docs/SYNTH2-PLAN.md) */
+        if (b == PX_B_SYN && !px_syn_runs(syn_t)) continue;   /* Synth2: a retired SYNTH type is bypassed (docs/research/synth2/SYNTH2-PLAN.md) */
         tr[ns] = e->btr[b];
         st[ns++] = (uint8_t)b;
     }
@@ -2357,7 +2357,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         { float y = x - e->dc_x1 + 0.9995f * e->dc_y1; e->dc_x1 = x; e->dc_y1 = y; x = y; }
         xb[k] = x;
     }
-    /* Synth2: the mono synth follows the clean guitar, before the gate, the octave and every other effect (docs/SYNTH2-PLAN.md): its
+    /* Synth2: the mono synth follows the clean guitar, before the gate, the octave and every other effect (docs/research/synth2/SYNTH2-PLAN.md): its
      * output waits here and replaces the signal where the SYNTH block stands in the order */
     float sy[PX_MAX_BLOCK];
     const int syn2 = p->on[PX_B_SYN] && px_syn_mono(syn_t);

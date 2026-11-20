@@ -42,7 +42,7 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
        PX_SFX_SYNTH_HQ, PX_SFX_COUNT };
-/* SYNTH block type ids. Synth2 (docs/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
+/* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
  * type, and the UI skips it (px_type_name is ""). New Synth2 types are appended after PX_SYN_STRING_DUO. */
@@ -56,11 +56,11 @@ enum { PX_SYN_X_ORGAN, PX_SYN_X_CHURCH, PX_SYN_X_STRINGS, PX_SYN_X_CHOIR, PX_SYN
        PX_SYN_ANALOG,                                  /* Synth2: Felucca ANALOG, one note followed from the guitar (engine/px_synth_adapter.h) */
        PX_SYN_ARCADE,                                  /* Synth2: Felucca LOFI (chip sounds), the same way */
        PX_SYN_ARCADE_SPLIT,                            /* Synth2: ARCADE with one patch for the lower notes and one for the upper */
-       PX_SYN_ENSEMBLE,                                /* Synth2: strings, pad, brass (Felucca ANALOG patches), one note from the guitar: docs/SYNTH2-ENSEMBLE.md */
+       PX_SYN_INSTRUMENT,                                /* Synth2: strings, pad, brass (Felucca ANALOG patches), one note from the guitar: docs/research/synth2/SYNTH2-INSTRUMENT.md */
        PX_SYN_COUNT };
 /* does this SYNTH type run? (1: a live type; 0: a tombstone, or an id beyond the catalogue: both are bypassed) */
-static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ || t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_ENSEMBLE; }
-static inline int px_syn_mono(int t) { return t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_ENSEMBLE; }   /* the types played by the mono tracker and Felucca */
+static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ || t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_INSTRUMENT; }
+static inline int px_syn_mono(int t) { return t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_INSTRUMENT; }   /* the types played by the mono tracker and Felucca */
 int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI skips it, the engine bypasses it) */
 int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
 int         px_live_type(int blk, int i);              /* the i-th live type's id (0..px_nlive-1) */
@@ -115,7 +115,7 @@ typedef struct {
  * frequency from the next and 0.8 of that wide (32 Hz at the bottom, 95 Hz at the top), at a quarter of the rate
  * (11.025 kHz). Narrower than a guitar note's harmonic spacing up to where its partials matter, so a partial gets a
  * band of its own; v42 .. v48's 43 ERB-wide bands (up to 360 Hz) mixed several in one, and their doubled phases then
- * made the octave's gargle, warble and drop-outs (docs/NOTE-TRACKING.md). */
+ * made the octave's gargle, warble and drop-outs (docs/archive/NOTE-TRACKING.md). */
 #define PX_ERB_BANDS 29
 typedef struct { float r, i; } px_erb_complex;
 typedef struct { float b0; px_erb_complex b1, b2, a1, a2; } px_erb_band;
