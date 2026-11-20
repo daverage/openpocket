@@ -103,6 +103,36 @@ static inline void px_s2_pitch(float semis, int32_t *pitch16, int32_t *fine, int
     *pitch16 = p;
     *fine = round_to_step ? 0 : (int32_t)((x - (float)p) * 14.8f + 0.5f);   /* 2^(1/192) - 1 = 0.36 % = 14.8 / 4096 */
 }
+/* The NOISE patch's voice (Synth2 fix pass 1): the Arcade Poly noise of the synth branch (engine/px_pulse_poly.h at 3bdca5d^): a 32-bit xorshift (13, 17, 5)
+ * stepped on the oscillator's phase wraps, so the grain follows the note, instead of Felucca's 15-bit LFSR (a 1-bit, buzzier pattern). Same sample hold (CRSH),
+ * 4-bit quantiser, TONE low-pass and amplitude path as lofi_render, so everything else of the patch works as before. The uniform sample is 4.8 dB below the
+ * LFSR's full-scale square, which the patch's trim makes up. */
+static void px_s2_noise(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+{
+    const int16_t *p = t->p;
+    const int32_t hold = FE_HOLD(1 + p[P_E3] / 8);
+    int32_t lpk = 3000 + (p[P_E7] << 8);
+    if (lpk > 32767) lpk = 32767;
+    lpk = fe_pole(lpk);
+    const uint32_t inc = pitch_inc(clamp(m->pitch16, 0, 2047));
+    uint32_t ph0 = v->ph[0], nz = (uint32_t)v->s[2];
+    int32_t held = v->s[0], cnt = v->s[1], lp = v->s[4];
+    if (nz < 0x10000u) nz ^= 0x91e10da5u;                                  /* (note_on seeds the LFSR's 0x7FFF: xorshift needs bits up high) */
+    for (uint32_t i = 0; i < n; i++) {
+        if (--cnt <= 0) {
+            cnt = hold;
+            if ((ph0 + inc * (uint32_t)hold) < ph0) { nz ^= nz << 13; nz ^= nz >> 17; nz ^= nz << 5; }
+            int32_t s = (int32_t)(nz >> 16) - 32768;
+            s = shl((s + (1 << 11)) >> 12, 12);                            /* 4 bits, rounded */
+            if (p[P_E3] > 64) s = shl(s >> 12, 12);
+            held = s;
+        }
+        ph0 += inc;
+        lp += mulq15(held - lp, lpk);
+        out[i] += voice_amp(lp, m, i);
+    }
+    v->ph[0] = ph0; v->s[0] = held; v->s[1] = cnt; v->s[2] = (int32_t)nz; v->s[4] = lp;
+}
 /* one control block: the events, the voice, the envelope, the render. Writes ring[CTL]. */
 static __attribute__((noinline)) void px_s2_block(px_s2 *s)
 {
@@ -162,7 +192,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     const float tri = s->lfo < 0.5f ? 4.0f * s->lfo - 1.0f : 3.0f - 4.0f * s->lfo;
     m.shape = (64 << 8) + (int32_t)(tri * (float)s->patch->pwm * 128.0f * (1.0f / 2.0f));
     memset(s->out, 0, sizeof s->out);
-    s->eng->render(t, v, s->out, CTL, &m);
+    if (s->patch->noise) px_s2_noise(t, v, s->out, CTL, &m); else s->eng->render(t, v, s->out, CTL, &m);
     const float g = s->level * PX_S2_OUT * (1.0f / 32768.0f);
     for (int i = 0; i < CTL; i++) s->ring[i] = (float)s->out[i] * g;
     s->blk++;

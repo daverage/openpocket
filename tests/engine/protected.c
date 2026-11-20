@@ -124,6 +124,7 @@ int main(int argc, char **argv)
         for (int z = 0; z < PX_NBLK; z++) {
             p.on[z] = (rnd() & 3) != 0;
             if (z != PX_B_SYN) p.type[z] = (uint8_t)(rnd() % (unsigned)px_ntypes(z)); else (void)rnd();
+            if (z == PX_B_PITCH && p.type[z] == PX_PIT_LOWEST_HQ) p.type[z] = PX_PIT_DETUNE;   /* (LOWEST OCTAVE HQ's gain changed on purpose: fix pass 1) */
             for (int k = 0; k < 5; k++) p.p[z][k] = (uint8_t)(rnd() % 101);
         }
         p.type[FX[f].blk] = (uint8_t)FX[f].type; p.on[FX[f].blk] = 1;

@@ -14,6 +14,7 @@ typedef struct {
     int8_t semis;                /* transposition from the guitar's note */
     uint8_t trim;                /* level trim, 64 = 1.0 */
     uint8_t pwm;                 /* pulse-width sweep (the WAVE PWM and SYNC), 0 none .. 127 */
+    uint8_t noise;               /* 1: the adapter's own xorshift noise voice (the Arcade Poly noise of the synth branch) instead of Felucca's engine */
 } px_patch;
 enum { PX_PATCH_SLOTS = 10 };
 static const px_patch PX_ANALOG_PATCHES[PX_PATCH_SLOTS] = {
@@ -41,7 +42,7 @@ static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
     {"ARP",     {2, 0, 96,  0,  0,  0, 2, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit major arpeggio on every note */
     {"ZAP",     {0, 0, 64,  0, 60,  0, 0, 127}, {0, 40,   0, 20},  0,   0, 80, 0},   /* retro game: the pitch sweeps down on every pick */
     {"PLUCK",   {4, 0, 64, 12,  0,  0, 0, 127}, {0, 64, 127, 30},  0,   0, 76, 0},   /* digital pluck: stepped one-shot decay */
-    {"NOISE",   {0, 3,  0, 40,  0,  0, 0, 100}, {0, 45,   0, 25},  0,   0, 84, 0},   /* crushed noise hit, rate follows the note */
+    {"NOISE",   {0, 3,  0, 40,  0,  0, 0, 100}, {0, 40,  90, 30},  0,   0,140, 0, 1},   /* crushed noise, rate follows the note; xorshift as in Arcade Poly, sustains while held */
     {"MIN ARP", {2, 0, 64,  0,  0,  0, 3, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit minor arpeggio */
 };
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }

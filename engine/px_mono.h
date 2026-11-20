@@ -18,6 +18,10 @@
 #define PX_MONO_H
 #define PX_MONO_GUITAR 0.0f              /* the default floor, PXT_FMIN (60 Hz) */
 #define PX_MONO_BASS   38.0f
+/* Synth2 fix pass 1 (the note-on beep): a note whose first pitch is above PXT_MW_F (200 Hz) waits this many tracker frames (1.45 ms each) before it
+ * speaks, so that a low note's fundamental has time to arrive. Measured on DI (tools/sim/note_on_diag.c): octave-or-more corrections after the onset
+ * 23 of 31 notes at the layer's 5 frames, 6 of 31 at 17; rise-to-onset 12 -> 21 ms on those notes, unchanged below 200 Hz. */
+#define PX_MONO_MINWAIT 17
 typedef struct {
     float f0;                            /* Hz while gate (continuous pitch); holds the last pitch after it falls */
     float vel;                           /* pick strength 0.05 .. 1, set at each onset (-40 .. -6 dBFS of the first 6 ms) */
@@ -35,6 +39,7 @@ static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
     memset(m, 0, sizeof *m);
     pxt_set_range(&m->trk, fmin_hz);
     pxt_reset(e, &m->trk, &m->lay);
+    m->lay.minwait = PX_MONO_MINWAIT;
 }
 static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_out *o)
 {

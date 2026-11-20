@@ -103,6 +103,9 @@ static float erb_ofc[ERB_O_BANDS];
 #ifndef LOW_MAKEUP
 #define LOW_MAKEUP 2.8f                                /* v73: +9 dB at RANGE 1 */
 #endif
+#ifndef PX_LOWEST_HQ_GAIN
+#define PX_LOWEST_HQ_GAIN 2.0f                         /* Synth2: LOWEST OCTAVE HQ's own octave-down gain, on top of LOW_MAKEUP (not shared with POLY OCTAVE HQ) */
+#endif
 #ifndef LOW_ATTACK
 #define LOW_ATTACK  0.06f                              /* v73: 1.5 ms at 11.025 kHz */
 #define LOW_RELEASE 0.0018f                            /* v73: 50 ms */
@@ -887,6 +890,7 @@ static void rc_pitch(px_engine *e)
                 const float makeup = 1.0f + (LOW_MAKEUP - 1.0f) * (1.0f - (float)(v - 1) / 99.0f);
                 e->erb_pitch.low_sel = sel;
                 e->ps_lvl[0] *= makeup; e->erb_pitch.down2 *= makeup;
+                if (t == PX_PIT_LOWEST_HQ) e->ps_lvl[0] *= PX_LOWEST_HQ_GAIN;
             }
         }
         break;

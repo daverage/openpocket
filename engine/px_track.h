@@ -387,6 +387,7 @@ typedef struct {
     int since, sub_n; float sub_f;                    /* v49: frames since the note spoke; its sub-multiple candidate */
     int gate, onset;                                  /* outputs: gate on; a new note this sample */
     float k_ea, k_er, k_xa, k_xr, sr;
+    int minwait; float minwait_f;                     /* Synth2: frames a note above minwait_f Hz waits after its pick (0 = PXT_MINWAIT, PXT_MW_F) */
 } pxt_layer;
 
 static void pxt_layer_init(pxt_layer *L, float sr)
@@ -434,7 +435,7 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
             if (m > 0.0f && pxt_near(m, L->stab_f, 30.0f)) L->stab_n++; else { L->stab_f = m; L->stab_n = m > 0.0f; }
             /* v49: a note above PXT_MW_F waits PXT_MINWAIT frames after the pick: a low note's fundamental is still on
              * its way through the low bands and its high partials would speak first */
-            const int early = L->stab_f > PXT_MW_F && L->wait_n < PXT_MINWAIT;
+            const int early = L->stab_f > (L->minwait_f > 0.0f ? L->minwait_f : PXT_MW_F) && L->wait_n < (L->minwait ? L->minwait : PXT_MINWAIT);
             if (!early && (L->stab_n >= 2 || (L->wait_n > 55 && L->stab_n >= 1))) {        /* (80 ms: take what there is) */
                 float v = (8.685890f * logf(L->onset_peak + 1e-9f) + 40.0f) * (1.0f / 34.0f);
                 L->vel = v < 0.05f ? 0.05f : (v > 1.0f ? 1.0f : v);

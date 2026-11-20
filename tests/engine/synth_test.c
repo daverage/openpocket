@@ -200,10 +200,43 @@ static void arcade_suite(void)
         CHECK(ok, "ARCADE: switching patches and macros while playing stays finite");
     }
 }
+/* Synth2 fix pass 1: the note-on beep (the tracker's wait for a low note's fundamental) and the NOISE patch's duration */
+static void pass1_suite(void)
+{
+    {   /* a low note rich in harmonics, as a pick makes it: the first pitch the synth is given is the fundamental, within a few tens of ms, and is not corrected afterwards */
+        static const float NOTES[3] = {82.41f, 110.0f, 146.83f}, ST[1] = {0.1f};
+        for (int k = 0; k < 3; k++) {
+            string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99997f, 0);
+            px_engine_init(&e, FS_);
+            static px_mono mo; px_mono_init(&e, &mo, PX_MONO_GUITAR);
+            CHECK(mo.lay.minwait == PX_MONO_MINWAIT, "the mono interface sets the pitch-confirmation wait");
+            int on = -1, corrections = 0; float f_on = 0, last = 0;
+            for (int i = 0; i < N_; i++) {
+                px_mono_out o; px_mono_run(&e, &mo, x[i], &o);
+                if (o.onset && on < 0) { on = i; f_on = o.f0; last = o.f0; }
+                else if (on >= 0 && o.gate && i - on < (int)(0.15f * FS_) && fabsf(cents(o.f0, last)) > 85.0f) { corrections++; last = o.f0; }
+            }
+            CHECK(on >= 0 && (float)(on - (int)(0.1f * FS_)) / FS_ < 0.045f, "%.1f Hz: the note starts within 45 ms of the pick (%.1f ms)", NOTES[k], (float)(on - (int)(0.1f * FS_)) * 1000.0f / FS_);
+            /* (E2 itself is the known limit: its band settles for two periods, so it starts up to 300 cents sharp and settles within 15 ms: 96 -> 85 -> 82 Hz; a partial of an octave or more is what the wait removes) */
+            CHECK(on >= 0 && fabsf(cents(f_on, NOTES[k])) < (k == 0 ? 300.0f : 50.0f), "%.1f Hz: it starts on the fundamental, not a partial (%.1f Hz)", NOTES[k], f_on);
+            CHECK(corrections <= (k == 0 ? 2 : 0), "%.1f Hz: no pitch correction after the start (%d)", NOTES[k], corrections);
+        }
+    }
+    {   /* NOISE: it plays while the guitar holds the note, and ends after it */
+        g_type = PX_SYN_ARCADE;
+        static const float NOTE[1] = {196.0f}, ST[1] = {0.1f};
+        const uint8_t q[5] = {85, 50, 50, 50, 100}; px_preset_t p; preset_of(&p, q);
+        string(x, N_, NOTE, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+        const float early = rms(y, (int)(0.3f * FS_), 8192), held = rms(y, (int)(1.2f * FS_), 8192);
+        CHECK(early > 0.01f, "NOISE sounds");
+        CHECK(held > 0.5f * early, "NOISE is still playing 1.1 s into a held note (%.4f against %.4f)", held, early);
+    }
+}
 int main(void)
 {
     analog_suite();
     arcade_suite();
+    pass1_suite();
     printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade synth ok", bad);
     return bad != 0;
 }

@@ -5,7 +5,7 @@
 #   make ble        the Bluetooth MIDI test image: firmware/openpocket-ble.bin, build/ble/*.fwsc (docs/BLE-TEST.md)
 #   make test       the host tests (tests/run_tests.sh)
 #   make package    build + build/SHA256SUMS of the outputs
-#   make package-synth2  the Synth2 test channel (docs/firmware/synth2/, version 1 = PocketX_901)
+#   make package-synth2  the Synth2 test channel (docs/firmware/synth2/, version 2 = PocketX_902, fix pass 1; 1 was s1)
 #   make package-test   the MIDI test channel package (docs/firmware/midi-test/, never the installer default)
 #   make clean      remove every build output (needs no Docker)
 #   make shell      a shell in the build container
