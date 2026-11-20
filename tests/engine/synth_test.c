@@ -677,6 +677,16 @@ static void legato_suite(void)
         px_mono m; px_mono_init(&e, &m, PX_MONO_GUITAR);
         for (int i = 0; i < NL; i++) { px_mono_out o; px_mono_run(&e, &m, xl[i], &o); on += o.onset; sl += o.slur; }
         CHECK(on >= 3 && sl == 0, "4 hard picks on a ringing string: 3 attacks and no slur (%d attacks, %d slurs)", on, sl); }
+    {   /* fix pass 7 FOLLOW: on a lead patch a pick while the note sounds is not a new attack (the envelope is not restarted: the amplitude must not dip towards 0 between picks of a fast run); a pad patch restarts as before */
+        static const float FQ[6] = {130.81f, 146.83f, 164.81f, 196.0f, 220.0f, 261.63f}; static float xs[44100 * 2], ys[44100 * 2]; const int NL = 44100 * 2; memset(xs, 0, sizeof xs);
+        for (int k = 0; k < 30; k++) { const int st = (int)((0.2f + (float)k * 0.045f) * FS_); float ph = 0; for (int i = st; i < NL && i < st + 3000; i++) { ph += FQ[(k * 5) % 6] / FS_; ph -= floorf(ph); const float pp = 6.2831853f * ph; xs[i] += 0.25f * expf(-(float)(i - st) / FS_ / 0.05f) * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.4f * sinf(3 * pp) + 0.25f * sinf(4 * pp));
+                if (i - st < 150) { static unsigned rq = 7; rq = rq * 1664525u + 1013904223u; xs[i] += 0.8f * ((float)(rq >> 9) / 4194304.0f - 1.0f) * expf(-(float)(i - st) / 50.0f); } } }
+        for (int ty = 0; ty < 2; ty++) { px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SYN] = 1;
+            pr.type[PX_B_SYN] = PX_SYN_ANALOG; { uint8_t q[5] = {ty ? 80 : 5, 50, 50, 50, 50}; memcpy(pr.p[PX_B_SYN], q, 5); }   /* ty 0: CLASSIC (follows), 1: SWEEP (restarts) */
+            px_engine e2; px_engine_init(&e2, FS_); px_engine_set(&e2, &pr); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&e2, xs + at, ys + at, 64);
+            float lo = 1e9f; for (int i = (int)(0.5f * FS_); i < (int)(1.4f * FS_); i += 441) { double r = 0; for (int j = 0; j < 441; j++) r += ys[i + j] * ys[i + j]; r = sqrt(r / 441); if (r < lo) lo = (float)r; }
+            { const int na = (int)trk[0].v[0].age; CHECK(ty ? na >= 8 : na <= 3, "%s: the note was started %d times by 30 picks (a follow patch keeps one note, a restarting one starts most)", ty ? "SWEEP" : "CLASSIC", na); }
+            CHECK(ty ? 1 : lo > 0.004f, "FOLLOW lead patch: no dip to silence between the picks of a fast run (quietest 10 ms %.4f)", lo); } }
     g_type = PX_SYN_ANALOG;
 }
 int main(void)

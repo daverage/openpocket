@@ -1,7 +1,7 @@
 /* OpenPocket, SPDX-License-Identifier: GPL-3.0-or-later.
  * Opt-in target experiment, using the causal complex resonator method described by
  * Zhou et al. (doi:10.1155/2009/729494). Candidate policy benchmarked against the
- * external GPLv3 reference listed in docs/POLY-TRACKER-RESONATOR-BENCH.md.
+ * external GPLv3 reference listed in docs/research/POLY-TRACKER-RESONATOR-BENCH.md.
  * This fixed-size implementation shares OpenPocket's existing decimation path.
  */
 #ifndef PX_RESONATOR_TEST_H

@@ -84,6 +84,7 @@ typedef struct {
     uint32_t rng[PX_S2_NV]; float drift[PX_S2_NV], spread;   /* ENSEMBLE: each voice's own slow random pitch wander (cents), and SPREAD's scale of it */
     int blk_done;                                      /* this block's shared step (the LFO, the engine's per-block call) has run */
     float dmp_k; int damped;                                        /* the gate fell on a hard damp: the release is fast (PX_S2_DAMP_MS) */
+    int follow;                                        /* FOLLOW patch (fix pass 7): a pick while the note sounds does not restart it; the level follows the guitar, the pitch glides (the SQUARE SYNTH HQ's way) */
     int pend_on, pend_re, pend_off;                    /* the block's events: a note starts, a sounding voice retriggers, the gate fell */
     int cnt, rpos; float ring[CTL];                    /* samples in this block; where the output is read */
     unsigned blk; int32_t out[CTL]; float lfo;
@@ -108,6 +109,10 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     const px_patch *pa = cho ? &PX_VOWELS[px_vowel_slot(q[0])] : ens ? &PX_INSTRUMENT_PATCHES[px_inst_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
     const float mt = ens2 ? m3 : m1;                                                   /* TONE: INSTRUMENT's second setting, ENSEMBLE's fourth */
+    {   /* FOLLOW patches (fix pass 7): the lead, bass and organ sounds whose playing is a continuous line; pads, strings, brass and the choir (their attacks are the point) and the percussive arcade patches restart per note */
+        const int sl = cho ? 99 : ens ? px_inst_slot(q[0]) : arc ? px_patch_slot(q[0]) : px_patch_slot(q[0]);
+        s->follow = cho ? 0 : ens ? (sl == 4 || sl >= 5) : arc ? !(sl == 4 || sl == 6 || sl == 7 || sl == 8) : (sl != 8);
+    }
     s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng == 3) ? &ENG_FORMANT : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT and ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
@@ -337,6 +342,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
         }
         s->vage++;
     }
+    if (s->follow && s->pend_on && t->v[0].active && (t->v[0].stage == 1 || t->v[0].stage == 2)) s->pend_on = 0;   /* FOLLOW: the note is already sounding: no new attack, the pitch has glided (above) and the level follows the pick (px_s2_voice) */
     if (s->pend_on && s->f0 > 0.0f) {
         if (!(t->v[0].active && t->v[0].stage != 0)) { s->vage = 0; for (int g = 0; g < PX_S2_NV; g++) { s->vph[g] = 0.37f * (float)g; s->vib[g] = 0.0f; } }   /* a new note starts its vibrato over */
         for (int vi = 0; vi < nv; vi++) {
