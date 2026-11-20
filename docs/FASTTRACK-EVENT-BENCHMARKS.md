@@ -29,17 +29,18 @@ Ablations (one change at a time; `FTC_*` macros):
 | legacy, FOLLOW off (reference) | 91.0 / 78.5 | 79.9 / 52.4 | 77.9 / 51.0 | 20.5 (17.2) | 2.1, 5.2 |
 | v0: admit from 8 frames, any flux pick | 92.1 / 80.2 | 76.2 / 53.9 | 70.9 / 46.7 | 4.3 (3.0) | **8.2, 26.9** |
 | v1: + pick needs a level rise (fast level > 1.3x its 8-frame minimum) | 91.4 / 79.8 | 74.4 / 52.4 | 69.0 / 45.0 | 4.3 (3.0) | 7.4, 15.1 |
-| v1, rise 1.6 / 2.2 | 90.9 / 89.2 | 73.8 / 72.1 | 68.2 / 65.8 | 4.3 | 6.9, 11.0 / 6.2, 8.5 |
+| v1, rise 1.6 | 90.9 / 79.8 | 73.8 / 52.1 | 68.2 / 44.4 | 4.3 (3.0) | 6.9, 11.0 |
+| v1, rise 2.2 | 89.2 / 78.1 | 72.1 / 50.5 | 65.8 / 42.3 | 4.4 (3.0) | 6.2, 8.5 |
 | v1 rise 1.3, earliest admission 14 frames | 91.3 / 79.8 | 80.4 / 55.2 | 76.8 / 49.0 | 11.5 (8.6) | 4.1, 11.0 |
 | **v1 rise 1.3, earliest admission 20 frames** | 91.1 / 79.9 | **82.7 / 57.0** | **79.5 / 51.2** | 20.2 (17.3) | 2.8, 8.7 |
 | v1 rise 1.3, earliest admission 28 frames | 90.8 / 79.9 | 83.2 / 57.7 | 80.3 / 52.1 | 31.8 (28.8) | 2.4, 6.7 |
-(The rise-1.6/2.2 rows' fast/all pitch columns are printed in order all/fast in the tool output; see `ft_compare.py`.) Bound-admit (`FTC_BOUND_ADMIT=1`, admit an unconfirmed pitch at 45 frames, the legacy behaviour) changed nothing measurable (+0.1 pt).
+Bound-admit (`FTC_BOUND_ADMIT=1`, admit an unconfirmed pitch at 45 frames, the legacy behaviour) changed nothing measurable (+0.1 pt).
 
 ### What the controller experiments show
 1. **One decision can replace the stack, at equal speed.** With a 20-frame earliest admission (legacy's own MINWAIT) the controller, with none of SLUR/CONFIRM/HOLD/MUTE/DEAD/STAB, recognises more events (82.7 vs 79.9 %) and makes more attacks (79.5 vs 77.9 %) than the legacy chain with FOLLOW off, at the same latency. Fast-pick attacks are the same (51.2 vs 51.0 %).
 2. **It does not beat the legacy chain on false notes.** Spurious attacks 8.7 vs 5.2 per minute (+67 %), wrong-initial 2.8 vs 2.1. **This hits the stop condition "false note events increase significantly".** I did not add compensating thresholds.
 3. **Speed is limited by the estimator, not by the event logic** (rule 6 exposed): the wrong-initial rate falls 7.4 -> 4.1 -> 2.8 -> 2.4 /min as the earliest admission moves 8 -> 14 -> 20 -> 28 frames. Admitting at 8-11 ms gives the 4 ms median latency (about 16 ms faster than legacy) but 3.5x the wrong notes: the ERB estimator's first 20-40 frames after a pick are unreliable and the short-window waveform check passes on upper partials (372 Hz admitted for a 105 Hz note). The next DSP problem is a better early fundamental, not another event rule.
-4. **Where false notes come from:** weak spectral-flux "picks" at note ends and decays (the legacy chain suppressed these with hold-undo, dead-pick and mute-thump rules; here only the level-rise evidence does), which the v1 variants reduce (26.9 -> 8.5 spurious/min at rise 2.2) at a cost in recall. v0 alone made 5399 false attacks against 6818 correct ones (3550 of them 'strong' picks far from any truth onset).
+4. **Where false notes come from:** weak spectral-flux "picks" at note ends and decays (the legacy chain suppressed these with hold-undo, dead-pick and mute-thump rules; here only the level-rise evidence does), which the v1 variants reduce (26.9 -> 8.5 spurious/min at rise 2.2) at a cost in recall. v0 alone made 5399 false attacks against 6818 correct ones (3260 of them from strong flux picks, 2139 from weak ones; 3 in 5 of all false attacks lie more than 150 ms from any truth onset).
 5. **The largest remaining recall loss for fast picks is classification, not pitch:** with the 20-frame controller, 27 % of fast picks (212 of 777) reach the right pitch with **no note event**: 165 by a pitch move with no pick evidence (hammer-ons, pull-offs, slides, or picks the flux missed) and 47 repeated pitches that were never re-attacked. The controller follows steps up to 120 cents continuously (as the legacy layer does) and reports them as nothing. A legato transition detector (step vs bend) is the missing event; whether those notes were picked is not labelled in Guitar-TECHS, so I cannot count them as misses or as correct legato.
 6. Rejected candidates are rare (18 of 9623 picks; 0.2 %): the bound and the reject path are not a significant loss route.
 
@@ -51,7 +52,7 @@ Ablations (one change at a time; `FTC_*` macros):
 |---|---|
 | fast-run note-on recall improves | **No**: 51.2 vs 51.0 % (FOLLOW off); the +18 points over production CLASSIC is the FOLLOW flag, not the controller |
 | false audible notes do not increase | **No**: spurious 8.7 vs 5.2 /min, wrong-initial 2.8 vs 2.1 at equal attack rate |
-| no valid note suppressed because it follows a mute or is quieter | Yes by construction (no amplitude-relative rule); bleep3's three swallowed notes are admitted (see render counts) |
+| no valid note suppressed because it follows a mute or is quieter | Yes by construction (no amplitude-relative rule); not yet verified note by note on bleep3 (counts and renders only) |
 | repicks while the previous voice sounds | Yes (REPICK/NOTE_ON interrupt; 181 fast+slow repeats still unmatched) |
 | bends and legato work | Not shown: bends/vibrato scored (see `--cat`), legato step detection missing (finding 5) |
 | tail latency no worse | Median equal at 20 frames; p90 is infinite for every variant (misses) |
