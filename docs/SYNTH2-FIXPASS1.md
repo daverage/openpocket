@@ -38,3 +38,8 @@ Three audible defects from the first pedal test. Not flashed yet; nothing here i
 - LOWEST OCTAVE HQ now has four settings: DRY, OCT -1, OCT +1, RANGE (same note cut and note names as POLY OCTAVE HQ; FULL = 0 = every band, as before). A stored preset of this type whose hidden fourth setting was not 0 will now cut: re-set it to FULL.
 - Its gain: `PX_LOWEST_HQ_GAIN` 2.0 -> 1.4 (30 % less than the +6 dB of s2, about +2.9 dB over v73). Read as "reduce this effect's gain by 30 %"; say if you meant something else.
 - Tests: `lowest_gain_test.c` (gain x1.4, POLY OCTAVE HQ unchanged, a note above the RANGE note is cut from 0.160 to 0.007 RMS). Protected: POLY OCTAVE HQ, POLY OCT FUZZ and other blocks identical to `2f3519b`.
+
+## Addendum 3 (s5, PocketX_905): make-up as RANGE cuts, on LOWEST OCTAVE HQ
+- With RANGE below FULL, LOWEST OCTAVE HQ lost far more level than POLY OCTAVE HQ (A2 at RANGE 1: -20 dB against FULL; POLY about -9 dB), because its lowest-band rule and the note cut thin the same bands. POLY OCTAVE HQ itself has no range make-up in the restored v72 code; I took "the boost we do for poly" to mean the v73 idea (more make-up the lower RANGE goes) and gave LOWEST that: `LOW_RANGE_BOOST` 0.7, x1 at FULL and at 100, x1.7 (+4.6 dB) at RANGE 1.
+- Measured wet RMS (E2 / A2 / D3 / G3 / E4 notes, dry off): E2 at RANGE 1 0.139 -> 0.20, at 20 0.245 -> 0.39; FULL and 100 unchanged. Notes above the cut stay cut (that is the control); the boost cannot bring them back.
+- Not heard. If it is too hot below RANGE 40 or still too thin, `LOW_RANGE_BOOST` is the one number.

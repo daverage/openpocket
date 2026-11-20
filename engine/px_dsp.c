@@ -106,6 +106,9 @@ static float erb_ofc[ERB_O_BANDS];
 #ifndef PX_LOWEST_HQ_GAIN
 #define PX_LOWEST_HQ_GAIN 1.4f                         /* Synth2: LOWEST OCTAVE HQ's own octave-down gain, on top of LOW_MAKEUP (not shared with POLY OCTAVE HQ) */
 #endif
+#ifndef LOW_RANGE_BOOST
+#define LOW_RANGE_BOOST 0.7f                           /* Synth2: LOWEST OCTAVE HQ extra make-up at RANGE 1 (x1.7, +4.6 dB) */
+#endif
 #ifndef LOW_ATTACK
 #define LOW_ATTACK  0.06f                              /* v73: 1.5 ms at 11.025 kHz */
 #define LOW_RELEASE 0.0018f                            /* v73: 50 ms */
@@ -904,7 +907,10 @@ static void rc_pitch(px_engine *e)
         else if (hq) {
             e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);                 /* LOWEST OCTAVE HQ has it too (FULL = 0): the octave-down follows the lowest sounding band (v73, erb_bank), with make-up gain */
             e->erb_pitch.low_sel = LOW_SEL_MIN;
-            e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN; e->erb_pitch.down2 *= LOW_MAKEUP;
+            /* the more RANGE cuts, the more make-up: x1 at FULL (0) and 100, up to x1.7 (+4.6 dB) at 1 (the lowest note alone, which RANGE then thins out) */
+            const int v = q[3] > 100 ? 100 : q[3];
+            const float rboost = v == 0 ? 1.0f : 1.0f + LOW_RANGE_BOOST * (1.0f - (float)(v - 1) / 99.0f);
+            e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN * rboost; e->erb_pitch.down2 *= LOW_MAKEUP;
         }
         break;
     case PX_PIT_WHAMMY: {
