@@ -101,6 +101,7 @@ typedef struct {
     float notes[PXT_NOTES], sal[PXT_NOTES]; int nnotes;
     float mono, conf, level, onset, flux_avg;
     int frame, refractory;
+    int sensitive_picks, weak_pick, weak_refractory;
     /* the waveform at 1/16 of the rate (2.76 kHz, 93 ms): the low notes' octave check (pxt_period) */
     px_bq d1, d2; float dec[PXT_DEC]; int dw, dn;
     float fmin;                       /* Synth2: the lowest pitch it looks for; 0: PXT_FMIN (60 Hz). pxt_set_range sets it (a bass patch: 38 Hz) */
@@ -211,7 +212,20 @@ static __attribute__((noinline)) void pxt_frame(px_track *t)   /* (per frame: st
     /* picks: the flux against its own running level */
     t->onset = 0.0f;
     if (t->refractory > 0) t->refractory--;
-    if (lvl > 1e-9f && flux > 6.0f + 2.5f * t->flux_avg && t->refractory == 0) { t->onset = flux; t->refractory = 20; }
+    const float strong_pick = 6.0f + 2.5f * t->flux_avg;
+    /* Provisional candidates get their own cooldown so they cannot mask a strong pick. */
+    if (t->weak_refractory > 0) t->weak_refractory--;
+    if (lvl > 1e-9f && t->refractory == 0) {
+        if (flux > strong_pick) {
+            t->onset = flux;
+            t->weak_pick = 0;
+            t->refractory = 20;
+        } else if (t->sensitive_picks && t->weak_refractory == 0 && flux > 6.0f + 1.5f * t->flux_avg) {
+            t->onset = flux;
+            t->weak_pick = 1;
+            t->weak_refractory = 20;
+        }
+    }
     t->flux_avg += 0.05f * (flux - t->flux_avg);
     /* partials: local maxima of band power above the floor, at the band's own frequency */
     t->npart = 0;
@@ -388,6 +402,7 @@ typedef struct {
     int gate, onset;                                  /* outputs: gate on; a new note this sample */
     float k_ea, k_er, k_xa, k_xr, sr;
     int minwait; float minwait_f;                     /* Synth2: frames a note above minwait_f Hz waits after its pick (0 = PXT_MINWAIT, PXT_MW_F) */
+    int weak_pick;
     int stabreq, minwait_lo;                          /* Synth2: stable frames a note needs before it speaks (0 = 2); frames any note below minwait_f waits (0 = none) */
 } pxt_layer;
 
@@ -403,6 +418,50 @@ static inline int pxt_near(float a, float b, float c)   /* within c cents (c = 3
     const float r = a / b, k = c * 0.000577623f;          /* ln 2 / 1200 */
     return r > 1.0f - k && r < 1.0f + k * (1.0f + 0.5f * k);
 }
+static inline float pxt_pick_velocity(float peak)
+{
+    const float v = (8.685890f * logf(peak + 1e-9f) + 40.0f) * (1.0f / 34.0f);
+    return v < 0.05f ? 0.05f : v > 1.0f ? 1.0f : v;
+}
+/* The ERB peak can follow an upper partial through a pick. Check the
+ * waveform before sending a high candidate to the synth. Require clear
+ * evidence for a longer period so a real high note keeps its pitch. Return
+ * zero when neither the high candidate nor a lower period is convincing. */
+static float pxt_pick_fundamental(const px_track *t, float f)
+{
+    if (f < 300.0f) return f;
+    const float lag = (pxt_rate * 0.25f) / f;
+    const int window = 20;
+    const float error = pxt_period(t, lag, window);
+    if (error < 0.5f) return f;
+    for (int h = 2; h <= 4; h++) {
+        const float lower = f / (float)h;
+        if (lower < pxt_fmin(t)) break;
+        if (pxt_period(t, lag * (float)h, window) < 0.3f) {
+            const float refined = pxt_refine(t, lower);
+            return refined > 0.0f ? refined : lower;
+        }
+    }
+    return error < 0.7f ? f : 0.0f;
+}
+/* Confirm a weak flux candidate from the samples since its pick. A much better
+ * double/triple period means the candidate could be an overtone. */
+static int pxt_confirm_pick(const px_track *t, float f, int frames)
+{
+    const float lag = (pxt_rate * 0.25f) / f;
+    const int recent = (frames - 1) * (PXT_HOP / 4);
+    const int window = (int)(0.5f * lag) + 1;
+    if (window + (int)lag + 1 > recent || window + (int)lag + 1 >= PXT_DEC) return 0;
+    const float error = pxt_period(t, lag, window);
+    if (error > PXT_REFINE_D) return 0;
+    for (int h = 2; h <= 3; h++) {
+        const float longer = lag * (float)h;
+        if ((int)longer + window + 1 > recent || (int)longer + window + 1 >= PXT_DEC ||
+            f < h * pxt_fmin(t)) break;
+        if (pxt_period(t, longer, window) + 0.12f < error) return 0;
+    }
+    return 1;
+}
 /* x: the guitar sample; framed: pxt_run returned 1 for it (t holds a new frame) */
 static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track *t, float x, int framed)
 {
@@ -414,7 +473,9 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
     L->key = on;
     L->onset = 0;
     if (!on) { L->state = 0; L->gate = 0; return; }
-    if (rise || (framed && t->onset > 0.0f && L->state >= 2)) {
+    if (rise || (framed && t->onset > 0.0f && L->state >= 2 &&
+                 (L->state != 3 || !t->weak_pick))) {
+        L->weak_pick = !rise && t->weak_pick;
         L->state = L->state >= 2 ? 3 : 1; L->onset_peak = 0.0f; L->peak_n = 0; L->stab_n = 0; L->wait_n = 0;
     }
     if (L->peak_n < (int)(0.006f * L->sr)) { if (a > L->onset_peak) L->onset_peak = a; L->peak_n++; }
@@ -437,11 +498,15 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
             /* v49: a note above PXT_MW_F waits PXT_MINWAIT frames after the pick: a low note's fundamental is still on
              * its way through the low bands and its high partials would speak first */
             const int early = (L->stab_f > (L->minwait_f > 0.0f ? L->minwait_f : PXT_MW_F) && L->wait_n < (L->minwait ? L->minwait : PXT_MINWAIT)) || L->wait_n < L->minwait_lo;
-            if (!early && (L->stab_n >= (L->stabreq ? L->stabreq : 2) || (L->wait_n > 55 && L->stab_n >= 1))) {        /* (80 ms: take what there is) */
-                float v = (8.685890f * logf(L->onset_peak + 1e-9f) + 40.0f) * (1.0f / 34.0f);
-                L->vel = v < 0.05f ? 0.05f : (v > 1.0f ? 1.0f : v);
+            if (L->weak_pick && L->wait_n > 28) L->state = 2;  /* expire the provisional repick after ~41 ms */
+            else if (!early && (L->stab_n >= (L->stabreq ? L->stabreq : 2) || (L->wait_n > 55 && L->stab_n >= 1)) &&
+                     (!L->weak_pick || pxt_confirm_pick(t, L->stab_f, L->wait_n))) {
+                const float pitch = t->sensitive_picks ? pxt_pick_fundamental(t, L->stab_f) : L->stab_f;
+                if (pitch <= 0.0f) return;
+                L->vel = pxt_pick_velocity(L->onset_peak);
                 L->peak_ref = L->envs > 1e-5f ? L->envs : 1e-5f;
-                L->f0 = L->stab_f; L->state = 2; L->onset = 1; L->cand_n = 0; L->since = 0; L->sub_n = 0;
+                L->f0 = pitch;
+                L->state = 2; L->onset = 1; L->cand_n = 0; L->since = 0; L->sub_n = 0;
             }
 #if PXT_CH_HOLDMODE
         } else if (L->state == 2 && chord) {
@@ -456,7 +521,10 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
             /* v49: just after a note speaks, the low bands are still settling: a low note can speak on a high partial
              * first (heard on the bowed string as a squeak). Its fundamental arriving - the pitch at a whole fraction,
              * 1/2 .. 1/8, held two frames - takes over at once */
-            if (pxt_near(m, L->sub_f, 50.0f)) { if (++L->sub_n >= 2) { L->f0 = m; L->sub_n = 0; L->cand_n = 0; } }
+            /* A lower estimate can be a multiple of a period that still fits the waveform. */
+            if (t->sensitive_picks && pxt_period(t, (pxt_rate * 0.25f) / L->f0, 20) < 0.2f) {
+                L->sub_n = 0;
+            } else if (pxt_near(m, L->sub_f, 50.0f)) { if (++L->sub_n >= 2) { L->f0 = m; L->sub_n = 0; L->cand_n = 0; } }
             else { L->sub_f = m; L->sub_n = 1; }
         } else if (L->state == 2) {
             /* follow the strongest note while it stays within 120 cents a frame (bends, slides, vibrato); another
@@ -467,7 +535,11 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
                 else if (L->cand_n > 0) L->cand_n--;
                 else { L->cand_f = m; L->cand_n = 1; }
                 const int octave = pxt_near(m, 2.0f * L->f0, 50.0f) || pxt_near(m, 0.5f * L->f0, 50.0f);
-                if (L->cand_n >= (octave ? PXT_SLUR_OCT : chord ? PXT_CH_SLUR : PXT_SLUR)) { L->f0 = L->cand_f; L->cand_n = 0; }
+                if (L->cand_n >= (octave ? PXT_SLUR_OCT : chord ? PXT_CH_SLUR : PXT_SLUR)) {
+                    const float pitch = t->sensitive_picks ? pxt_pick_fundamental(t, L->cand_f) : L->cand_f;
+                    if (pitch > 0.0f) L->f0 = pitch;
+                    L->cand_n = 0;
+                }
             }
         }
     }

@@ -82,6 +82,7 @@ static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
     memset(m, 0, sizeof *m);
     pxt_set_range(&m->trk, fmin_hz);
     pxt_reset(e, &m->trk, &m->lay);
+    m->trk.sensitive_picks = 1;
     m->lay.minwait = PX_MONO_MINWAIT;
     m->lay.stabreq = PX_MONO_STAB; m->lay.minwait_lo = PX_MONO_WAIT_LO;
 }
@@ -93,17 +94,46 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     m->fe += (a - m->fe) * (a > m->fe ? 1.0f / (0.001f * sr) : 1.0f / (0.010f * sr));
     pxt_layer sv;
     if (m->mute) sv = m->lay;
+    const int since_before = m->lay.since;
     const float f0_before = m->lay.f0, vel_b = m->lay.vel, pr_b = m->lay.peak_ref;
     if ((m->exh_n++ & 15) == 0) { m->exh[m->exh_w] = m->lay.expr; if (++m->exh_w >= 192) m->exh_w = 0; }
     pxt_layer_run(&m->lay, &m->trk, x, pxt_run(e, &m->trk, x));
     /* Synth2 fix pass 3: while the level collapses (a mute, a palm mute) the tracker's strongest component drifts, 60-80 cents up in the DI palm-mute recordings
      * (Guitar-TECHS), and a damped string can drop an octave: the pitch is held (no follow, no slur or octave takeover) until the level recovers or a new note speaks */
-    if (PX_MONO_HOLD > 0.0f && m->was && !m->lay.onset && m->lay.state == 2 && m->lay.since >= PX_MONO_HOLD_AFTER && m->pk > 0.01f && m->fe < PX_MONO_HOLD * m->pk) { m->lay.f0 = f0_before; m->lay.cand_n = 0; m->lay.sub_n = 0; }
+    if (PX_MONO_HOLD > 0.0f && m->was && !m->lay.onset && m->lay.state == 2 && (m->mute || m->lay.since >= PX_MONO_HOLD_AFTER) && m->pk > 0.01f && m->fe < PX_MONO_HOLD * m->pk) { m->lay.f0 = f0_before; m->lay.cand_n = 0; m->lay.sub_n = 0; }
+    if (m->lay.onset && m->lay.weak_pick && m->was) {
+        const int same_pitch = pxt_near(m->lay.f0, f0_before, 120.0f);
+        /* A quiet repick near the held pitch must not reset the decay's pitch hold. */
+        if (same_pitch) m->lay.since = since_before;
+        if (m->fe < PX_MONO_HOLD * m->pk && (same_pitch || m->fe < 0.2f * m->lay.onset_peak)) {
+            m->lay.onset = 0;
+            m->lay.f0 = f0_before;
+            m->lay.vel = vel_b;
+            m->lay.peak_ref = pr_b;
+            m->lay.since = since_before;
+        }
+    }
     int rel = 0;
     if (!m->mute) {
-        if (m->lay.gate && !m->lay.onset && m->pk > 0.01f && m->fe < 0.1f * m->pk) { m->mute = 1; m->mute_pk = m->pkl; rel = 1; }   /* (not on the sample a note starts: fix pass 5) */
+        if (m->lay.gate && !m->lay.onset && m->pk > 0.01f && m->fe < 0.1f * m->pk) {
+            m->mute = 1;
+            m->mute_pk = m->pkl;
+            rel = 1;
+            /* A pick waiting for pitch before this damp belongs to the stopped note. */
+            if (m->lay.state == 3) {
+                m->lay.state = 2;
+                m->lay.stab_n = 0;
+            }
+        }
     } else if (!m->lay.gate) m->mute = 0;                                          /* the note ended */
     else if (m->lay.onset) {
+        /* Flux sometimes leads the pick, leaving the first 6 ms peak low. A
+         * strong recovery with a repeating waveform can still reopen the gate. */
+        if (m->lay.onset_peak < 0.3f * m->mute_pk && m->fe > 2.0f * m->lay.onset_peak &&
+            m->fe > 0.5f * m->mute_pk && pxt_confirm_pick(&m->trk, m->lay.f0, m->lay.wait_n)) {
+            m->lay.onset_peak = m->fe;
+            m->lay.vel = pxt_pick_velocity(m->fe);
+        }
         if (m->lay.onset_peak < 0.3f * m->mute_pk) {                              /* a thump, not a pick: undo the retrigger */
             const pxt_layer n = m->lay;
             m->lay = sv; m->lay.env = n.env; m->lay.envs = n.envs; m->lay.key = n.key; m->lay.onset = 0; m->lay.state = 2;
@@ -132,15 +162,18 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
             if (sus) { m->pend = (int)(PX_MONO_CONFIRM_MS * 0.001f * sr); m->f_hold = f0_before; onset = 0; m->pend_slur = slur_now; }
             else m->pend = 0;
         } else if (m->pend > 0) {
-            if (!m->lay.gate) m->pend = 0;
+            if (!m->lay.gate || m->mute) m->pend = 0;
             else if (--m->pend == 0) onset = 1;                                      /* it speaks now, at the pitch the layer has by now */
         }
-        if (onset) { m->on_age = 0; if (m->lay.f0 > 0.0f) m->f_ref = m->lay.f0; m->ref_age = 0; }
-        else if (m->lay.gate) { if (m->on_age < 0x7fffff) m->on_age++; if (m->on_age > (int)(0.06f * sr) && m->pend == 0 && m->lay.f0 > 0.0f) { m->f_ref = m->lay.f0; m->ref_age = 0; } }
-        else if (m->ref_age < 0x7fffff) m->ref_age++;
     }
     if (onset && PX_MONO_DEAD > 0.0f && m->fe < PX_MONO_DEAD * m->lay.onset_peak) {   /* a dead pick: no note, and the pitch stays where it was */
         onset = 0; m->pend = 0; m->lay.f0 = m->f_ref > 0.0f ? m->f_ref : f0_before;
+    }
+    /* A rejected attack cannot replace the held pitch or the harmonic reference. */
+    if (PX_MONO_CONFIRM_MS > 0) {
+        if (onset) { m->on_age = 0; if (m->lay.f0 > 0.0f) m->f_ref = m->lay.f0; m->ref_age = 0; }
+        else if (m->lay.gate) { if (m->on_age < 0x7fffff) m->on_age++; if (m->on_age > (int)(0.06f * sr) && m->pend == 0 && m->lay.f0 > 0.0f) { m->f_ref = m->lay.f0; m->ref_age = 0; } }
+        else if (m->ref_age < 0x7fffff) m->ref_age++;
     }
     if (onset) {                                                                  /* fix pass 5: a started note is judged against its own level, not the loud note before it (a soft pick after a loud one is not a mute) */
         const float own = m->lay.onset_peak > m->fe ? m->lay.onset_peak : m->fe;

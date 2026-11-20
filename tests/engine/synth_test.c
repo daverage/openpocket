@@ -631,6 +631,69 @@ static void instrument_suite(void)
     }
     g_type = PX_SYN_ANALOG;
 }
+static void damp_pending_pick_suite(void)
+{
+    px_mono m;
+    px_mono_out o;
+    px_engine_init(&e, FS_);
+    px_mono_init(&e, &m, PX_MONO_GUITAR);
+    m.lay.key = m.lay.gate = m.was = 1;
+    m.lay.state = 3;  /* a repick is waiting for pitch when the level collapses */
+    m.lay.f0 = 146.0f;
+    m.lay.env = m.lay.envs = 0.01f;
+    m.lay.peak_ref = 0.1f;
+    m.pk = m.pkl = 0.1f;
+    m.fe = 0.005f;
+    px_mono_run(&e, &m, 0.0f, &o);
+    CHECK(o.damp && o.release && !o.onset && m.lay.state == 2 && o.f0 == 146.0f,
+          "damping cancels the candidate that was waiting for pitch");
+}
+
+static void overtone_suite(void)
+{
+    px_track t = {0};
+    px_engine_init(&e, FS_);
+    pxt_prepare(&e);
+    const float rate = pxt_rate * 0.25f;
+    for (int i = 0; i < PXT_DEC; i++) {
+        const float phase = 6.2831853f * 195.0f * (float)i / rate;
+        t.dec[i] = sinf(phase) + 0.8f * sinf(4.0f * phase);
+    }
+    const float f = pxt_pick_fundamental(&t, 788.0f);
+    CHECK(pxt_near(f, 195.0f, 50.0f), "an upper-partial onset speaks at the fundamental (%.1f Hz)", f);
+    for (int i = 0; i < PXT_DEC; i++) t.dec[i] = sinf(6.2831853f * 788.0f * (float)i / rate);
+    CHECK(pxt_pick_fundamental(&t, 788.0f) == 788.0f, "a genuinely high note keeps its pitch");
+}
+
+static void fast_pick_suite(void)
+{
+    const float pitches[] = {110.0f, 123.47f, 146.83f, 164.81f};
+    const uint8_t q[] = {45, 50, 50, 50, 100};
+    int matches = 0, matched = -1;
+    uint32_t prev_age = 0;
+    px_engine_init(&e, FS_);
+    px_s2_reset(&e, PX_SYN_ARCADE, q);
+    for (int i = 0; i < 2 * (int)FS_; i++) {
+        const double time = i / (double)FS_ - 0.25;
+        const int note = time >= 0.0 ? (int)(time * 22.0) : -1;
+        float x = 0.0f, y;
+        if (note >= 0 && note < 26) {
+            const double age = time - note / 22.0;
+            const double phase = 6.283185307179586 * pitches[note % 4] * age;
+            for (int h = 1; h <= 6; h++) x += (float)(sin(h * phase) / h);
+            x *= (float)(0.4 * (1.0 - exp(-1500.0 * age)) * exp(-30.0 * age));
+        }
+        px_synth_run(&e, &x, &y, 1);
+        if (trk[0].v[0].age != prev_age && note >= 0 && note < 26 && note != matched &&
+            pxt_near(px_s2_st.f0, pitches[note % 4], 50.0f)) {
+            matches++;
+            matched = note;
+        }
+        prev_age = trk[0].v[0].age;
+    }
+    CHECK(matches >= 22, "22 notes/sec: at least 22 of 26 picks tracked on time and pitch (%d)", matches);
+}
+
 /* Synth2 fix pass 6: what the original synths did: the level follows the pick strength, a re-detected pick softer than the ringing note is a slur (the pitch glides, no new attack), pitch changes glide */
 static void legato_suite(void)
 {
@@ -683,7 +746,16 @@ static void legato_suite(void)
                 if (i - st < 150) { static unsigned rq = 7; rq = rq * 1664525u + 1013904223u; xs[i] += 0.8f * ((float)(rq >> 9) / 4194304.0f - 1.0f) * expf(-(float)(i - st) / 50.0f); } } }
         for (int ty = 0; ty < 2; ty++) { px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SYN] = 1;
             pr.type[PX_B_SYN] = PX_SYN_ANALOG; { uint8_t q[5] = {ty ? 80 : 5, 50, 50, 50, 50}; memcpy(pr.p[PX_B_SYN], q, 5); }   /* ty 0: CLASSIC (follows), 1: SWEEP (restarts) */
-            px_engine e2; px_engine_init(&e2, FS_); px_engine_set(&e2, &pr); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&e2, xs + at, ys + at, 64);
+            px_engine e2;
+            px_engine_init(&e2, FS_); px_engine_set(&e2, &pr);
+            int accents = 0;
+            float previous_accent = 0.0f;
+            for (int at = 0; at + 64 <= NL; at += 64) {
+                px_engine_process(&e2, xs + at, ys + at, 64);
+                if (px_s2_st.pick_accent > previous_accent) accents++;
+                previous_accent = px_s2_st.pick_accent;
+            }
+            CHECK(ty ? accents == 0 : accents >= 5, "%s: confirmed FOLLOW picks get level accents (%d)", ty ? "SWEEP" : "CLASSIC", accents);
             float lo = 1e9f; for (int i = (int)(0.5f * FS_); i < (int)(1.4f * FS_); i += 441) { double r = 0; for (int j = 0; j < 441; j++) r += ys[i + j] * ys[i + j]; r = sqrt(r / 441); if (r < lo) lo = (float)r; }
             { const int na = (int)trk[0].v[0].age; CHECK(ty ? na >= 8 : na <= 3, "%s: the note was started %d times by 30 picks (a follow patch keeps one note, a restarting one starts most)", ty ? "SWEEP" : "CLASSIC", na); }
             CHECK(ty ? 1 : lo > 0.004f, "FOLLOW lead patch: no dip to silence between the picks of a fast run (quietest 10 ms %.4f)", lo); } }
@@ -712,6 +784,9 @@ int main(void)
     ensemble_suite();
     choir_suite();
     legato_suite();
+    fast_pick_suite();
+    overtone_suite();
+    damp_pending_pick_suite();
     printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + instrument + ensemble + choir synth ok", bad);
     return bad != 0;
 }

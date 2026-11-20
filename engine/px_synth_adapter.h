@@ -84,6 +84,7 @@ typedef struct {
     uint32_t rng[PX_S2_NV]; float drift[PX_S2_NV], spread;   /* ENSEMBLE: each voice's own slow random pitch wander (cents), and SPREAD's scale of it */
     int blk_done;                                      /* this block's shared step (the LFO, the engine's per-block call) has run */
     float dmp_k; int damped;                                        /* the gate fell on a hard damp: the release is fast (PX_S2_DAMP_MS) */
+    float pick_accent;                                 /* short level accent on a confirmed FOLLOW repick */
     int follow;                                        /* FOLLOW patch (fix pass 7): a pick while the note sounds does not restart it; the level follows the guitar, the pitch glides (the SQUARE SYNTH HQ's way) */
     int pend_on, pend_re, pend_off;                    /* the block's events: a note starts, a sounding voice retriggers, the gate fell */
     int cnt, rpos; float ring[CTL];                    /* samples in this block; where the output is read */
@@ -152,14 +153,15 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
         s->level = pa->trim / 64.0f * (m4 * 2.0f < 1.0f ? m4 * 2.0f : 1.0f);              /* MIX: 0 guitar only .. 50 both .. 100 synth only */
         s->dry = (1.0f - m4) * 2.0f < 1.0f ? (1.0f - m4) * 2.0f : 1.0f;
     }
+    const float attack_mul = cho ? 0.5f * tm : tm;                                          /* Choir speaks sooner on short notes */
 #if PX_S2_ENV_ORIG
     const float atk_ms = px_s2_tms(pa->env[0]), dec_ms = px_s2_tms(pa->env[1]) * (1.0f / 4.6f), rel_ms = px_s2_tms(pa->env[3]) * (1.0f / 4.6f);   /* (decay and release as time constants) */
-    s->att_k = px_s2_att_step(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+    s->att_k = px_s2_att_step(atk_ms * attack_mul); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
 #else
     const float atk_ms = 1.0f + (pa->env[0] / 127.0f) * (pa->env[0] / 127.0f) * 1500.0f;
     const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
     const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
-    s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+    s->att_k = px_s2_ms_k(atk_ms * attack_mul); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
 #endif
     s->dmp_k = px_s2_ms_k(PX_S2_DAMP_MS);
     s->dyn = pa->dyn ? (float)pa->dyn : arc ? 8.0f : (ens && pa->eng == 1) ? 6.0f : PX_S2_DYN_DB;   /* ARCADE's chips and the organs are nearly on / off; the rest follow the pick */
@@ -179,9 +181,9 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
             const float so = (float)st->v[i].semis + (float)st->v[i].cents * spread * 0.01f, lv = st->v[i].lvl / 64.0f * norm, am = st->v[i].atk / 64.0f;
             if (i == 0) { s->v0semis = so; s->v0lvl = lv; }
             else { s->vc[i].semis = so; s->vc[i].lvl = lv; }
-            if (i > 0) { s->vc[i].att_k = PX_S2_ENV_ORIG ? px_s2_att_step(atk_ms * tm * am) : px_s2_ms_k(atk_ms * tm * am); s->vc[i].dec_k = s->dec_k; s->vc[i].rel_k = s->rel_k; }
+            if (i > 0) { s->vc[i].att_k = PX_S2_ENV_ORIG ? px_s2_att_step(atk_ms * attack_mul * am) : px_s2_ms_k(atk_ms * attack_mul * am); s->vc[i].dec_k = s->dec_k; s->vc[i].rel_k = s->rel_k; }
         }
-        if (st->v[0].atk != 64) s->att_k = PX_S2_ENV_ORIG ? px_s2_att_step(atk_ms * tm * (st->v[0].atk / 64.0f)) : px_s2_ms_k(atk_ms * tm * (st->v[0].atk / 64.0f));
+        if (st->v[0].atk != 64) s->att_k = PX_S2_ENV_ORIG ? px_s2_att_step(atk_ms * attack_mul * (st->v[0].atk / 64.0f)) : px_s2_ms_k(atk_ms * attack_mul * (st->v[0].atk / 64.0f));
     }
     for (int i = s->nv; i < PX_S2_NV; i++) { trk[0].v[i].active = 0; trk[0].v[i].stage = 0; s->vc[i].env = 0.0f; s->vc[i].stage = 0; s->vc[i].last_amp = 0.0f; }   /* voices a smaller stack no longer plays */
     s->sus = pa->env[2] / 127.0f;
@@ -291,7 +293,7 @@ static void px_s2_voice(px_s2 *s, int vi, float *env, int *stage, float *last_am
     }
     float dynf = expf((s->expr_a - PX_S2_DYN_REF) * s->dyn * 0.115129f);                /* the pick strength and the string's own decay (the original tracked voice's law) */
     if (dynf > PX_S2_DYN_MAX) dynf = PX_S2_DYN_MAX;
-    const float amp = shape * dynf * lvl;                                              /* the voice's level in a stack */
+    const float amp = shape * dynf * lvl * (1.0f + s->pick_accent);                                              /* the voice's level in a stack */
     vmod_t m;
     memset(&m, 0, sizeof m);
     px_s2_pitch(s->pitch_cur + semis_off, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
@@ -342,7 +344,12 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
         }
         s->vage++;
     }
-    if (s->follow && s->pend_on && t->v[0].active && (t->v[0].stage == 1 || t->v[0].stage == 2)) s->pend_on = 0;   /* FOLLOW: the note is already sounding: no new attack, the pitch has glided (above) and the level follows the pick (px_s2_voice) */
+    if (s->pend_on || s->pend_off) s->pick_accent = 0.0f;
+    if (s->follow && s->pend_on && t->v[0].active && (t->v[0].stage == 1 || t->v[0].stage == 2)) {
+        s->pick_accent = 0.25f * s->vel;
+        s->pend_on = 0;
+    }
+    s->pick_accent *= 1.0f - (float)CTL / (FS * 0.018f);  /* 18 ms decay, with the voice's usual block ramp */
     if (s->pend_on && s->f0 > 0.0f) {
         if (!(t->v[0].active && t->v[0].stage != 0)) { s->vage = 0; for (int g = 0; g < PX_S2_NV; g++) { s->vph[g] = 0.37f * (float)g; s->vib[g] = 0.0f; } }   /* a new note starts its vibrato over */
         for (int vi = 0; vi < nv; vi++) {
