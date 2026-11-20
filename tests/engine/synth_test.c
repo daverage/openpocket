@@ -226,7 +226,7 @@ static void pass1_suite(void)
         g_type = PX_SYN_ARCADE;
         static const float NOTE[1] = {196.0f}, ST[1] = {0.1f};
         const uint8_t q[5] = {85, 50, 50, 50, 100}; px_preset_t p; preset_of(&p, q);
-        string(x, N_, NOTE, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+        string(x, N_, NOTE, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
         const float early = rms(y, (int)(0.3f * FS_), 8192), held = rms(y, (int)(1.2f * FS_), 8192);
         CHECK(early > 0.01f, "NOISE sounds");
         CHECK(held > 0.5f * early, "NOISE is still playing 1.1 s into a held note (%.4f against %.4f)", held, early);
@@ -295,18 +295,18 @@ static void choir_suite(void)
     {   /* formants: AH's strongest harmonic is in the F1 region whatever the pitch (110, 165, 220 Hz); the level is steady across the range; EE has far more energy above 2 kHz relative to 250-1000 Hz than OO */
         static const float NT[3] = {110.0f, 165.0f, 220.0f}; float lv[3];
         for (int k = 0; k < 3; k++) {
-            const uint8_t q[5] = {5, 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, &NT[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            const uint8_t q[5] = {5, 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, &NT[k], ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             float best = -1e9f, bf = 0; for (int h = 1; h <= 14; h++) { const float l = gz_db(y, 2 * 44100, 32768, NT[k] * h); if (NT[k] * h > 300.0f && NT[k] * h < 1300.0f && l > best) { best = l; bf = NT[k] * h; } }
             CHECK(bf > 520.0f && bf < 820.0f, "CHOIR AH on %.0f Hz: the strongest harmonic is in the F1 region (%.0f Hz)", NT[k], bf);
             lv[k] = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f); }
         CHECK(fabsf(lv[0] - lv[1]) < 3.0f && fabsf(lv[1] - lv[2]) < 3.0f && fabsf(lv[0] - lv[2]) < 3.0f, "CHOIR AH: the level is steady across 110-220 Hz (%.1f %.1f %.1f dBFS)", lv[0], lv[1], lv[2]);
         float ratio[2];
-        for (int vi = 0; vi < 2; vi++) { const uint8_t q[5] = {(uint8_t)(vi ? 25 : 45), 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+        for (int vi = 0; vi < 2; vi++) { const uint8_t q[5] = {(uint8_t)(vi ? 25 : 45), 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             double hi = 0, lo = 0; for (int h = 1; h <= 40; h++) { const double f = 110.0 * h; const double e = pow(10.0, gz_db(y, 2 * 44100, 32768, f) / 10.0); if (f > 2000 && f < 3200) hi += e; if (f > 250 && f < 1000) lo += e; }
             ratio[vi] = (float)(10.0 * log10((hi + 1e-12) / (lo + 1e-12))); }
         CHECK(ratio[1] > ratio[0] + 10.0f, "CHOIR EE has far more energy above 2 kHz than OO (high-to-low %.1f dB against %.1f dB)", ratio[1], ratio[0]); }
     {   /* TALK: OO>AH opens the mouth after each note starts: the spectrum's centre of mass (harmonics 2-18) rises from the first 50 ms to 1.5 s later; AH>OO falls */
-        for (int vi = 0; vi < 2; vi++) { const uint8_t q[5] = {(uint8_t)(vi ? 65 : 55), 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+        for (int vi = 0; vi < 2; vi++) { const uint8_t q[5] = {(uint8_t)(vi ? 65 : 55), 45, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             int on = 0; float pk = 0; for (int i = 0; i < N_; i++) if (fabsf(y[i]) > pk) pk = fabsf(y[i]); while (on < N_ && fabsf(y[on]) < 0.05f * pk) on++;
             double c[2]; for (int w = 0; w < 2; w++) { const int a = on + (w ? 66150 : 882); double sw = 0, sf = 0; for (int h = 2; h <= 18; h++) { const double f = 110.0 * h; const double e = pow(10.0, gz_db(y, a, 2048, f) / 10.0); sw += e; sf += e * f; } c[w] = sf / (sw + 1e-12); }   /* (short windows: the morph takes 330 ms) */
             CHECK(vi ? c[1] < c[0] - 60.0 : c[1] > c[0] + 60.0, "CHOIR %s: the mouth %s (centre of mass %.0f Hz early, %.0f Hz later)", vi ? "AH>OO" : "OO>AH", vi ? "closes" : "opens", c[0], c[1]); } }
@@ -350,7 +350,7 @@ static void ensemble_suite(void)
         static const int EXPECT[10][5] = {{0, 99, 99, 99, 99}, {0, 12, 99, 99, 99}, {-12, 0, 99, 99, 99}, {-12, 0, 12, 99, 99}, {0, 7, 99, 99, 99}, {-12, 0, 7, 99, 99}, {0, 4, 7, 99, 99}, {0, 3, 7, 99, 99}, {0, 4, 7, 11, 99}, {-12, 0, 7, 12, 16}};
         for (int v = 0; v < 10; v++) {
             const uint8_t q[5] = {15, (uint8_t)(v * 10 + 5), 50, 50, 50}; px_preset_t p; preset_of(&p, q);
-            string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            string(x, N_, H, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             float lv[29]; float mx = -1e9f; for (int st = -12; st <= 16; st++) { lv[st + 12] = gz_db(y, 44100, 44100, 110.0 * pow(2.0, st / 12.0)); if (lv[st + 12] > mx) mx = lv[st + 12]; }
             for (int k = 0; k < 5 && EXPECT[v][k] != 99; k++) CHECK(lv[EXPECT[v][k] + 12] > mx - 14.0f, "ENSEMBLE %s: the voice at %+d semitones is there (%.1f dB under the strongest)", PX_STACKS[v].name, EXPECT[v][k], mx - lv[EXPECT[v][k] + 12]);
             for (int nt = 1; nt <= 11; nt += 5) { int in = 0; for (int k = 0; k < 5 && EXPECT[v][k] != 99; k++) if (EXPECT[v][k] == nt || EXPECT[v][k] - 12 == nt || EXPECT[v][k] + 12 == nt) in = 1;
@@ -386,7 +386,7 @@ static void ensemble_suite(void)
         for (int pi = 0; pi < 2; pi++) for (int vi = 0; vi < 3; vi++) for (int k = 0; k < 3; k++) {
             const uint8_t q[5] = {(uint8_t)(pi ? 15 : 5), (uint8_t)(VO[vi] * 10 + 5), 50, 50, 50}; px_preset_t p; preset_of(&p, q);
             static float xl[44100 * 7], yl[44100 * 7]; const int NL = 44100 * 7; float ph = 0, env = 0.5f;
-            for (int i = 0; i < NL; i++) { ph += NT[k] / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f; xl[i] = i < 4410 ? 0.0f : 0.4f * env * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)); env *= 0.999995f; }
+            for (int i = 0; i < NL; i++) { ph += NT[k] / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f; xl[i] = i < 4410 ? 0.0f : 0.4f * env * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)); env *= 1.0f; }
             px_engine_init(&e, FS_); px_engine_set(&e, &p); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&e, xl + at, yl + at, 64);
             float lo = 1e9f, hi = 0; for (int i = 44100 * 2; i + 441 < NL - 22050; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(yl[i + j]) > pk) pk = fabsf(yl[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
             static float rr[900]; const int nb = (NL - 44100 * 3 - 882) / 441; double m = 0;
@@ -498,7 +498,7 @@ static void instrument_suite(void)
     {   /* fix pass 2: a steady note does not swell and fade (the detuned oscillators' beating): the peak level swings less than 5 dB (the ANALOG-engine patches; the organs have their rotary: below) */
         for (int b = 0; b < 5; b++) for (int k = 0; k < 3; k++) {
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
-            string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            string(x, N_, &NOTES[k], ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             float lo = 1e9f, hi = 0; for (int i = 66150; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
             CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 5.0f, "INSTRUMENT %s on %.0f Hz: no beating swell (%.1f dB)", PX_INSTRUMENT_PATCHES[b].name, NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
         }
@@ -555,7 +555,7 @@ static void instrument_suite(void)
         g_type = PX_SYN_ANALOG;
         for (int b = 0; b < 5; b++) for (int k = 0; k < 3; k++) {
             const uint8_t q[5] = {(uint8_t)(PAT[b] * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
-            string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            string(x, N_, &NOTES[k], ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
             CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < (b == 4 ? 6.5f : 5.5f), "ANALOG %s on %.0f Hz: no beating swell (%.1f dB; SWEEP also moves its filter slowly by design)", NM[b], NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
         }
@@ -566,7 +566,7 @@ static void instrument_suite(void)
         g_type = PX_SYN_INSTRUMENT;
         for (int b = 5; b < 10; b++) {
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
-            string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            string(x, N_, H, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
             for (int k = 0; k < 9; k++) lv[b - 5][k] = gz_db(y, 2 * 44100, 88200, 110.0 * R9[k]);
             /* the rotary and the percussion do not change the loudness much: the RMS (20 ms windows) over 2..4 s swings less than 4 dB */
             float lo = 1e9f, hi = 0; for (int i = 2 * 44100; i + 882 < 4 * 44100; i += 441) { const float r = rms(y, i, 882); if (r < lo) lo = r; if (r > hi) hi = r; }
@@ -582,12 +582,12 @@ static void instrument_suite(void)
         CHECK(lv[3][2] > lv[3][8] + 6.0f, "REEDORG: a falling slope (8' %.1f over 1' %.1f)", lv[3][2], lv[3][8]);
         CHECK(lv[4][2] > lv[4][0] + 40.0f && lv[4][2] > lv[4][1] + 40.0f, "SOFTORG: one flute bar (8'), no sub bars");
         /* JAZZORG's percussion (PERC 3RD: the 2 2/3' bar, the third harmonic) strikes with the note and decays: far stronger just after it than 3 s on */
-        { const uint8_t q[5] = {65, 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+        { const uint8_t q[5] = {65, 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
           const float early = gz_db(y, (int)(0.16f * FS_), 4096, 330.0), late = gz_db(y, 3 * 44100, 8192, 330.0), body = gz_db(y, 3 * 44100, 8192, 110.0);
           CHECK(early > late + 15.0f && body > late + 20.0f, "JAZZORG: the 2 2/3' percussion decays (%.1f dB early, %.1f dB late, 8' %.1f dB)", early, late, body); }
         /* TONE: a tilt: low = the upper bars down and the sub bars up, high the other way; ORGAN has all bars at 8, so each side can only lower the bars it moves away from */
         { float tl[2][2];
-          for (int j = 0; j < 2; j++) { const uint8_t q[5] = {55, (uint8_t)(j ? 100 : 0), 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+          for (int j = 0; j < 2; j++) { const uint8_t q[5] = {55, (uint8_t)(j ? 100 : 0), 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 1.0f, 0); render(&p, x, y, N_, 64);
               tl[j][0] = gz_db(y, 2 * 44100, 88200, 55.0); tl[j][1] = gz_db(y, 2 * 44100, 88200, 880.0); }
           CHECK((tl[1][1] - tl[1][0]) > (tl[0][1] - tl[0][0]) + 20.0f, "WHEEL TONE: 100 is brighter than 0 (the 1' bar over the 16' bar: %.1f dB against %.1f dB)", tl[1][1] - tl[1][0], tl[0][1] - tl[0][0]); }
         /* ATTACK: ORGAN speaks in a few ms; ATTACK 100 is slower (the pick at 0.1 s, the level reaching half its peak); RELEASE 100 lets it ring longer than RELEASE 0 */
@@ -631,6 +631,43 @@ static void instrument_suite(void)
     }
     g_type = PX_SYN_ANALOG;
 }
+/* Synth2 fix pass 6: what the original synths did: the level follows the pick strength, a re-detected pick softer than the ringing note is a slur (the pitch glides, no new attack), pitch changes glide */
+static void legato_suite(void)
+{
+    static const float H[1] = {196.0f}, ST[1] = {0.1f};
+    {   /* dynamics: a pick 24 dB softer plays quieter: STRINGS (18 dB of dynamics) by 10 dB or more, the organ (6 dB) by 8 dB or less, ARCADE (8 dB) in between; and STRINGS follows the pick more than the organ */
+        float d[3]; const int T[3] = {PX_SYN_INSTRUMENT, PX_SYN_INSTRUMENT, PX_SYN_ARCADE}, P[3] = {15, 55, 5};
+        for (int c = 0; c < 3; c++) {
+            float lv[2]; for (int s = 0; s < 2; s++) {
+                g_type = T[c]; const uint8_t q[5] = {(uint8_t)P[c], 50, 50, 50, 100}; px_preset_t p; preset_of(&p, q);
+                string(x, N_, H, ST, 1, s ? 0.5f * powf(10.0f, -24.0f / 20.0f) : 0.5f, 1.0f, 0); render(&p, x, y, N_, 64); lv[s] = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f); }
+            d[c] = lv[0] - lv[1]; }
+        CHECK(d[0] > 10.0f, "STRINGS: a pick 24 dB softer is at least 10 dB quieter (%.1f dB)", d[0]);
+        CHECK(d[1] < 8.0f, "ORGAN: a pick 24 dB softer is at most 8 dB quieter (%.1f dB)", d[1]);
+        CHECK(d[0] > d[1] + 3.0f, "STRINGS follows the pick more than the organ (%.1f against %.1f dB)", d[0], d[1]);
+        printf("dynamics, a pick 24 dB softer: STRINGS %.1f dB, ORGAN %.1f dB, ARCADE %.1f dB quieter\n", d[0], d[1], d[2]);
+        g_type = PX_SYN_ANALOG; }
+    {   /* a loud note decays, then a very soft pick at another pitch (a slur: no onset, the pitch is reported), then a hard pick (a new attack): the tracker's events */
+        static float xl[44100 * 4]; const int NL = 44100 * 4; float ph = 0, env = 0.5f; int onsets_soft = 0, slurs_soft = 0, onsets_hard = 0;
+        for (int i = 0; i < NL; i++) { const float t = (float)i / FS_; const float f = t < 1.5f ? 164.81f : t < 2.5f ? 220.0f : 293.66f;
+            if (i == (int)(0.1f * FS_)) env = 0.5f; if (i == (int)(1.5f * FS_)) env += 0.012f; if (i == (int)(2.5f * FS_)) env = 0.5f;
+            ph += f / FS_; ph -= floorf(ph); const float pp = 6.2831853f * ph; xl[i] = t < 0.1f ? 0.0f : 0.4f * env * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)); env *= 0.99997f; }
+        px_mono m; px_mono_init(&e, &m, PX_MONO_GUITAR);
+        for (int i = 0; i < NL; i++) { px_mono_out o; px_mono_run(&e, &m, xl[i], &o); const float t = (float)i / FS_;
+            if (t > 1.5f && t < 2.4f) { onsets_soft += o.onset; slurs_soft += o.slur; } if (t > 2.5f && t < 3.0f) onsets_hard += o.onset; }
+        CHECK(onsets_soft == 0 && slurs_soft >= 1, "a very soft pick on a ringing note is a slur, not a new attack (%d onsets, %d slurs)", onsets_soft, slurs_soft);
+        CHECK(onsets_hard >= 1, "a hard pick on a ringing note is a new attack (%d)", onsets_hard); }
+    {   /* glide: the same two-pitch note change plays out over about 12 ms, not in one block (the pitch the voice plays, a block at a time, through the adapter) */
+        static float xl[44100 * 3]; const int NL = 44100 * 3; float ph = 0, env = 0.5f; float worst = 0.0f, prev = 0.0f; int started = 0;
+        for (int i = 0; i < NL; i++) { const float t = (float)i / FS_; const float f = t < 1.5f ? 164.81f : 246.94f;
+            if (i == (int)(0.1f * FS_) || i == (int)(1.5f * FS_)) env = 0.5f; ph += f / FS_; ph -= floorf(ph); const float pp = 6.2831853f * ph; xl[i] = t < 0.1f ? 0.0f : 0.4f * env * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp)); env *= 0.99997f; }
+        g_type = PX_SYN_ANALOG; const uint8_t q[5] = {5, 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q); px_engine_init(&e, FS_); px_engine_set(&e, &p);
+        static float yl[44100 * 3];
+        for (int at = 0; at + 32 <= NL; at += 32) { px_engine_process(&e, xl + at, yl + at, 32); const float pc = px_s2_st.pitch_cur;
+            if ((float)at / FS_ > 1.5f && (float)at / FS_ < 1.7f && started) { const float step = fabsf(pc - prev); if (step > worst) worst = step; } if ((float)at / FS_ > 1.4f) started = 1; prev = pc; }
+        CHECK(worst < 1.0f, "a 7-semitone change glides: the largest step in one 0.7 ms block is %.2f semitones (a jump would be 3.5 or more)", worst); }
+    g_type = PX_SYN_ANALOG;
+}
 int main(void)
 {
     analog_suite();
@@ -640,6 +677,7 @@ int main(void)
     instrument_suite();
     ensemble_suite();
     choir_suite();
+    legato_suite();
     printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + instrument + ensemble + choir synth ok", bad);
     return bad != 0;
 }

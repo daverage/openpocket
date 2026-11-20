@@ -44,6 +44,12 @@
 #ifndef PX_MONO_DEAD
 #define PX_MONO_DEAD 0.1f
 #endif
+/* Synth2 fix pass 6 (what the original synths did: a pitch change in a ringing note is a glide, never a new note): a pick re-detected while the note rings is a real re-attack only if it is clearly harder than the note's present level
+ * (its pick strength more than PX_MONO_SLUR above the ringing note's expression, both 0..1 on the same scale, 0.034 = 1 dB); otherwise it is a SLUR: the new pitch is reported, the note's level reference is left as it was and no onset is
+ * sent (px_mono_out.slur). 0 = every re-detected pick is an onset, as before. */
+#ifndef PX_MONO_SLUR
+#define PX_MONO_SLUR 0.12f
+#endif
 #ifndef PX_MONO_REF_MS
 #define PX_MONO_REF_MS 800
 #endif
@@ -62,12 +68,13 @@ typedef struct {
     int onset;                           /* 1 on the sample a note starts (also a repick, slur or corrected octave) */
     int retrigger;                       /* onset while the gate was already on: restart the envelope, keep the voice */
     int release;                         /* 1 on the sample the gate falls */
+    int slur;                            /* 1 on the sample a re-detected pick was judged a slur: the pitch is new, the note is not (no new attack) */
     int damp;                            /* 1 on the sample a hard damp is detected (with `release`): the voice should stop fast, not ring its patch's release */
 } px_mono_out;
 /* Synth2 fix pass 2 (a hard mute plays another note): when the string is damped the tracker keeps the note open for ~120 ms and reads the muting thump as a new pick,
  * at a junk pitch. The mute is detected here (the fast level falls 20 dB below the last 150 ms's peak): the voice is released at once, and until the note ends a
  * "new note" is accepted only if its attack peak is within -10.5 dB of the peak before the mute (a real pick); a rejected one leaves the layer as it was. */
-typedef struct { px_track trk; pxt_layer lay; int was; float pk, pkl, fe, mute_pk; int mute; float f_ref, f_hold; int ref_age, on_age, pend; } px_mono;
+typedef struct { px_track trk; pxt_layer lay; int was; float pk, pkl, fe, mute_pk; int mute; float f_ref, f_hold; int ref_age, on_age, pend, pend_slur, exh_n, exh_w; float exh[192]; } px_mono;   /* exh: the note's expression every 16 samples for 70 ms (what it was before a pick) */
 
 static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
 {
@@ -85,7 +92,8 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     m->fe += (a - m->fe) * (a > m->fe ? 1.0f / (0.001f * sr) : 1.0f / (0.010f * sr));
     pxt_layer sv;
     if (m->mute) sv = m->lay;
-    const float f0_before = m->lay.f0;
+    const float f0_before = m->lay.f0, vel_b = m->lay.vel, pr_b = m->lay.peak_ref, ex_b = m->exh[m->exh_w];   /* ex_b: the expression 70 ms ago, before this pick began (the layer's own has risen with it by the time it speaks) */
+    if ((m->exh_n++ & 15) == 0) { m->exh[m->exh_w] = m->lay.expr; if (++m->exh_w >= 192) m->exh_w = 0; }
     pxt_layer_run(&m->lay, &m->trk, x, pxt_run(e, &m->trk, x));
     /* Synth2 fix pass 3: while the level collapses (a mute, a palm mute) the tracker's strongest component drifts, 60-80 cents up in the DI palm-mute recordings
      * (Guitar-TECHS), and a damped string can drop an octave: the pitch is held (no follow, no slur or octave takeover) until the level recovers or a new note speaks */
@@ -100,6 +108,8 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
             m->lay = sv; m->lay.env = n.env; m->lay.envs = n.envs; m->lay.key = n.key; m->lay.onset = 0; m->lay.state = 2;
         } else m->mute = 0;
     }
+    int slur_now = 0;
+    if (PX_MONO_SLUR > 0.0f && m->lay.onset && m->was && m->lay.vel <= ex_b + PX_MONO_SLUR) { slur_now = 1; m->lay.vel = vel_b; m->lay.peak_ref = pr_b; }   /* a slur (fix pass 6): the note's level reference stays */
     /* fix pass 5: the harmonic-ratio start is held back (see PX_MONO_CONFIRM_MS) */
     int onset = m->lay.onset;
     if (PX_MONO_CONFIRM_MS > 0) {
@@ -111,7 +121,7 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
                 static const float K[6] = {1200.0f, 1901.955f, 2400.0f, -1200.0f, -1901.955f, -2400.0f};
                 for (int k = 0; k < 6; k++) { const float d = c - K[k]; if (d < 60.0f && d > -60.0f) sus = 1; }
             }
-            if (sus) { m->pend = (int)(PX_MONO_CONFIRM_MS * 0.001f * sr); m->f_hold = f0_before; onset = 0; }
+            if (sus) { m->pend = (int)(PX_MONO_CONFIRM_MS * 0.001f * sr); m->f_hold = f0_before; onset = 0; m->pend_slur = slur_now; }
             else m->pend = 0;
         } else if (m->pend > 0) {
             if (!m->lay.gate) m->pend = 0;
@@ -129,8 +139,11 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
         if (own < m->pk) m->pk = own;
         if (own < m->pkl) m->pkl = own;
     }
+    int slur = 0;
+    if (onset) { if (slur_now || m->pend_slur) { onset = 0; slur = 1; } m->pend_slur = 0; }          /* the slur: the pitch moves, no new attack */
+    else if (m->pend == 0) m->pend_slur = 0;
     const int g = m->lay.gate;
-    o->gate = g; o->onset = onset; o->retrigger = onset && m->was; o->release = (m->was && !g) || rel; o->damp = rel;
+    o->slur = slur; o->gate = g; o->onset = onset; o->retrigger = onset && m->was; o->release = (m->was && !g) || rel; o->damp = rel;
     o->f0 = (m->pend > 0 && m->f_hold > 0.0f) ? m->f_hold : m->lay.f0; o->vel = m->lay.vel; o->expr = m->lay.expr; o->conf = m->trk.conf;
     m->was = g;
 }

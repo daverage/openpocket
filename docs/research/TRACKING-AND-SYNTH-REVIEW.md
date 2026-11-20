@@ -53,7 +53,6 @@ This is not the full Phase 1 literature review. What is established:
 * The `polytrack-x` branch was **not** created and nothing was pushed (the brief asks for a branch; creating and pushing it is the user's call).
 
 ## 5. Recommended next steps
-1. Prototype the legato and glide policy in the adapter on the host and measure with `tools/research/tracker_compare` (a new "blip audibility" metric: loud short notes, scoops, silent gaps).
-2. Make the level law a per-patch setting; test the 12 ms attack floor on the pads and strings.
+1. **Done (build 917, docs/research/synth2/SYNTH2-FIXPASS2.md, fix pass 6):** the legato and glide policy and the level law as a per-patch setting; the attack floor needed nothing (the pads' attacks are 160 ms or more with Felucca's envelope). Result: audible short notes 5 -> 3 on the user's recording, 29 -> 14 on the soft palm-mute set.
 3. Add the CPU0 load counter and run `synth_probe` (the user, on the pedal): CHOIR OPEN and the organ OPEN are the worst cases.
 4. Confirm the three PolyTrack X candidates with a proper literature pass, then build the host reference prototype and benchmark on the chord sets.

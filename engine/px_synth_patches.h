@@ -18,6 +18,7 @@ typedef struct {
     uint8_t eng;                 /* INSTRUMENT only: 0 Felucca ANALOG, 1 Felucca WHEEL (e[] is then REG, SUB, BODY, TOP, PERC, CLICK, DRV, ROTR) */
     uint8_t vib, vdel;           /* a bowed-string vibrato: depth in cents (0 none), and the delay before it starts in units of 10 ms; it fades in over 300 ms (fix pass 6) */
     uint8_t ftype;               /* the ANALOG filter: 0 low-pass, 1 band-pass, 2 high-pass */
+    uint8_t dyn;                 /* dynamics: the dB between a feather-light pick and a hard one (0 = the type's default: 18 dB, organs 6, ARCADE 8: px_s2_dyn) */
 } px_patch;
 enum { PX_PATCH_SLOTS = 10 };
 /* Fix pass 4: CLASSIC, FATSAW, PULSE, PWM and SWEEP have the second oscillator at MIX 16 (was 64, 64, 40, 30, 64) and their trims lowered by the loudness this adds (0.6-1.8 dB): detuned

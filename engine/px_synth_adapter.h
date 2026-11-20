@@ -40,6 +40,22 @@ static track_t trk[NPART];
 #ifndef PX_S2_ENV_ORIG
 #define PX_S2_ENV_ORIG 1
 #endif
+/* Dynamics and glide as the original synths had them (fix pass 6). The level follows the pick strength through the original tracked voice's law, lvl = exp((expr - 1) x dyn_db x 0.115): a feather-light pick is
+ * dyn_db below a hard one (expr is the note layer's expression, 0..1: the pick strength, falling with the string's own decay). Here the reference is a typical hard pick (PX_S2_DYN_REF) and the gain is capped, so the
+ * loudest picks do not run away; PX_S2_DYN_DB is the default range (the patch's `dyn` overrides it). The pitch of a ringing note glides to each new value over PX_S2_GLIDE_MS (the original MONO: 12 ms); only a note that
+ * starts from silence takes its pitch at once. */
+#ifndef PX_S2_DYN_REF
+#define PX_S2_DYN_REF 0.90f
+#endif
+#ifndef PX_S2_DYN_MAX
+#define PX_S2_DYN_MAX 1.6f
+#endif
+#ifndef PX_S2_DYN_DB
+#define PX_S2_DYN_DB 18.0f
+#endif
+#ifndef PX_S2_GLIDE_MS
+#define PX_S2_GLIDE_MS 12.0f
+#endif
 #define PX_S2_DAMP_MS 40.0f                           /* release time constant after a hard mute: the patch's own would ring on for a second or more */
 #ifndef PX_S2_DRIFT_C
 #define PX_S2_DRIFT_C 8.0f                             /* ENSEMBLE: the rms of each voice's pitch wander, cents, at SPREAD noon (0 = off) */
@@ -60,7 +76,7 @@ typedef struct {
     float env, sus, att_k, dec_k, rel_k, fenv_amp;     /* envelope 0..1 and its per-block coefficients; the amount into the filter */
     int stage;                                         /* 0 off, 1 attack, 2 decay / sustain, 3 release */
     float semis, pitch_cur;                            /* the note in MIDI semitones (continuous), what the voice plays now */
-    float vel, expr_r, last_amp;
+    float vel, expr_r, expr_a, last_amp, dyn, glide_k;   /* expr_a: the note layer's expression (0..1); dyn: the dynamics, dB; glide_k: the pitch glide a block */
     int nv; float v0semis, v0lvl;                      /* ENSEMBLE: the voices in play; voice 0's interval (semitones) and level (the single-voice types: 1, 0.0 and 1.0) */
     struct { float semis, lvl, att_k, dec_k, rel_k, env, last_amp; int stage; } vc[PX_S2_NV];   /* voices 1.. (voice 0's state is the fields above) */
     uint8_t grp[PX_S2_NV]; int16_t vcut[PX_S2_NV]; int ngrp;   /* the voice's group (a singer, or the voice itself) and its filter cutoff (-1: the patch's) */
@@ -141,6 +157,8 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
 #endif
     s->dmp_k = px_s2_ms_k(PX_S2_DAMP_MS);
+    s->dyn = pa->dyn ? (float)pa->dyn : arc ? 8.0f : (ens && pa->eng == 1) ? 6.0f : PX_S2_DYN_DB;   /* ARCADE's chips and the organs are nearly on / off; the rest follow the pick */
+    s->glide_k = px_s2_ms_k(PX_S2_GLIDE_MS);
     s->nv = 1; s->v0semis = 0.0f; s->v0lvl = 1.0f; s->ngrp = 1;
     for (int i = 0; i < PX_S2_NV; i++) { s->vcut[i] = -1; s->grp[i] = (uint8_t)i; }
     s->vibd = pa->vib * 0.01f; s->vdel_ms = pa->vdel * 10.0f;
@@ -266,8 +284,9 @@ static void px_s2_voice(px_s2 *s, int vi, float *env, int *stage, float *last_am
         shape = (float)a * (1.0f / 32767.0f);
         if (!v->active) { *env = 0.0f; *stage = 0; *last_amp = 0.0f; return; }
     }
-    const float vg = 0.35f + 0.65f * s->vel;                                           /* pick strength */
-    const float amp = shape * vg * (0.6f + 0.4f * s->expr_r) * lvl;                    /* and the string's own decay; the voice's level in a stack */
+    float dynf = expf((s->expr_a - PX_S2_DYN_REF) * s->dyn * 0.115129f);                /* the pick strength and the string's own decay (the original tracked voice's law) */
+    if (dynf > PX_S2_DYN_MAX) dynf = PX_S2_DYN_MAX;
+    const float amp = shape * dynf * lvl;                                              /* the voice's level in a stack */
     vmod_t m;
     memset(&m, 0, sizeof m);
     px_s2_pitch(s->pitch_cur + semis_off, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
@@ -298,8 +317,8 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     }
     if (s->f0 > 0.0f) {
         const float target = 12.0f * 1.442695f * logf(s->f0 * (1.0f / 440.0f)) + 69.0f + (float)s->patch->semis;
-        if (s->pend_on || s->pitch_cur == 0.0f) s->pitch_cur = target;               /* a new note: there, no glide from the last */
-        else s->pitch_cur += (target - s->pitch_cur) * 0.5f;                            /* a bend or vibrato: a short smoothing (about 1.5 ms) */
+        if (s->pitch_cur == 0.0f || (s->pend_on && !(t->v[0].active && t->v[0].stage != 0))) s->pitch_cur = target;   /* a note from silence: there, no glide from the last */
+        else s->pitch_cur += (target - s->pitch_cur) * s->glide_k;                      /* a bend, a vibrato, a slur, a re-pick: a glide (12 ms, as the original MONO) */
     }
     if (nv > 1 && PX_S2_DRIFT_C > 0.0f) {                                              /* ENSEMBLE: every voice drifts by itself (a deterministic xorshift, filtered): the beating of the copies is irregular, a chorus and not a phaser */
         const float amp = PX_S2_DRIFT_C * s->spread / 0.57735f / sqrtf(PX_S2_DRIFT_K / (2.0f - PX_S2_DRIFT_K));
@@ -348,7 +367,7 @@ PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n
         px_mono_run(e, &s->mono, in[k], &o);
         if (o.release) { s->pend_off = 1; if (o.damp) s->damped = 1; }
         if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; s->damped = 0; }   /* (a note that starts on the sample of a release wins: fix pass 5) */
-        s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f;
+        s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f; s->expr_a = o.expr;
         out[k] = s->ring[s->rpos];                                                  /* (the dry guitar is added where the block stands in the chain: px_s2_dry) */
         s->rpos++;
         if (++s->cnt == CTL) {
