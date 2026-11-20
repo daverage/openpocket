@@ -4,13 +4,13 @@
 #include <math.h>
 #include <string.h>
 #include "px_dsp.c"
-static float run(int type, const float *hz, int n)
+static float run(int type, const float *hz, int n, int range)
 {
     static px_engine e; static float x[44100 * 2], y[44100 * 2];
     px_engine_init(&e, 44100.0f);
     px_preset_t p; px_preset_factory(&p, 0);
     for (int b = 0; b < PX_NBLK; b++) p.on[b] = 0;
-    p.on[PX_B_PITCH] = 1; p.type[PX_B_PITCH] = (uint8_t)type; p.p[PX_B_PITCH][0] = 0; p.p[PX_B_PITCH][1] = 100; p.p[PX_B_PITCH][2] = 0; p.p[PX_B_PITCH][3] = 1;
+    p.on[PX_B_PITCH] = 1; p.type[PX_B_PITCH] = (uint8_t)type; p.p[PX_B_PITCH][0] = 0; p.p[PX_B_PITCH][1] = 100; p.p[PX_B_PITCH][2] = 0; p.p[PX_B_PITCH][3] = (uint8_t)range;
     px_engine_set(&e, &p);
     float ph[3] = {0};
     for (int i = 0; i < 44100 * 2; i++) {
@@ -25,6 +25,8 @@ static float run(int type, const float *hz, int n)
 int main(void)
 {
     const float e2[1] = {82.41f}, a2[1] = {110.0f}, pc[2] = {82.41f, 123.47f};
-    printf("%.7f %.7f %.7f %.7f\n", run(PX_PIT_LOWEST_HQ, e2, 1), run(PX_PIT_LOWEST_HQ, a2, 1), run(PX_PIT_LOWEST_HQ, pc, 2), run(PX_PIT_POLYOCT_HQ, pc, 2));
+    const float a3[1] = {220.0f};
+    printf("%.7f %.7f %.7f %.7f %.7f %.7f\n", run(PX_PIT_LOWEST_HQ, e2, 1, 0), run(PX_PIT_LOWEST_HQ, a2, 1, 0), run(PX_PIT_LOWEST_HQ, pc, 2, 0), run(PX_PIT_POLYOCT_HQ, pc, 2, 1),
+           run(PX_PIT_LOWEST_HQ, a3, 1, 0), run(PX_PIT_LOWEST_HQ, a3, 1, 16));   /* the last two: A3 with RANGE FULL and with RANGE at A2-ish (16: C3) */
     return 0;
 }

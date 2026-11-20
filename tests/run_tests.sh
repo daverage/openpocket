@@ -45,14 +45,14 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/synth_test.c fir
 CC="$CC" sh third_party/felucca-engines/tests/felucca_ref.sh
 # Synth2: the mono tracker's interface (engine/px_mono.h)
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/mono_test.c firmware/px_math.c -lm -o build/mono_test && build/mono_test | tail -1
-# Synth2 fix pass 1: LOWEST OCTAVE HQ's own gain (+6 dB against the v73 level), the other pitch types untouched
+# Synth2 fix pass 1: LOWEST OCTAVE HQ's own gain (x1.4 (+2.9 dB) against the v73 level), the other pitch types untouched
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -DPX_LOWEST_HQ_GAIN=1.0f tests/engine/lowest_gain_test.c firmware/px_math.c -lm -o build/lgt_ref && $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/lowest_gain_test.c firmware/px_math.c -lm -o build/lgt \
   && python3 -c "
 import subprocess
 a=[float(v) for v in subprocess.check_output(['build/lgt_ref']).split()]; b=[float(v) for v in subprocess.check_output(['build/lgt']).split()]
 r=[b[i]/a[i] for i in range(3)]
-ok=all(1.85<x<2.05 for x in r) and a[3]==b[3]
-print('lowest octave hq gain: wet x%.2f x%.2f x%.2f, poly octave hq unchanged %s -> %s'%(r[0],r[1],r[2],a[3]==b[3],'ok' if ok else 'FAILED'))
+ok=all(1.25<x<1.45 for x in r) and a[3]==b[3] and b[5]<0.5*b[4]
+print('lowest octave hq gain: wet x%.2f x%.2f x%.2f, poly octave hq unchanged %s, RANGE cuts a note above it %.3f -> %.3f: %s'%(r[0],r[1],r[2],a[3]==b[3],b[4],b[5],'ok' if ok else 'FAILED'))
 raise SystemExit(0 if ok else 1)"
 # Synth2: the protected effects against the v73 baseline (needs that commit in the clone's history)
 if git cat-file -e 2f3519b 2>/dev/null; then CC="$CC" tests/protected.sh 2f3519b; else echo "protected: commit 2f3519b not in this clone, skipped"; fi

@@ -33,3 +33,8 @@ Three audible defects from the first pedal test. Not flashed yet; nothing here i
 - **Cause (confirmed in the history):** v73 (`31d4201`) replaced the note cut (B1..E5 taper, `erb_range_band`) with a "follows the lowest sounding band" rule. That is not a Synth2 change, but it is in the 0635880 baseline.
 - **Change (`engine/px_dsp.c`, rc_pitch and px_param_text):** POLY OCTAVE HQ's RANGE is the v72 note cut again, with the note names. LOWEST OCTAVE HQ keeps the v73 lowest-band rule and its gain. The protected reference is now `2f3519b` (the commit before v73): POLY OCTAVE HQ and POLY OCT FUZZ, and every other block alone, are bit-identical to it (936 + 400 runs).
 - **Consequence:** the quiet-chords effect v73 removed in Poly Octave HQ's RANGE is back for RANGE settings other than FULL (v73's own finding: 27-35 dB quieter chords above the cut). That is how the cut behaves.
+
+## Addendum 2 (s4, PocketX_904): RANGE on LOWEST OCTAVE HQ, gain x0.7
+- LOWEST OCTAVE HQ now has four settings: DRY, OCT -1, OCT +1, RANGE (same note cut and note names as POLY OCTAVE HQ; FULL = 0 = every band, as before). A stored preset of this type whose hidden fourth setting was not 0 will now cut: re-set it to FULL.
+- Its gain: `PX_LOWEST_HQ_GAIN` 2.0 -> 1.4 (30 % less than the +6 dB of s2, about +2.9 dB over v73). Read as "reduce this effect's gain by 30 %"; say if you meant something else.
+- Tests: `lowest_gain_test.c` (gain x1.4, POLY OCTAVE HQ unchanged, a note above the RANGE note is cut from 0.160 to 0.007 RMS). Protected: POLY OCTAVE HQ, POLY OCT FUZZ and other blocks identical to `2f3519b`.

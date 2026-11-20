@@ -104,7 +104,7 @@ static float erb_ofc[ERB_O_BANDS];
 #define LOW_MAKEUP 2.8f                                /* v73: +9 dB at RANGE 1 */
 #endif
 #ifndef PX_LOWEST_HQ_GAIN
-#define PX_LOWEST_HQ_GAIN 2.0f                         /* Synth2: LOWEST OCTAVE HQ's own octave-down gain, on top of LOW_MAKEUP (not shared with POLY OCTAVE HQ) */
+#define PX_LOWEST_HQ_GAIN 1.4f                         /* Synth2: LOWEST OCTAVE HQ's own octave-down gain, on top of LOW_MAKEUP (not shared with POLY OCTAVE HQ) */
 #endif
 #ifndef LOW_ATTACK
 #define LOW_ATTACK  0.06f                              /* v73: 1.5 ms at 11.025 kHz */
@@ -477,7 +477,7 @@ static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT},
     {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
     {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 5, PN_POLY_HQ},
-    {"LOWEST OCTAVE HQ", 3, PN_POLY},
+    {"LOWEST OCTAVE HQ", 4, PN_POLY_HQ},   /* DRY, OCT -1, OCT +1, RANGE (the same note cut as POLY OCTAVE HQ) */
 };
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
@@ -697,7 +697,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         }
         break;
     case PX_B_PITCH:
-        if (t == PX_PIT_POLYOCT_HQ && k == 3) {
+        if ((t == PX_PIT_POLYOCT_HQ || t == PX_PIT_LOWEST_HQ) && k == 3) {
             if (v == 0) put_str(buf, "FULL");
             else {
                 const int note = erb_range_note(v);
@@ -901,7 +901,8 @@ static void rc_pitch(px_engine *e)
         e->erb_pitch.low_sel = 0.0f;
         e->erb_pitch_range = ERB_FULL;
         if (t == PX_PIT_POLYOCT_HQ) e->erb_pitch_range = erb_range_band(raw != t || q[3] > 100 ? (raw != t ? 0 : 100) : q[3]);   /* RANGE: the OC-3's note cut */
-        else if (hq) {                                 /* LOWEST OCTAVE HQ (v73): the octave-down follows the lowest sounding band (erb_bank), with make-up gain */
+        else if (hq) {
+            e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);                 /* LOWEST OCTAVE HQ has it too (FULL = 0): the octave-down follows the lowest sounding band (v73, erb_bank), with make-up gain */
             e->erb_pitch.low_sel = LOW_SEL_MIN;
             e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN; e->erb_pitch.down2 *= LOW_MAKEUP;
         }
@@ -1032,7 +1033,7 @@ static void lowest_pitch_reset(px_engine *e)
 static __attribute__((noinline)) float lowest_pitch_run(px_engine *e, float x)
 {
     /* v73: the bank's octave-down of the lowest sounding band (was px_lowest_sub.h's tracked sub) */
-    return x * e->ps_dry + erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], e->ps_lvl[0], ERB_FULL);
+    return x * e->ps_dry + erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], e->ps_lvl[0], e->erb_pitch_range);
 }
 
 static void rc_eq(px_engine *e)
