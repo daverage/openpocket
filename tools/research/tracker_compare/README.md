@@ -1,0 +1,4 @@
+# The original SYN MONO against today's tracker
+
+`origmono.c` runs the original firmware's MONO synth (v42, the last commit before Andrzej's first: zero-crossing tracker, median of three periods, a 12 ms pitch glide, a level gate, no re-attack) and logs its pitch and gate. `ev_now.c` logs today's tracker (`px_mono`). `score_f0.py` scores both on the pitch trajectory against the MIDI truth of the Guitar-TECHS DI sets (hit rate, latency to the right pitch, time spent right / wrong / silent in the first 200 ms of each note). `loud.c` measures how loud the short notes are under a chosen level law (compile with `-DPX_EXP_DYN=18` on a scratch adapter that has the experiment hook; see docs/research/TRACKING-AND-SYNTH-REVIEW.md).
+Results: `docs/research/TRACKING-AND-SYNTH-REVIEW.md`. Run: `sh tools/research/tracker_compare/run.sh`.
