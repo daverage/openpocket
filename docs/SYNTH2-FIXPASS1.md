@@ -27,3 +27,9 @@ Three audible defects from the first pedal test. Not flashed yet; nothing here i
 
 ## Checks run
 `make test` passes except the two PROBLEM lines in `sweep2.c` (POLY OCTAVE HQ missed doubled chord frequencies; POLY OCT FUZZ lost distortion at minimum LEVEL), which also fail on 9fa123f, before this pass. `tests/protected.sh 0635880`: 936 runs identical, 400 alone-block runs identical. `make wasm`, `make package-synth2` (OP_TEST_VERSION 2), `make ble` build. Pedal CPU not measured.
+
+## Addendum: POLY OCTAVE HQ RANGE restored (s3, PocketX_903)
+- **Reported:** RANGE no longer stops OCT -1 / -2 above a note, as the Boss OC-3's RANGE does (worked on v71/v72).
+- **Cause (confirmed in the history):** v73 (`31d4201`) replaced the note cut (B1..E5 taper, `erb_range_band`) with a "follows the lowest sounding band" rule. That is not a Synth2 change, but it is in the 0635880 baseline.
+- **Change (`engine/px_dsp.c`, rc_pitch and px_param_text):** POLY OCTAVE HQ's RANGE is the v72 note cut again, with the note names. LOWEST OCTAVE HQ keeps the v73 lowest-band rule and its gain. The protected reference is now `2f3519b` (the commit before v73): POLY OCTAVE HQ and POLY OCT FUZZ, and every other block alone, are bit-identical to it (936 + 400 runs).
+- **Consequence:** the quiet-chords effect v73 removed in Poly Octave HQ's RANGE is back for RANGE settings other than FULL (v73's own finding: 27-35 dB quieter chords above the cut). That is how the cut behaves.

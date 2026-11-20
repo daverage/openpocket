@@ -648,7 +648,20 @@ static void put_int(char *b, int v, int plus)
     b[i] = 0;
 }
 static void put_str(char *b, const char *s) { int i = 0; while (s[i] && i < 7) { b[i] = s[i]; i++; } b[i] = 0; }
-/* Zero preserves the full range in presets created before the control existed. */
+static const char *const NOTE_TXT[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+/* RANGE of POLY OCTAVE HQ, as the Boss OC-3's RANGE (restored from v72; v73 had replaced it): the octave-down is tapered out above the chosen note, B1..E5.
+ * Zero preserves the full range in presets created before the control existed. */
+static int erb_range_note(int value) { return 35 + (value - 1) * 42 / 100; } /* B1–E5 */
+
+static float erb_range_band(int value)
+{
+    if (value == 0) return ERB_FULL;
+    const float hz = 440.0f * powf(2.0f, ((float)erb_range_note(value) + 0.5f - 69.0f) / 12.0f);
+    /* v49: the band position of hz in the bank (fractional, between its centres) */
+    float c = ERB_LOW, i = 0.0f;
+    while (i < ERB_FULL - 1.0f) { const float next = c + ERB_O_S0 + ERB_O_SC * c; if (hz < next) return i + (hz - c) / (next - c); c = next; i += 1.0f; }
+    return i;
+}
 
 static float syn_fuzz_level_db(float level)
 {
@@ -685,9 +698,13 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_PITCH:
         if (t == PX_PIT_POLYOCT_HQ && k == 3) {
-            if (v == 0 || v >= 100) put_str(buf, "FULL");       /* v73: 1 the lowest note alone .. 100 every note */
-            else if (v == 1) put_str(buf, "LOWEST");
-            else put_int(buf, v, 0);
+            if (v == 0) put_str(buf, "FULL");
+            else {
+                const int note = erb_range_note(v);
+                const char *name = NOTE_TXT[note % 12];
+                put_str(buf, name);
+                put_int(buf + (name[1] ? 2 : 1), note / 12 - 1, 0);
+            }
             return 1;
         }
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
@@ -882,16 +899,11 @@ static void rc_pitch(px_engine *e)
          * note silent: the octave-down follows the lowest sounding band (erb_bank), RANGE 1 the lowest note
          * alone, up to 100 nearly every note; the make-up gain keeps the level (tools/research/low_bench.py) */
         e->erb_pitch.low_sel = 0.0f;
-        if (hq) {
-            const int v = t == PX_PIT_LOWEST_HQ ? 1 : q[3] > 100 ? 100 : q[3];
-            e->erb_pitch_range = ERB_FULL;
-            if (v > 0) {
-                const float sel = LOW_SEL_MIN * expf((float)(v - 1) * (3.4011974f / 99.0f));   /* 0.1 .. 3 */
-                const float makeup = 1.0f + (LOW_MAKEUP - 1.0f) * (1.0f - (float)(v - 1) / 99.0f);
-                e->erb_pitch.low_sel = sel;
-                e->ps_lvl[0] *= makeup; e->erb_pitch.down2 *= makeup;
-                if (t == PX_PIT_LOWEST_HQ) e->ps_lvl[0] *= PX_LOWEST_HQ_GAIN;
-            }
+        e->erb_pitch_range = ERB_FULL;
+        if (t == PX_PIT_POLYOCT_HQ) e->erb_pitch_range = erb_range_band(raw != t || q[3] > 100 ? (raw != t ? 0 : 100) : q[3]);   /* RANGE: the OC-3's note cut */
+        else if (hq) {                                 /* LOWEST OCTAVE HQ (v73): the octave-down follows the lowest sounding band (erb_bank), with make-up gain */
+            e->erb_pitch.low_sel = LOW_SEL_MIN;
+            e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN; e->erb_pitch.down2 *= LOW_MAKEUP;
         }
         break;
     case PX_PIT_WHAMMY: {

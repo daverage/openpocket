@@ -55,7 +55,7 @@ ok=all(1.85<x<2.05 for x in r) and a[3]==b[3]
 print('lowest octave hq gain: wet x%.2f x%.2f x%.2f, poly octave hq unchanged %s -> %s'%(r[0],r[1],r[2],a[3]==b[3],'ok' if ok else 'FAILED'))
 raise SystemExit(0 if ok else 1)"
 # Synth2: the protected effects against the v73 baseline (needs that commit in the clone's history)
-if git cat-file -e 0635880 2>/dev/null; then CC="$CC" tests/protected.sh 0635880; else echo "protected: commit 0635880 not in this clone, skipped"; fi
+if git cat-file -e 2f3519b 2>/dev/null; then CC="$CC" tests/protected.sh 2f3519b; else echo "protected: commit 2f3519b not in this clone, skipped"; fi
 echo "== preset store"
 $CC -O1 -Iengine tests/test_store.c engine/px_dsp.c firmware/px_math.c -lm -o build/test_store && build/test_store | tail -2
 echo "== audio callbacks' order (the output block is its interrupt's, whichever callback the driver calls first)"

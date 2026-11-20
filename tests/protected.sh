@@ -1,6 +1,6 @@
 #!/bin/sh
 # OpenPocket Synth2: are POLY OCTAVE HQ and POLY OCT FUZZ bit-identical to commit REF's? (tests/engine/protected.c)
-#   tests/protected.sh REF       e.g. tests/protected.sh 06358805   (the Synth2 baseline, the last `synth` commit)
+#   tests/protected.sh REF       e.g. tests/protected.sh 2f3519b5   (the Synth2 baseline, the last `synth` commit)
 # Built as the pedal builds the engine (-fno-builtin -ffp-contract=off, firmware/px_math.c). Writes to build/protected. Exit 0: identical.
 set -e
 cd "$(dirname "$0")/.."
