@@ -58,15 +58,22 @@ static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000
 static inline int px_s2_clamp127(float v) { const int i = (int)(v + (v < 0.0f ? -0.5f : 0.5f)); return i < 0 ? 0 : i > 127 ? 127 : i; }
 static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
 {
-    const int arc = type != PX_SYN_ANALOG;
-    const px_patch *pa = &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
+    const int ens = type == PX_SYN_ENSEMBLE;
+    const int arc = type == PX_SYN_ARCADE || type == PX_SYN_ARCADE_SPLIT;
+    const px_patch *pa = ens ? &PX_ENSEMBLE_PATCHES[px_ens_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
-    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : &ENG_ANALOG;
+    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : &ENG_ANALOG;   /* (ENSEMBLE: ANALOG) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
-    float tm = 1.0f, tdec = 1.0f;
-    if (!arc) {
+    float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (ENSEMBLE), else tm */
+    if (ens) {                                                                              /* ENSEMBLE: PATCH, TONE, ATTACK, RELEASE, LEVEL */
+        t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (m1 - 0.5f) * 127.0f);     /* TONE: the filter's cutoff, +-63 steps around the patch's */
+        tm = powf(2.0f, (m2 - 0.5f) * 4.0f);                                                /* ATTACK: x 1/4 .. x4 */
+        tmr = powf(2.0f, (m3 - 0.5f) * 4.0f);                                               /* RELEASE: x 1/4 .. x4 */
+        s->level = (m4 < 0.5f ? 4.0f * m4 * m4 : db2lin((m4 - 0.5f) * 12.0f)) * (pa->trim / 64.0f);
+        s->dry = 0.0f;
+    } else if (!arc) {
         t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (m1 - 0.5f) * 127.0f);     /* CUTOFF: +-63 Felucca steps around the patch's */
         t0->p[P_E5] = (int16_t)px_s2_clamp127((float)pa->e[5] + (m2 - 0.5f) * 127.0f);     /* RESONANCE */
         tm = powf(2.0f, (m3 - 0.5f) * 4.0f);                                                /* ENVELOPE: attack and release x 1/4 .. x4 */
@@ -87,7 +94,7 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     const float atk_ms = 1.0f + (pa->env[0] / 127.0f) * (pa->env[0] / 127.0f) * 1500.0f;
     const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
     const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
-    s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * tm);
+    s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
     s->sus = pa->env[2] / 127.0f;
     s->fenv_amp = (float)pa->fenv;
 }

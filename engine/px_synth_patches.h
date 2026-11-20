@@ -45,6 +45,22 @@ static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
     {"NOISE",   {0, 3,  0, 40,  0,  0, 0, 100}, {0, 40,  90, 30},  0,   0,140, 0, 1},   /* crushed noise, rate follows the note; xorshift as in Arcade Poly, sustains while held */
     {"MIN ARP", {2, 0, 64,  0,  0,  0, 3, 110}, {0, 60,  80, 40},  0,   0, 60, 0},   /* 8-bit minor arpeggio */
 };
+/* ENSEMBLE: Felucca ANALOG again, patches for sustained instrument colours, played by the same mono tracker (one note at a time: NOT polyphonic,
+ * a chord does not make a string section). The first three are Felucca's own ANALOG presets (src/eng_analog.c at the pin: SOFT PAD, STRINGS, BRASS)
+ * with E0..E7, ATK/DEC/SUS/REL and the filter-envelope amount copied as they stand; Felucca's chorus / reverb "FX" and pattern fields are not used
+ * (OpenPocket's MOD, DELAY and REVERB blocks come after the SYNTH block for that). SLOW STR and BRS LEAD are variations of STRINGS and BRASS (marked).
+ * The slot is PATCH / 10 as for ANALOG; slots 0..4 are defined and are final; slots 5..9 are reserved for later patches and play slot 4 until
+ * they are filled (a defined slot is never reassigned or reordered). Names: at most 7 characters. */
+enum { PX_ENS_DEFINED = 5 };
+static const px_patch PX_ENSEMBLE_PATCHES[PX_PATCH_SLOTS] = {
+    /* name       WAVE DTN MIX NOIS CUT RES DRV KTR     ATK DEC SUS REL  fenv semis trim pwm */
+    {"SOFTPAD", {0, 20, 64, 4, 60, 10,  0, 32}, {80, 90, 110, 95},  10,   0, 64, 0},   /* Felucca SOFT PAD */
+    {"STRINGS", {0, 25, 64, 0, 70, 10,  0, 32}, {70, 90, 115, 90},   5,   0, 64, 0},   /* Felucca STRINGS */
+    {"BRASS",   {0, 10, 64, 0, 45, 20, 10, 64}, {35, 70,  90, 45},  40,   0, 64, 0},   /* Felucca BRASS: the filter opens on every note (fenv 40) */
+    {"SLOWSTR", {0, 25, 64, 0, 62, 10,  0, 32}, {100, 90, 115, 105}, 4,   0, 64, 0},   /* variation of STRINGS: longer attack and release, a darker filter */
+    {"BRSLEAD", {0, 10, 64, 0, 55, 25, 10, 64}, {15, 70,  95, 35},  48,   0, 62, 0},   /* variation of BRASS: faster attack, brighter, more filter movement */
+};
+static inline int px_ens_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_ENS_DEFINED ? PX_ENS_DEFINED - 1 : s); }
 /* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */
 static inline int px_split_note(int v) { v = v < 0 ? 0 : v > 100 ? 100 : v; return 40 + (v * 36 + 50) / 100; }
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }

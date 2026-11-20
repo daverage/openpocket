@@ -270,12 +270,87 @@ static void routing_split_suite(void)
     }
     g_type = PX_SYN_ARCADE;
 }
+/* ENSEMBLE (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/SYNTH2-ENSEMBLE.md) */
+static void ensemble_suite(void)
+{
+    g_type = PX_SYN_ENSEMBLE;
+    static const float NOTES[3] = {82.41f, 164.81f, 329.63f}, ST[1] = {0.1f};
+    for (int b = 0; b < PX_ENS_DEFINED; b++) for (int k = 0; k < 3; k++) {
+        const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+        string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99997f, 0); render(&p, x, y, N_, 64);
+        const float got = f0_of(y, (int)(1.0f * FS_), 4096, NOTES[k] * 0.7f, NOTES[k] * 1.4f);
+        CHECK(got > 0 && fabsf(cents(got, NOTES[k])) < 25.0f, "ENSEMBLE %s on %.1f Hz: pitch within 25 cents (%.1f)", PX_ENSEMBLE_PATCHES[b].name, NOTES[k], got);
+    }
+    {   /* the patch identity: slots 0..4 are final, 5..9 and 100 play slot 4 until filled; names read from the table */
+        CHECK(px_ens_slot(0) == 0 && px_ens_slot(9) == 0 && px_ens_slot(10) == 1 && px_ens_slot(49) == 4 && px_ens_slot(50) == 4 && px_ens_slot(100) == 4, "ENSEMBLE slots: 10 values each, reserved slots play the last defined");
+        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 10, buf); CHECK(!strcmp(buf, "STRINGS"), "ENSEMBLE patch 10 reads STRINGS (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 20, buf); CHECK(!strcmp(buf, "BRASS"), "ENSEMBLE patch 20 reads BRASS (%s)", buf);
+        CHECK(px_nparams(PX_B_SYN, PX_SYN_ENSEMBLE) == 5 && !strcmp(px_type_name(PX_B_SYN, PX_SYN_ENSEMBLE), "ENSEMBLE"), "ENSEMBLE has five controls");
+    }
+    {   /* ATTACK and RELEASE: longer at 100 than at 0 (STRINGS, E3 for 1.2 s then silence) */
+        static const float H[1] = {164.81f}; string(x, N_, H, ST, 1, 0.5f, 0.99990f, 0); memset(x + (int)(1.3f * FS_), 0, sizeof(float) * (N_ - (int)(1.3f * FS_)));
+        float t_att[2], t_rel[2];
+        for (int j = 0; j < 2; j++) {
+            const uint8_t qa[5] = {10, 50, (uint8_t)(j ? 100 : 0), 50, 50}, qr[5] = {10, 50, 50, (uint8_t)(j ? 100 : 0), 50};
+            px_preset_t p; preset_of(&p, qa); render(&p, x, y, N_, 64);
+            float pk = 0; for (int i = 0; i < (int)(1.2f * FS_); i++) if (fabsf(y[i]) > pk) pk = fabsf(y[i]);
+            int i = 0; while (i < N_ && fabsf(y[i]) < 0.5f * pk) i++; t_att[j] = (float)i / FS_;
+            preset_of(&p, qr); render(&p, x, y, N_, 64);
+            pk = 0; for (int i2 = 0; i2 < (int)(1.2f * FS_); i2++) if (fabsf(y[i2]) > pk) pk = fabsf(y[i2]);
+            int e0 = (int)(1.3f * FS_), r = e0; while (r < N_ - 512 && rms(y, r, 512) > 0.1f * pk * 0.7f) r += 256; t_rel[j] = (float)(r - e0) / FS_;
+        }
+        printf("ENSEMBLE STRINGS: time to half level ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_att[0], t_att[1], t_rel[0], t_rel[1]);
+        CHECK(t_att[1] - 0.1f > 1.6f * (t_att[0] - 0.1f), "ATTACK 100 is slower than 0 (from the pick at 0.1 s)");
+        CHECK(t_rel[1] > 1.5f * t_rel[0], "RELEASE 100 is longer than 0");
+    }
+    {   /* a slide, a repicked note, a release (SOFTPAD, STRINGS, BRASS) */
+        for (int b = 0; b < 3; b++) {
+            const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+            static const float H[1] = {164.81f}; string(x, 44100 * 3, H, ST, 1, 0.5f, 0.99999f, 196.0f); render(&p, x, y, 44100 * 3, 64);
+            const float f2 = f0_of(y, (int)(1.5f * FS_), 4096, 120, 260), w2 = 164.81f + 31.19f * 1.5f / 3.0f;
+            CHECK(f2 > 0 && fabsf(cents(f2, w2)) < 50.0f, "ENSEMBLE %s follows a slide (%.1f Hz, want %.1f)", PX_ENSEMBLE_PATCHES[b].name, f2, w2);
+            static const float H2[2] = {110.0f, 110.0f}, ST2[2] = {0.1f, 1.0f}; string(x, 44100 * 2, H2, ST2, 2, 0.5f, 0.9999f, 0); memset(x + 44100 * 2, 0, sizeof(float) * (N_ - 44100 * 2));
+            render(&p, x, y, N_, 64);
+            const float mid = rms(y, (int)(0.8f * FS_), 4096), soon = rms(y, (int)(2.3f * FS_), 4096), late = rms(y, (int)(4.8f * FS_), 4096);
+            CHECK(mid > 0.005f, "ENSEMBLE %s sounds while the guitar plays (%.4f)", PX_ENSEMBLE_PATCHES[b].name, mid);
+            /* the pad and strings release is long by design (Felucca REL 90-95: a time constant of 1.4-1.7 s): the tail must keep falling, and RELEASE 0 must end it */
+            CHECK(late < 0.5f * soon && late < 0.35f * mid, "ENSEMBLE %s's tail keeps falling after the guitar stops (%.4f, %.4f, %.4f)", PX_ENSEMBLE_PATCHES[b].name, mid, soon, late);
+            const uint8_t q0[5] = {(uint8_t)(b * 10 + 5), 50, 50, 0, 50}; px_preset_t p0; preset_of(&p0, q0); render(&p0, x, y, N_, 64);
+            const float end0 = rms(y, (int)(4.8f * FS_), 4096), mid0 = rms(y, (int)(0.8f * FS_), 4096);
+            CHECK(end0 < 0.05f * mid0, "ENSEMBLE %s with RELEASE 0 has ended 2.8 s after the guitar (%.5f against %.4f): no stuck note", PX_ENSEMBLE_PATCHES[b].name, end0, mid0);
+        }
+    }
+    {   /* the same five bytes, the same sound, and the call size does not matter */
+        static const float H[2] = {146.83f, 196.0f}, ST2[2] = {0.1f, 1.2f}; const uint8_t q[5] = {30, 60, 40, 55, 50}; px_preset_t p; preset_of(&p, q);
+        string(x, N_, H, ST2, 2, 0.4f, 0.99995f, 0); render(&p, x, y, N_, 64); render(&p, x, y2, N_, 64);
+        CHECK(!memcmp(y, y2, sizeof y), "ENSEMBLE: the same settings and input give the same output");
+        const int n = (N_ / 64) * 64; render(&p, x, y2, n, 48);
+        float d = 0; for (int k = 0; k < n; k++) { const float a = fabsf(y[k] - y2[k]); if (a > d) d = a; }
+        CHECK(d == 0.0f, "ENSEMBLE: the output does not depend on the call size (%g)", d);
+    }
+    {   /* every patch (and the reserved slots), the macros at 0 / 50 / 100: finite, bounded, silent on silence */
+        static const float H[2] = {98.0f, 196.0f}, ST2[2] = {0.05f, 0.8f}; static const uint8_t V[3] = {0, 50, 100}; float peak_all = 0; int n = 0;
+        string(x, 44100, H, ST2, 2, 0.7f, 0.99995f, 0);
+        for (int pa = 0; pa < 10; pa++) for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) for (int c = 0; c < 3; c++) for (int d = 0; d < 3; d++) {
+            const uint8_t q[5] = {(uint8_t)(pa * 10 + 5), V[a], V[b], V[c], V[d]}; px_preset_t p; preset_of(&p, q);
+            render(&p, x, y, 44100, 64);
+            int ok = 1; float pk = 0; for (int i = 0; i < 44100; i++) { if (y[i] != y[i]) ok = 0; if (fabsf(y[i]) > pk) pk = fabsf(y[i]); }
+            if (!ok || pk > 2.0f) { bad++; printf("FAIL ENSEMBLE patch %d macros %d %d %d %d: %s peak %.2f\n", pa, V[a], V[b], V[c], V[d], ok ? "too loud" : "NaN", pk); }
+            if (pk > peak_all) peak_all = pk; n++;
+            static float z[8192]; memset(z, 0, sizeof z); render(&p, z, y2, 8192, 64);
+            for (int i = 0; i < 8192; i++) if (fabsf(y2[i]) > 1e-6f) { bad++; printf("FAIL ENSEMBLE patch %d: not silent on silence\n", pa); break; }
+        }
+        printf("ENSEMBLE: %d patch/macro combinations: all finite, loudest peak %.2f\n", n, peak_all);
+    }
+    g_type = PX_SYN_ANALOG;
+}
 int main(void)
 {
     analog_suite();
     arcade_suite();
     pass1_suite();
     routing_split_suite();
-    printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade synth ok", bad);
+    ensemble_suite();
+    printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + ensemble synth ok", bad);
     return bad != 0;
 }

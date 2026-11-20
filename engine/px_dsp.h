@@ -56,10 +56,11 @@ enum { PX_SYN_X_ORGAN, PX_SYN_X_CHURCH, PX_SYN_X_STRINGS, PX_SYN_X_CHOIR, PX_SYN
        PX_SYN_ANALOG,                                  /* Synth2: Felucca ANALOG, one note followed from the guitar (engine/px_synth_adapter.h) */
        PX_SYN_ARCADE,                                  /* Synth2: Felucca LOFI (chip sounds), the same way */
        PX_SYN_ARCADE_SPLIT,                            /* Synth2: ARCADE with one patch for the lower notes and one for the upper */
+       PX_SYN_ENSEMBLE,                                /* Synth2: strings, pad, brass (Felucca ANALOG patches), one note from the guitar: docs/SYNTH2-ENSEMBLE.md */
        PX_SYN_COUNT };
 /* does this SYNTH type run? (1: a live type; 0: a tombstone, or an id beyond the catalogue: both are bypassed) */
-static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ || t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT; }
-static inline int px_syn_mono(int t) { return t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT; }   /* the types played by the mono tracker and Felucca */
+static inline int px_syn_runs(int t) { return t == PX_SYN_OCT_FUZZ || t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_ENSEMBLE; }
+static inline int px_syn_mono(int t) { return t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_ENSEMBLE; }   /* the types played by the mono tracker and Felucca */
 int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI skips it, the engine bypasses it) */
 int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
 int         px_live_type(int blk, int i);              /* the i-th live type's id (0..px_nlive-1) */
