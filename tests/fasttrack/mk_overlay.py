@@ -72,3 +72,23 @@ assert m.count("0.3f * m->mute_pk") == 2
 m = m.replace('0.3f * m->mute_pk', 'FT_MUTE_K * m->mute_pk')
 m = m.replace('#define PX_MONO_H\n', '#define PX_MONO_H\n#ifndef FT_MUTE_K\n#define FT_MUTE_K 0.3f\n#endif\n', 1)
 open(q, 'w').write(m)
+
+# ---- FT_HOOKS: diagnostics only (no behaviour change). Every place the legacy wrapper/adapter suppresses, delays or merges a note event reports a reason code:
+#   H hold-undo of a weak repick   M mute-thump undo   S slur (onset turned into a pitch glide)   C 35 ms harmonic confirm hold   D dead-pick veto
+#   P adapter: second note-on in one 32-sample block overwrote a pending one   Q adapter: release in the same block as the note-on (note-on then instant note-off)
+#   F adapter: FOLLOW consumed the note-on (no envelope attack)   N/L/X: what the tracker told the synth (note-on / slur / release)
+q = dst + '/px_mono.h'; m = open(q).read()
+def rep(txt, old, new):
+    assert txt.count(old) == 1, old
+    return txt.replace(old, new)
+m = rep(m, '#define PX_MONO_H\n', '#define PX_MONO_H\n#ifdef FT_HOOKS\nstatic long ft_now = 0; static void ft_why(char c, float f) { printf("W %.2f %c %.2f\\n", ft_now * 1000.0 / 44100.0, c, f); }\n#define FT_WHY(c, f) ft_why(c, f)\n#else\n#define FT_WHY(c, f) ((void)0)\n#endif\n')
+m = rep(m, "            m->lay.onset = 0;\n            m->lay.f0 = f0_before;", "            FT_WHY('H', m->lay.f0); m->lay.onset = 0;\n            m->lay.f0 = f0_before;")
+m = rep(m, "a thump, not a pick: undo the retrigger */\n            const pxt_layer n = m->lay;", "a thump, not a pick: undo the retrigger */\n            FT_WHY('M', m->lay.f0); const pxt_layer n = m->lay;")
+m = rep(m, "{ slur_now = 1; m->lay.vel = vel_b;", "{ FT_WHY('S', m->lay.f0); slur_now = 1; m->lay.vel = vel_b;")
+m = rep(m, "if (sus) { m->pend =", "if (sus) { FT_WHY('C', m->lay.f0); m->pend =")
+m = rep(m, "        onset = 0; m->pend = 0; m->lay.f0 = m->f_ref > 0.0f ? m->f_ref : f0_before;", "        FT_WHY('D', m->lay.f0); onset = 0; m->pend = 0; m->lay.f0 = m->f_ref > 0.0f ? m->f_ref : f0_before;")
+open(q, 'w').write(m)
+a = dst + '/px_synth_adapter.h'; t = open(a).read()
+t = rep(t, "        px_mono_run(e, &s->mono, in[k], &o);\n", "        px_mono_run(e, &s->mono, in[k], &o);\n        if (o.onset) FT_WHY('N', o.f0); if (o.slur) FT_WHY('L', o.f0); if (o.release) FT_WHY('X', (float)o.damp);\n        if (o.onset && s->pend_on) FT_WHY('P', o.f0);\n        if (o.release && s->pend_on) FT_WHY('Q', o.f0);\n")
+t = rep(t, "        s->pick_accent = 0.25f * s->vel;\n        s->pend_on = 0;", "        s->pick_accent = 0.25f * s->vel; FT_WHY('F', s->f0);\n        s->pend_on = 0;")
+open(a, 'w').write(t)
