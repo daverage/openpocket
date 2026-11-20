@@ -1,0 +1,33 @@
+{
+ "frozen": "2026-11-20 16:51",
+ "params": {
+  "hs": {
+   "rel": 0.7
+  },
+  "klap": {
+   "amp_stop": 0.15
+  },
+  "nnls": {
+   "rel": 0.3,
+   "resid_gate": true
+  },
+  "pt": {
+   "resid_gate": 0.03,
+   "birth_rel": 0.3,
+   "fast": false
+  }
+ },
+ "tuning_F1": {
+  "hs": 0.7634653227926222,
+  "klap": 0.9092040563723158,
+  "nnls": 0.8825916300084824,
+  "pt": 0.9275977330042551
+ },
+ "acceptance": {
+  "description": "PT passes only if, on the held-out split, for poly3 AND poly4 it beats the best baseline by >=0.03 framewise F1 and has fewer octave+harmonic false positives, and mono F1 >= 0.95 with chord onset latency median <30 ms and p90 <50 ms.",
+  "min_F1_gain": 0.03,
+  "mono_F1": 0.95,
+  "chord_lat_med_ms": 30,
+  "chord_lat_p90_ms": 50
+ }
+}

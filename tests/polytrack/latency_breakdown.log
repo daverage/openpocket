@@ -1,0 +1,7 @@
+frozen pt                                  poly3: F1=0.95 lat=30/75ms oct+harm=102  poly4: F1=0.91 lat=53/80ms oct+harm=276  add_note: F1=0.90 lat=38/66ms oct+harm=41
+confirm 2 -> 1 frame (-5.8 ms)             poly3: F1=0.95 lat=24/65ms oct+harm=124  poly4: F1=0.91 lat=42/80ms oct+harm=288  add_note: F1=0.90 lat=24/41ms oct+harm=61
+difference lag 1536 -> 512 samples         poly3: F1=0.94 lat=41/83ms oct+harm=139  poly4: F1=0.88 lat=53/81ms oct+harm=631  add_note: F1=0.91 lat=38/51ms oct+harm=27
+window 4096 -> 2048 (loses low notes)      poly3: F1=0.77 lat=39/87ms oct+harm=403  poly4: F1=0.75 lat=42/64ms oct+harm=717  add_note: F1=0.76 lat=35/51ms oct+harm=87
+no birth gate (whole spectrum)             poly3: F1=0.92 lat=30/79ms oct+harm=335  poly4: F1=0.91 lat=55/86ms oct+harm=342  add_note: F1=0.88 lat=36/64ms oct+harm=281
+confirm 1 + lag 512                        poly3: F1=0.97 lat=32/73ms oct+harm=7  poly4: F1=0.84 lat=47/85ms oct+harm=829  add_note: F1=0.90 lat=24/42ms oct+harm=37
+confirm 1 + lag 512 + window 2048          poly3: F1=0.71 lat=27/56ms oct+harm=944  poly4: F1=0.72 lat=33/65ms oct+harm=921  add_note: F1=0.77 lat=27/48ms oct+harm=270

@@ -1,0 +1,39 @@
+w2=1 {'th_in': 0.5, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.68 F1 0.87 bad 69/min 7.2s/min 2nd-voice 23/62
+w2=1 {'th_in': 0.5, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.68 F1 0.86 bad 71/min 7.1s/min 2nd-voice 23/78
+w2=1 {'th_in': 0.5, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.68 F1 0.88 bad 60/min 6.4s/min 2nd-voice 35/68
+w2=1 {'th_in': 0.5, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.68 F1 0.88 bad 62/min 6.4s/min 2nd-voice 35/82
+w2=1 {'th_in': 0.8, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.68 F1 0.88 bad 60/min 6.3s/min 2nd-voice 29/95
+w2=1 {'th_in': 0.8, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.67 F1 0.88 bad 61/min 6.3s/min 2nd-voice 29/101
+w2=1 {'th_in': 0.8, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.68 F1 0.89 bad 55/min 5.7s/min 2nd-voice 41/107
+w2=1 {'th_in': 0.8, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.67 F1 0.88 bad 57/min 5.8s/min 2nd-voice 41/107
+w2=1 {'th_in': 0.95, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.66 F1 0.87 bad 55/min 6.1s/min 2nd-voice 41/260
+w2=1 {'th_in': 0.95, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.66 F1 0.87 bad 59/min 6.2s/min 2nd-voice 41/260
+w2=1 {'th_in': 0.95, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.66 F1 0.88 bad 54/min 5.9s/min 2nd-voice 52/274
+w2=1 {'th_in': 0.95, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.65 F1 0.87 bad 58/min 6.1s/min 2nd-voice 52/274
+w2=3 {'th_in': 0.5, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.70 F1 0.86 bad 71/min 7.5s/min 2nd-voice 23/43
+w2=3 {'th_in': 0.5, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.68 F1 0.86 bad 73/min 7.3s/min 2nd-voice 23/46
+w2=3 {'th_in': 0.5, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.70 F1 0.88 bad 63/min 6.6s/min 2nd-voice 35/64
+w2=3 {'th_in': 0.5, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.68 F1 0.88 bad 65/min 6.5s/min 2nd-voice 35/73
+w2=3 {'th_in': 0.8, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.69 F1 0.88 bad 62/min 6.4s/min 2nd-voice 29/95
+w2=3 {'th_in': 0.8, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.68 F1 0.88 bad 64/min 6.3s/min 2nd-voice 29/101
+w2=3 {'th_in': 0.8, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.69 F1 0.89 bad 57/min 5.9s/min 2nd-voice 41/107
+w2=3 {'th_in': 0.8, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.67 F1 0.89 bad 60/min 5.8s/min 2nd-voice 41/107
+w2=3 {'th_in': 0.95, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.68 F1 0.88 bad 57/min 6.0s/min 2nd-voice 41/268
+w2=3 {'th_in': 0.95, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.66 F1 0.87 bad 61/min 6.2s/min 2nd-voice 41/272
+w2=3 {'th_in': 0.95, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.67 F1 0.88 bad 57/min 6.0s/min 2nd-voice 52/276
+w2=3 {'th_in': 0.95, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.66 F1 0.87 bad 61/min 6.1s/min 2nd-voice 52/276
+w2=6 {'th_in': 0.5, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.71 F1 0.86 bad 74/min 7.9s/min 2nd-voice 23/43
+w2=6 {'th_in': 0.5, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.70 F1 0.86 bad 75/min 7.5s/min 2nd-voice 23/46
+w2=6 {'th_in': 0.5, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.71 F1 0.87 bad 65/min 7.1s/min 2nd-voice 29/49
+w2=6 {'th_in': 0.5, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.70 F1 0.87 bad 67/min 6.7s/min 2nd-voice 35/55
+w2=6 {'th_in': 0.8, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.71 F1 0.87 bad 64/min 6.8s/min 2nd-voice 29/74
+w2=6 {'th_in': 0.8, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.70 F1 0.88 bad 66/min 6.5s/min 2nd-voice 29/81
+w2=6 {'th_in': 0.8, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.71 F1 0.89 bad 59/min 6.1s/min 2nd-voice 41/89
+w2=6 {'th_in': 0.8, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.69 F1 0.89 bad 60/min 5.9s/min 2nd-voice 41/98
+w2=6 {'th_in': 0.95, 'E': 2, 'th_out': 0.2, 'L': 6} dyad-both 0.70 F1 0.88 bad 58/min 6.1s/min 2nd-voice 35/257
+w2=6 {'th_in': 0.95, 'E': 2, 'th_out': 0.4, 'L': 6} dyad-both 0.69 F1 0.88 bad 60/min 6.0s/min 2nd-voice 35/257
+w2=6 {'th_in': 0.95, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.69 F1 0.88 bad 57/min 5.9s/min 2nd-voice 52/267
+w2=6 {'th_in': 0.95, 'E': 4, 'th_out': 0.4, 'L': 6} dyad-both 0.68 F1 0.88 bad 59/min 5.9s/min 2nd-voice 52/267
+PICK 6 {'th_in': 0.8, 'E': 4, 'th_out': 0.2, 'L': 6} dyad-both 0.71 (reference 0.66 )
+FINAL reference gate: dyad-both 0.77 F1 0.86 R by n 2:0.82 3:0.88 4:0.79 P by n 1:0.92 2:0.84 | bad 77/min 10.6s/min | 2nd-voice 52/1010 ms
+FINAL dyad-weighted gate: dyad-both 0.83 F1 0.85 R by n 2:0.86 3:0.89 4:0.80 P by n 1:0.92 2:0.86 | bad 68/min 11.1s/min | 2nd-voice 29/318 ms

@@ -1,0 +1,11 @@
+yin {'mono': 0.85, 'poly2': 0.0, 'power': 0.0, 'poly3': 0.03, 'poly4': 0.0, 'poly5': 0.0, 'poly6': 0.0, 'arpeggio': 0.09, 'add_note': 0.22, 'release_note': 0.0, 'bend_ring': 0.0, 'hammer_pull': 1.0, 'palm_mute': 0.0, 'quiet': 0.01, 'bass3': 0.0} 0.14x
+hs {'mono': 0.98, 'poly2': 0.92, 'power': 0.77, 'poly3': 0.8, 'poly4': 0.69, 'poly5': 0.55, 'poly6': 0.64, 'arpeggio': 0.73, 'add_note': 0.66, 'release_note': 0.73, 'bend_ring': 0.8, 'hammer_pull': 0.98, 'palm_mute': 0.71, 'quiet': 0.78, 'bass3': 0.64} 0.02x
+klap {'mono': 0.94, 'poly2': 0.97, 'power': 0.78, 'poly3': 0.91, 'poly4': 0.81, 'poly5': 0.72, 'poly6': 0.71, 'arpeggio': 0.89, 'add_note': 0.85, 'release_note': 0.8, 'bend_ring': 0.88, 'hammer_pull': 0.82, 'palm_mute': 0.85, 'quiet': 0.9, 'bass3': 0.82} 0.04x
+nnls {'mono': 0.86, 'poly2': 0.93, 'power': 0.83, 'poly3': 0.94, 'poly4': 0.89, 'poly5': 0.82, 'poly6': 0.85, 'arpeggio': 0.89, 'add_note': 0.84, 'release_note': 0.87, 'bend_ring': 0.9, 'hammer_pull': 0.84, 'palm_mute': 0.81, 'quiet': 0.94, 'bass3': 0.67} 0.40x
+pt {'mono': 0.93, 'poly2': 0.97, 'power': 0.84, 'poly3': 0.97, 'poly4': 0.98, 'poly5': 0.78, 'poly6': 0.79, 'arpeggio': 0.93, 'add_note': 0.86, 'release_note': 0.89, 'bend_ring': 0.85, 'hammer_pull': 0.78, 'palm_mute': 0.93, 'quiet': 0.89, 'bass3': 0.8} 0.62x
+pt_no_onset_gate {'mono': 0.92, 'poly2': 0.97, 'poly3': 0.96, 'poly4': 0.97, 'add_note': 0.84, 'arpeggio': 0.93}
+pt_no_LOO {'mono': 0.58, 'poly2': 0.58, 'poly3': 0.6, 'poly4': 0.54, 'add_note': 0.66, 'arpeggio': 0.56}
+pt_single_profile {'mono': 0.96, 'poly2': 0.98, 'poly3': 0.98, 'poly4': 0.97, 'add_note': 0.89, 'arpeggio': 0.92}
+pt_slow_only {'mono': 0.93, 'poly2': 0.97, 'poly3': 0.97, 'poly4': 0.98, 'add_note': 0.86, 'arpeggio': 0.93}
+pt_multires {'mono': 0.73, 'poly2': 0.97, 'poly3': 0.87, 'poly4': 0.78, 'add_note': 0.78, 'arpeggio': 0.58}
+done

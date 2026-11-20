@@ -1,0 +1,10 @@
+{
+ "w2": 6,
+ "params": {
+  "th_in": 0.8,
+  "E": 4,
+  "th_out": 0.2,
+  "L": 6
+ },
+ "rule": "max DEV dyad-both subject to bad voices/min <= 1.1x reference and F1 >= reference-0.01"
+}
