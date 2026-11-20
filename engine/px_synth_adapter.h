@@ -42,7 +42,7 @@ static track_t trk[NPART];
 #endif
 /* Dynamics and glide as the original synths had them (fix pass 6). The level follows the pick strength through the original tracked voice's law, lvl = exp((expr - 1) x dyn_db x 0.115): a feather-light pick is
  * dyn_db below a hard one (expr is the note layer's expression, 0..1: the pick strength, falling with the string's own decay). Here the reference is a typical hard pick (PX_S2_DYN_REF) and the gain is capped, so the
- * loudest picks do not run away; PX_S2_DYN_DB is the default range (the patch's `dyn` overrides it). The pitch of a ringing note glides to each new value over PX_S2_GLIDE_MS (the original MONO: 12 ms); only a note that
+ * loudest picks do not run away; PX_S2_DYN_DB is the default range (the patch's `dyn` overrides it). The pitch of a ringing note glides to each new value over PX_S2_GLIDE_MS (the original MONO: 12 ms; the SQUARE SYNTH HQ: about 6 ms, which a 22-notes-a-second run needs); only a note that
  * starts from silence takes its pitch at once. */
 #ifndef PX_S2_DYN_REF
 #define PX_S2_DYN_REF 0.90f
@@ -54,7 +54,7 @@ static track_t trk[NPART];
 #define PX_S2_DYN_DB 18.0f
 #endif
 #ifndef PX_S2_GLIDE_MS
-#define PX_S2_GLIDE_MS 12.0f
+#define PX_S2_GLIDE_MS 6.0f
 #endif
 #define PX_S2_DAMP_MS 40.0f                           /* release time constant after a hard mute: the patch's own would ring on for a second or more */
 #ifndef PX_S2_DRIFT_C
@@ -318,7 +318,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     if (s->f0 > 0.0f) {
         const float target = 12.0f * 1.442695f * logf(s->f0 * (1.0f / 440.0f)) + 69.0f + (float)s->patch->semis;
         if (s->pitch_cur == 0.0f || (s->pend_on && !(t->v[0].active && t->v[0].stage != 0))) s->pitch_cur = target;   /* a note from silence: there, no glide from the last */
-        else s->pitch_cur += (target - s->pitch_cur) * s->glide_k;                      /* a bend, a vibrato, a slur, a re-pick: a glide (12 ms, as the original MONO) */
+        else s->pitch_cur += (target - s->pitch_cur) * s->glide_k;                      /* a bend, a vibrato, a slur, a re-pick: a glide (6 ms, as the SQUARE SYNTH HQ's) */
     }
     if (nv > 1 && PX_S2_DRIFT_C > 0.0f) {                                              /* ENSEMBLE: every voice drifts by itself (a deterministic xorshift, filtered): the beating of the copies is irregular, a chorus and not a phaser */
         const float amp = PX_S2_DRIFT_C * s->spread / 0.57735f / sqrtf(PX_S2_DRIFT_K / (2.0f - PX_S2_DRIFT_K));

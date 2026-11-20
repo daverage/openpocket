@@ -44,11 +44,12 @@
 #ifndef PX_MONO_DEAD
 #define PX_MONO_DEAD 0.1f
 #endif
-/* Synth2 fix pass 6 (what the original synths did: a pitch change in a ringing note is a glide, never a new note): a pick re-detected while the note rings is a real re-attack only if it is clearly harder than the note's present level
- * (its pick strength more than PX_MONO_SLUR above the ringing note's expression, both 0..1 on the same scale, 0.034 = 1 dB); otherwise it is a SLUR: the new pitch is reported, the note's level reference is left as it was and no onset is
- * sent (px_mono_out.slur). 0 = every re-detected pick is an onset, as before. */
+/* Synth2 fix pass 6 (what the original synths did: a pitch change in a ringing note is a glide, never a new note): a pick re-detected while the note rings is a SLUR (the new pitch is reported, the note's level reference is left as
+ * it was, no onset is sent: px_mono_out.slur) only if it is clearly SOFTER than the note ringing just before it: its pick strength more than PX_MONO_SLUR below the ringing note's expression (both 0..1 on one scale, 0.034 = 1 dB),
+ * read from the history at the moment the pick began. A pick as hard as or harder than the ringing note is a real re-attack: in a fast run every pick is about as hard as the last (the first version of this rule asked for a
+ * pick clearly harder, and turned 22 of 26 attacks of a 22-notes-a-second run into slurs). 0 = every re-detected pick is an onset, as before. */
 #ifndef PX_MONO_SLUR
-#define PX_MONO_SLUR 0.12f
+#define PX_MONO_SLUR 0.15f
 #endif
 #ifndef PX_MONO_REF_MS
 #define PX_MONO_REF_MS 800
@@ -92,7 +93,7 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     m->fe += (a - m->fe) * (a > m->fe ? 1.0f / (0.001f * sr) : 1.0f / (0.010f * sr));
     pxt_layer sv;
     if (m->mute) sv = m->lay;
-    const float f0_before = m->lay.f0, vel_b = m->lay.vel, pr_b = m->lay.peak_ref, ex_b = m->exh[m->exh_w];   /* ex_b: the expression 70 ms ago, before this pick began (the layer's own has risen with it by the time it speaks) */
+    const float f0_before = m->lay.f0, vel_b = m->lay.vel, pr_b = m->lay.peak_ref;
     if ((m->exh_n++ & 15) == 0) { m->exh[m->exh_w] = m->lay.expr; if (++m->exh_w >= 192) m->exh_w = 0; }
     pxt_layer_run(&m->lay, &m->trk, x, pxt_run(e, &m->trk, x));
     /* Synth2 fix pass 3: while the level collapses (a mute, a palm mute) the tracker's strongest component drifts, 60-80 cents up in the DI palm-mute recordings
@@ -109,7 +110,14 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
         } else m->mute = 0;
     }
     int slur_now = 0;
-    if (PX_MONO_SLUR > 0.0f && m->lay.onset && m->was && m->lay.vel <= ex_b + PX_MONO_SLUR) { slur_now = 1; m->lay.vel = vel_b; m->lay.peak_ref = pr_b; }   /* a slur (fix pass 6): the note's level reference stays */
+    if (PX_MONO_SLUR > 0.0f && m->lay.onset && m->was) {
+        /* the note's expression when this pick began: the layer speaks it wait_n frames (1.45 ms) after the pick, and its own expression has risen with it by then, so read the history that far back (plus 6 ms) */
+        int back = (int)((float)m->lay.wait_n * 1.45e-3f * sr / 16.0f + 0.006f * sr / 16.0f);
+        if (back < 1) back = 1; if (back > 191) back = 191;
+        int ix = m->exh_w - back; if (ix < 0) ix += 192;
+        const float ex_pre = m->exh[ix];
+        if (m->lay.vel + PX_MONO_SLUR < ex_pre) { slur_now = 1; m->lay.vel = vel_b; m->lay.peak_ref = pr_b; }   /* a slur (fix pass 6): the note's level reference stays */
+    }
     /* fix pass 5: the harmonic-ratio start is held back (see PX_MONO_CONFIRM_MS) */
     int onset = m->lay.onset;
     if (PX_MONO_CONFIRM_MS > 0) {
