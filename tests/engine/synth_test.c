@@ -270,6 +270,19 @@ static void routing_split_suite(void)
     }
     g_type = PX_SYN_ARCADE;
 }
+/* Hann-windowed Goertzel level (dB) of y[a..a+len) at f; and the strongest frequency within +-100 cents of f (for the organ: the 8' bar is the played note, the 16' bar is an octave below it) */
+static float gz_db(const float *v, int a, int len, double f)
+{
+    double re = 0, im = 0;
+    for (int i = 0; i < len; i++) { const double w = 0.5 - 0.5 * cos(6.283185307 * i / len), ph = 6.283185307 * f * i / FS_; re += v[a + i] * w * cos(ph); im += v[a + i] * w * sin(ph); }
+    return (float)(20.0 * log10(sqrt(re * re + im * im) / len * 4.0 + 1e-9));
+}
+static float peak_hz(const float *v, int a, int len, float f)
+{
+    float best = -1e9f, bf = f;
+    for (int c = -100; c <= 100; c += 2) { const double ff = f * pow(2.0, c / 1200.0); const float l = gz_db(v, a, len, ff); if (l > best) { best = l; bf = (float)ff; } }
+    return bf;
+}
 /* ENSEMBLE (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/research/synth2/SYNTH2-ENSEMBLE.md) */
 static void ensemble_suite(void)
 {
@@ -278,12 +291,14 @@ static void ensemble_suite(void)
     for (int b = 0; b < PX_ENS_DEFINED; b++) for (int k = 0; k < 3; k++) {
         const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
         string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99997f, 0); render(&p, x, y, N_, 64);
-        const float got = f0_of(y, (int)(1.0f * FS_), 4096, NOTES[k] * 0.7f, NOTES[k] * 1.4f);
+        const float got = PX_ENSEMBLE_PATCHES[b].eng ? peak_hz(y, (int)(1.0f * FS_), 8192, NOTES[k]) : f0_of(y, (int)(1.0f * FS_), 4096, NOTES[k] * 0.7f, NOTES[k] * 1.4f);   /* (WHEEL: the 8' bar) */
         CHECK(got > 0 && fabsf(cents(got, NOTES[k])) < 25.0f, "ENSEMBLE %s on %.1f Hz: pitch within 25 cents (%.1f)", PX_ENSEMBLE_PATCHES[b].name, NOTES[k], got);
     }
-    {   /* the patch identity: slots 0..4 are final, 5..9 and 100 play slot 4 until filled; names read from the table */
-        CHECK(px_ens_slot(0) == 0 && px_ens_slot(9) == 0 && px_ens_slot(10) == 1 && px_ens_slot(49) == 4 && px_ens_slot(50) == 4 && px_ens_slot(100) == 4, "ENSEMBLE slots: 10 values each, reserved slots play the last defined");
-        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 10, buf); CHECK(!strcmp(buf, "STRINGS"), "ENSEMBLE patch 10 reads STRINGS (%s)", buf);
+    {   /* the patch identity: ten slots (0..4 the ANALOG-engine patches, 5..9 the WHEEL organs), all final; names read from the table */
+        CHECK(px_ens_slot(0) == 0 && px_ens_slot(9) == 0 && px_ens_slot(10) == 1 && px_ens_slot(49) == 4 && px_ens_slot(50) == 5 && px_ens_slot(59) == 5 && px_ens_slot(90) == 9 && px_ens_slot(100) == 9, "ENSEMBLE slots: 10 values each, 100 in the last");
+        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 50, buf); CHECK(!strcmp(buf, "ORGAN"), "ENSEMBLE patch 50 reads ORGAN (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 100, buf); CHECK(!strcmp(buf, "SOFTORG"), "ENSEMBLE patch 100 reads SOFTORG (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 10, buf); CHECK(!strcmp(buf, "STRINGS"), "ENSEMBLE patch 10 reads STRINGS (%s)", buf);
         px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 20, buf); CHECK(!strcmp(buf, "BRASS"), "ENSEMBLE patch 20 reads BRASS (%s)", buf);
         CHECK(px_nparams(PX_B_SYN, PX_SYN_ENSEMBLE) == 5 && !strcmp(px_type_name(PX_B_SYN, PX_SYN_ENSEMBLE), "ENSEMBLE"), "ENSEMBLE has five controls");
     }
@@ -342,8 +357,8 @@ static void ensemble_suite(void)
         }
         printf("ENSEMBLE: %d patch/macro combinations: all finite, loudest peak %.2f\n", n, peak_all);
     }
-    {   /* fix pass 2: a steady note does not swell and fade (the detuned oscillators' beating): the peak level swings less than 5 dB */
-        for (int b = 0; b < PX_ENS_DEFINED; b++) for (int k = 0; k < 3; k++) {
+    {   /* fix pass 2: a steady note does not swell and fade (the detuned oscillators' beating): the peak level swings less than 5 dB (the ANALOG-engine patches; the organs have their rotary: below) */
+        for (int b = 0; b < 5; b++) for (int k = 0; k < 3; k++) {
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
             string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
             float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
@@ -383,8 +398,8 @@ static void ensemble_suite(void)
         }
     }
     {   /* fix pass 3: after a hard mute the synth stops fast whatever the patch's release (ANALOG CLASSIC and the long ENSEMBLE STRINGS and SOFTPAD): 30 dB down within 300 ms */
-        struct { int type, patch; const char *nm; } C[3] = {{PX_SYN_ANALOG, 5, "ANALOG CLASSIC"}, {PX_SYN_ENSEMBLE, 15, "ENSEMBLE STRINGS"}, {PX_SYN_ENSEMBLE, 5, "ENSEMBLE SOFTPAD"}};
-        for (int ci = 0; ci < 3; ci++) {
+        struct { int type, patch; const char *nm; } C[5] = {{PX_SYN_ANALOG, 5, "ANALOG CLASSIC"}, {PX_SYN_ENSEMBLE, 15, "ENSEMBLE STRINGS"}, {PX_SYN_ENSEMBLE, 5, "ENSEMBLE SOFTPAD"}, {PX_SYN_ENSEMBLE, 55, "ENSEMBLE ORGAN"}, {PX_SYN_ENSEMBLE, 95, "ENSEMBLE SOFTORG"}};
+        for (int ci = 0; ci < 5; ci++) {
             g_type = C[ci].type; float ph = 0, env = 0.5f; const int tm = 44100;
             for (int i = 0; i < 44100 * 3; i++) {
                 ph += 110.0f / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f;
@@ -406,6 +421,51 @@ static void ensemble_suite(void)
             float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
             CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < (b == 4 ? 6.5f : 5.5f), "ANALOG %s on %.0f Hz: no beating swell (%.1f dB; SWEEP also moves its filter slowly by design)", NM[b], NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
         }
+    }
+    {   /* Stage B: the WHEEL organ patches (PATCH 50..100): the drawbar structure, the percussion, TONE, ATTACK, RELEASE, the rotary, and the level */
+        static const float H[1] = {110.0f}; static const double R9[9] = {0.5, 1.5, 1, 2, 3, 4, 5, 6, 8};
+        float lv[5][9];
+        g_type = PX_SYN_ENSEMBLE;
+        for (int b = 5; b < 10; b++) {
+            const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+            string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            for (int k = 0; k < 9; k++) lv[b - 5][k] = gz_db(y, 2 * 44100, 88200, 110.0 * R9[k]);
+            /* the rotary and the percussion do not change the loudness much: the RMS (20 ms windows) over 2..4 s swings less than 4 dB */
+            float lo = 1e9f, hi = 0; for (int i = 2 * 44100; i + 882 < 4 * 44100; i += 441) { const float r = rms(y, i, 882); if (r < lo) lo = r; if (r > hi) hi = r; }
+            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 4.0f, "WHEEL %s: the rotary leaves the loudness steady (%.1f dB)", PX_ENSEMBLE_PATCHES[b].name, 20.0f * log10f(hi / (lo + 1e-9f)));
+            const float lvl = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f);
+            CHECK(lvl > -22.0f && lvl < -14.0f, "WHEEL %s: level near the ANALOG patches' (%.1f dBFS)", PX_ENSEMBLE_PATCHES[b].name, lvl);
+        }
+        float mx, mn;
+        mx = -1e9f; mn = 1e9f; for (int k = 0; k < 9; k++) { if (lv[0][k] > mx) mx = lv[0][k]; if (lv[0][k] < mn) mn = lv[0][k]; }
+        CHECK(mx - mn < 8.0f, "ORGAN (all nine bars out): the partials within 8 dB of each other (%.1f)", mx - mn);
+        CHECK(lv[1][0] > lv[1][5] + 20.0f && lv[1][2] > lv[1][8] + 20.0f, "JAZZORG: three bars (16', 5 1/3', 8'), the upper bars silent");
+        CHECK(lv[2][8] > lv[2][3] + 15.0f && lv[2][8] > lv[2][4] + 15.0f - 15.0f, "ROCKORG: the top bars (1 1/3', 1') come out over the middle ones");
+        CHECK(lv[3][2] > lv[3][8] + 6.0f, "REEDORG: a falling slope (8' %.1f over 1' %.1f)", lv[3][2], lv[3][8]);
+        CHECK(lv[4][2] > lv[4][0] + 40.0f && lv[4][2] > lv[4][1] + 40.0f, "SOFTORG: one flute bar (8'), no sub bars");
+        /* JAZZORG's percussion (PERC 3RD: the 2 2/3' bar, the third harmonic) strikes with the note and decays: far stronger just after it than 3 s on */
+        { const uint8_t q[5] = {65, 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+          const float early = gz_db(y, (int)(0.16f * FS_), 4096, 330.0), late = gz_db(y, 3 * 44100, 8192, 330.0), body = gz_db(y, 3 * 44100, 8192, 110.0);
+          CHECK(early > late + 15.0f && body > late + 20.0f, "JAZZORG: the 2 2/3' percussion decays (%.1f dB early, %.1f dB late, 8' %.1f dB)", early, late, body); }
+        /* TONE: a tilt: low = the upper bars down and the sub bars up, high the other way; ORGAN has all bars at 8, so each side can only lower the bars it moves away from */
+        { float tl[2][2];
+          for (int j = 0; j < 2; j++) { const uint8_t q[5] = {55, (uint8_t)(j ? 100 : 0), 50, 50, 50}; px_preset_t p; preset_of(&p, q); string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+              tl[j][0] = gz_db(y, 2 * 44100, 88200, 55.0); tl[j][1] = gz_db(y, 2 * 44100, 88200, 880.0); }
+          CHECK((tl[1][1] - tl[1][0]) > (tl[0][1] - tl[0][0]) + 20.0f, "WHEEL TONE: 100 is brighter than 0 (the 1' bar over the 16' bar: %.1f dB against %.1f dB)", tl[1][1] - tl[1][0], tl[0][1] - tl[0][0]); }
+        /* ATTACK: ORGAN speaks in a few ms; ATTACK 100 is slower (the pick at 0.1 s, the level reaching half its peak); RELEASE 100 lets it ring longer than RELEASE 0 */
+        { float t_a[2], t_r[2]; static const float H2[1] = {164.81f};
+          string(x, N_, H2, ST, 1, 0.5f, 0.99990f, 0); memset(x + (int)(1.3f * FS_), 0, sizeof(float) * (N_ - (int)(1.3f * FS_)));
+          for (int j = 0; j < 2; j++) {
+              const uint8_t qa[5] = {55, 50, (uint8_t)(j ? 100 : 0), 50, 50}, qr[5] = {55, 50, 50, (uint8_t)(j ? 100 : 0), 50};
+              px_preset_t p; preset_of(&p, qa); render(&p, x, y, N_, 64);
+              float pk = 0; for (int i = 0; i < (int)(1.2f * FS_); i++) if (fabsf(y[i]) > pk) pk = fabsf(y[i]);
+              int i = 0; while (i < N_ && fabsf(y[i]) < 0.5f * pk) i++; t_a[j] = (float)i / FS_;
+              preset_of(&p, qr); render(&p, x, y, N_, 64);
+              pk = 0; for (int i2 = 0; i2 < (int)(1.2f * FS_); i2++) if (fabsf(y[i2]) > pk) pk = fabsf(y[i2]);
+              int e0 = (int)(1.3f * FS_), r = e0; while (r < N_ - 512 && rms(y, r, 512) > 0.1f * pk * 0.7f) r += 256; t_r[j] = (float)(r - e0) / FS_; }
+          printf("WHEEL ORGAN: half level ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_a[0], t_a[1], t_r[0], t_r[1]);
+          CHECK(t_a[1] > t_a[0] + 0.008f, "WHEEL ATTACK 100 is slower than 0");
+          CHECK(t_r[1] > 1.5f * t_r[0], "WHEEL RELEASE 100 is longer than 0"); }
     }
     g_type = PX_SYN_ANALOG;
 }

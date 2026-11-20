@@ -15,6 +15,7 @@ typedef struct {
     uint8_t trim;                /* level trim, 64 = 1.0 */
     uint8_t pwm;                 /* pulse-width sweep (the WAVE PWM and SYNC), 0 none .. 127 */
     uint8_t noise;               /* 1: the adapter's own xorshift noise voice (the Arcade Poly noise of the synth branch) instead of Felucca's engine */
+    uint8_t eng;                 /* ENSEMBLE only: 0 Felucca ANALOG, 1 Felucca WHEEL (e[] is then REG, SUB, BODY, TOP, PERC, CLICK, DRV, ROTR) */
 } px_patch;
 enum { PX_PATCH_SLOTS = 10 };
 /* Fix pass 4: CLASSIC, FATSAW, PULSE, PWM and SWEEP have the second oscillator at MIX 16 (was 64, 64, 40, 30, 64) and their trims lowered by the loudness this adds (0.6-1.8 dB): detuned
@@ -51,9 +52,10 @@ static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
  * a chord does not make a string section). The first three are Felucca's own ANALOG presets (src/eng_analog.c at the pin: SOFT PAD, STRINGS, BRASS)
  * with E0..E7, ATK/DEC/SUS/REL and the filter-envelope amount copied as they stand; Felucca's chorus / reverb "FX" and pattern fields are not used
  * (OpenPocket's MOD, DELAY and REVERB blocks come after the SYNTH block for that). Fix pass 2: MIX (the second oscillator's level) is 16, not Felucca's 64: with no chorus after it, the two detuned saws beat at 1-3 Hz at 8-10 dB depth (a phaser-like swell on a steady note); at 16 it is 3-4 dB. SLOW STR and BRS LEAD are variations of STRINGS and BRASS (marked).
- * The slot is PATCH / 10 as for ANALOG; slots 0..4 are defined and are final; slots 5..9 are reserved for later patches and play slot 4 until
- * they are filled (a defined slot is never reassigned or reordered). Names: at most 7 characters. */
-enum { PX_ENS_DEFINED = 5 };
+ * The slot is PATCH / 10 as for ANALOG: slots 0..4 (PATCH 0-49) are the ANALOG-engine patches, slots 5..9 (PATCH 50-100) the WHEEL organs (stage B). All ten
+ * are defined and final, a defined slot is never reassigned, reordered or renamed, and the table is full. Slots 5..9 played BRSLEAD in builds 907-911, so a preset
+ * saved then with PATCH 50 or more changes sound. Names: at most 7 characters. */
+enum { PX_ENS_DEFINED = 10 };
 static const px_patch PX_ENSEMBLE_PATCHES[PX_PATCH_SLOTS] = {
     /* name       WAVE DTN MIX NOIS CUT RES DRV KTR     ATK DEC SUS REL  fenv semis trim pwm */
     {"SOFTPAD", {0, 20, 16, 4, 60, 10,  0, 32}, {80, 90, 110, 95},  10,   0, 64, 0},   /* Felucca SOFT PAD */
@@ -61,6 +63,13 @@ static const px_patch PX_ENSEMBLE_PATCHES[PX_PATCH_SLOTS] = {
     {"BRASS",   {0, 10, 16, 0, 45, 20, 10, 64}, {35, 70,  90, 45},  40,   0, 64, 0},   /* Felucca BRASS: the filter opens on every note (fenv 40) */
     {"SLOWSTR", {0, 25, 16, 0, 62, 10,  0, 32}, {100, 90, 115, 105}, 4,   0, 64, 0},   /* variation of STRINGS: longer attack and release, a darker filter */
     {"BRSLEAD", {0, 10, 16, 0, 55, 25, 10, 64}, {15, 70,  95, 35},  48,   0, 62, 0},   /* variation of BRASS: faster attack, brighter, more filter movement */
+    /* Stage B: Felucca WHEEL (a tonewheel organ: nine drawbars, percussion, key click, drive and a built-in rotary). e[] = REG SUB BODY TOP PERC CLICK DRV ROTR; ROTR 0 off 1 slow 2 fast.
+     * ATK is 8 (7 ms): an organ speaks at once, the ATTACK setting runs 2-28 ms around it. Upstream's registration list is Felucca's (src/eng_wheel.c DRW_REG). */
+    {"ORGAN",   {15, 0, 0, 0, 0, 30, 20, 1}, {8, 64, 127, 45},   0,   0, 98, 0, 0, 1},   /* Felucca FULL ORGAN: all nine bars, a little drive, slow rotary */
+    {"JAZZORG", { 4, 0, 0, 0, 2, 50,  8, 1}, {8, 64, 127, 40},   0,   0, 106, 0, 0, 1},   /* Felucca JAZZ PERC: three bars and the third-harmonic (2 2/3') percussion, slow rotary */
+    {"ROCKORG", { 7, 0, 0, 0, 0, 70,100, 2}, {8, 64, 127, 40},   0,   0, 73, 0, 0, 1},   /* Felucca ROCK DRIVE: body and the top bars, driven, fast rotary */
+    {"REEDORG", {10, 0, 0, 0, 0, 20, 10, 0}, {8, 64, 127, 40},   0,   0, 86, 0, 0, 1},   /* the REED registration (a falling slope), no rotary: a reed organ */
+    {"SOFTORG", { 1, 0,-2, 0, 0, 10,  0, 1}, {8, 64, 127, 55},   0,   0, 125, 0, 0, 1},   /* Felucca SOFT FLUTE: one soft flute bar, slow rotary */
 };
 static inline int px_ens_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_ENS_DEFINED ? PX_ENS_DEFINED - 1 : s); }
 /* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */

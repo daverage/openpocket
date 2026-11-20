@@ -24,6 +24,7 @@ static track_t trk[NPART];
 #include "../third_party/felucca-engines/src/dsp.c"
 #include "../third_party/felucca-engines/src/eng_analog.c"
 #include "../third_party/felucca-engines/src/eng_lofi.c"
+#include "../third_party/felucca-engines/src/eng_wheel.c"
 #include "px_synth_patches.h"
 
 #define PX_ARCADE_SPLIT_AS PX_SYN_ARCADE
@@ -64,12 +65,18 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     const int arc = type == PX_SYN_ARCADE || type == PX_SYN_ARCADE_SPLIT;
     const px_patch *pa = ens ? &PX_ENSEMBLE_PATCHES[px_ens_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
-    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : &ENG_ANALOG;   /* (ENSEMBLE: ANALOG) */
+    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
     float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (ENSEMBLE), else tm */
     if (ens) {                                                                              /* ENSEMBLE: PATCH, TONE, ATTACK, RELEASE, LEVEL */
+        if (pa->eng) {                                                                      /* WHEEL: TONE tilts the drawbars: up = upper bars +5 and body +1.5, sub bars -5 (one level is about 3 dB); 50 = as written */
+            const float tn = (m1 - 0.5f) * 2.0f, rh = tn < 0.0f ? -0.5f : 0.5f;
+            t0->p[P_E1] = (int16_t)((int)pa->e[1] - (int)(tn * 5.0f + rh));
+            t0->p[P_E2] = (int16_t)((int)pa->e[2] + (int)(tn * 1.5f + rh));
+            t0->p[P_E3] = (int16_t)((int)pa->e[3] + (int)(tn * 5.0f + rh));
+        } else
         t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (m1 - 0.5f) * 127.0f);     /* TONE: the filter's cutoff, +-63 steps around the patch's */
         tm = powf(2.0f, (m2 - 0.5f) * 4.0f);                                                /* ATTACK: x 1/4 .. x4 */
         tmr = powf(2.0f, (m3 - 0.5f) * 4.0f);                                               /* RELEASE: x 1/4 .. x4 */
@@ -113,6 +120,7 @@ static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
     px_s2 *s = &px_s2_st;
     memset(s, 0, sizeof *s);
     memset(trk, 0, sizeof trk);
+    memset(drw_t, 0, sizeof drw_t); memset(drw_v, 0, sizeof drw_v);                     /* WHEEL's own state (eng_wheel.c: rotors, bar gains, phases) */
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
     px_s2_set(s, type, q);
     s->dry_c = s->dry;
@@ -218,6 +226,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     const float tri = s->lfo < 0.5f ? 4.0f * s->lfo - 1.0f : 3.0f - 4.0f * s->lfo;
     m.shape = (64 << 8) + (int32_t)(tri * (float)s->patch->pwm * 128.0f * (1.0f / 2.0f));
     memset(s->out, 0, sizeof s->out);
+    if (s->eng->block) s->eng->block(t);                                               /* Felucca's per-block step (WHEEL: bar gains, percussion, rotors) */
     if (s->patch->noise) px_s2_noise(t, v, s->out, CTL, &m); else s->eng->render(t, v, s->out, CTL, &m);
     const float g = s->level * PX_S2_OUT * (1.0f / 32768.0f);
     for (int i = 0; i < CTL; i++) s->ring[i] = (float)s->out[i] * g;
