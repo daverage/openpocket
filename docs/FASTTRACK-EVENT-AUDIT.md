@@ -28,14 +28,14 @@ Annotation caveat: truth timing +-10 ms (lag fit). Development data. All numbers
 | outcome of a physical pick | ANALOG CLASSIC (a FOLLOW patch) | ANALOG SWEEP (restarts per note) |
 |---|---|---|
 | **synth envelope attack at the right pitch** | **5748 = 59.7 %** (fast: 248 = 31.9 %) | **7492 = 77.9 %** (fast: 396 = 51.0 %) |
-| right pitch reached by glide, no attack | 700 = 7.3 % | (see file) |
+| right pitch reached by glide, no attack | 700 = 7.3 % | 648 = 6.7 % |
 | attack at a wrong pitch | 168 = 1.7 % | 369 = 3.8 % |
 | tracker emitted the right note-on, **FOLLOW consumed it** | **1738 = 18.1 %** (fast 148) | 0 |
 | amplitude slur (S) | 208 = 2.2 % | 206 = 2.1 % |
 | 35 ms harmonic confirm (C) still pending at the end of the window | 51 = 0.5 % | 11 = 0.1 % |
 | dead pick (D) / mute thump (M) / hold undo (H) | 82 / 36 / 22 | 82 / 36 / 21 |
-| layer never admitted a note after a pick (R without U) | 338 = 3.5 % (fast 50) | 422 = 4.4 % |
-| no pick evidence at all (no R) | 532 = 5.5 % (fast 143) | 984 = 10.2 % |
+| layer never admitted a note after a pick (R without U) | 338 = 3.5 % (fast 50) | 232 = 2.4 % |
+| no pick evidence at all (no R) | 532 = 5.5 % (fast 143) | 526 = 5.5 % |
 | attack latency, annotated onset -> envelope attack, median / p90 / p99 | 20.6 / 30.2 / 49.7 ms | 20.5 / 31.5 / 58.1 ms |
 
 By category (CLASSIC): clean scales 69.6 % attacks (**21.1 % eaten by FOLLOW**, 2.4 % slur); single notes 95.2 %; palm mute 87.1 %; bend+vibrato 59.7 % (19.5 % without any pick evidence: legato/slides/bends that the tracker follows as pitch); music (chords and lines, 346 fast groups) 9.5 % attacks, 25 % no pick evidence, 17 % never admitted.
@@ -43,8 +43,8 @@ By category (CLASSIC): clean scales 69.6 % attacks (**21.1 % eaten by FOLLOW**, 
 ### What this shows
 1. **The largest single loss on a FOLLOW patch is not the tracker.** In 18.1 % of all picks (21 % of scale notes, 19 % of the fast ones) the tracker had emitted a correct note-on and the adapter discarded it. Switching to a restarting patch raises audible attacks from 59.7 % to 77.9 % with identical tracking. This is the "accurate detected pitches lost" the build 917 listening reported, and it is a patch-level suppression, not a detection failure.
 2. **The wrapper's veto rules together lose about 4 % (S 2.2, D 0.9, M 0.4, C 0.5, H 0.2)** on this corpus, a smaller share than they are blamed for on fast clips; their cost is concentrated in fast, damped playing (bleep3: three sustained notes lost to the mute-thump rule, `FASTTRACK-BENCHMARKS.md` section 2).
-3. **3.5-4.4 % of picks start a pick in the layer and never become a note** (`lost_layer`): the stability counter needs 10 consecutive agreeing frames, the estimator's first 20-40 frames after a pick are unstable, and `px_track.h:505` drops the pick without a trace if the fundamental check fails. This is the acquisition cost the stacked waits were hiding.
-4. **5-10 % have no pick evidence at all**, mostly legato/hammer-on/slide notes and chords. The tracker cannot call them notes; whether the pitch followed is counted separately (glide).
+3. **2.4-3.5 % of picks start a pick in the layer and never become a note** (`lost_layer`): the stability counter needs 10 consecutive agreeing frames, the estimator's first 20-40 frames after a pick are unstable, and `px_track.h:505` drops the pick without a trace if the fundamental check fails. This is the acquisition cost the stacked waits were hiding.
+4. **5.5 % have no pick evidence at all**, mostly legato/hammer-on/slide notes and chords. The tracker cannot call them notes; whether the pitch followed is counted separately (glide).
 5. Fast playing is hit hardest: only 31.9 % of fast picks (<150 ms apart) become an audible attack on CLASSIC, 51.0 % on SWEEP, against 59.7/77.9 % overall.
 6. Not yet measured in this baseline: the 32-sample pending-flag collapse (P, Q) produced no losses on this corpus, so the corpus is not stressing it (chains of events inside 0.73 ms need a synthetic test); false audible note-ons per minute and mute-to-release times for the full chain are in the next stage's benchmark.
 
@@ -53,7 +53,7 @@ By category (CLASSIC): clean scales 69.6 % attacks (**21.1 % eaten by FOLLOW**, 
 |---|---|---|---|---|
 | `px_track.h` refractory 20 frames (29 ms) | double detection of one pick | not isolated | per-pick evidence window decided by the controller; a repick inside it requires new flux **and** periodicity reset | repicks 45 ms apart found |
 | `PX_MONO_STAB` 10 consecutive frames + `WAIT_LO` 14 + `MINWAIT` 20 | wrong first pitch (78 % of onsets on bleep.wav) | STAB protects: wrong starts 310 -> 607 without it | **one admission decision**: accept when pitch evidence (agreement among frames, leaky vote, periodicity, harmonic support) crosses a threshold that depends on confidence, with a hard latency bound, never "N frames" | wrong first pitch rate <= legacy (19 % on bleep.wav) at lower latency |
-| `px_track.h:505` silent return | fundamental check failed | 3.5-4.4 % of picks vanish | candidate stays pending with an explicit reject reason, and a bounded retry | no `lost_layer` without a logged reason |
+| `px_track.h:505` silent return | fundamental check failed | 2.4-3.5 % of picks vanish | candidate stays pending with an explicit reject reason, and a bounded retry | no `lost_layer` without a logged reason |
 | `PX_MONO_SLUR` (amplitude) | pick re-detections during a decay chirp | S: 2.2 % of picks, +221 extra note-ons if removed | LEGATO_CHANGE only when pitch moves with no pick evidence; a pick is a REPICK/NOTE_ON regardless of loudness | quiet-after-loud notes (test 4) pass; false repicks/min not higher |
 | `PX_MONO_CONFIRM_MS` 35 ms harmonic hold | octave/fifth locks on a partial of the previous note | ~0.5 % of picks held; <=0.1 point on every metric on Guitar-TECHS | harmonic relation to the previous note becomes an evidence term in the admission score (not a fixed delay) | bleep.wav wrong pitches not worse |
 | `PX_MONO_HOLD` | decay drifts to harmonics / pitch rises 60-80 cents on a mute | removing it: +161 notes found, +419 extra note-ons | hold the **pitch** (not the onsets) while confidence is low; onsets are evaluated independently | hold does not suppress any pick; palm-mute pitch error not worse |
