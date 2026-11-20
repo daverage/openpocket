@@ -72,6 +72,27 @@ static const px_patch PX_INSTRUMENT_PATCHES[PX_PATCH_SLOTS] = {
     {"SOFTORG", { 1, 0,-2, 0, 0, 10,  0, 1}, {8, 64, 127, 55},   0,   0, 125, 0, 0, 1},   /* Felucca SOFT FLUTE: one soft flute bar, slow rotary */
 };
 static inline int px_inst_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_INST_DEFINED ? PX_INST_DEFINED - 1 : s); }
+/* ENSEMBLE (Synth2 stage F): the INSTRUMENT patches played by several voices from the one tracked note (the mono tracker: the note you play, not the chord). The VOICING setting picks a
+ * stack of up to PX_S2_NV voices: each has an interval (semitones), a small fixed detune (cents, scaled by SPREAD), a level (64 = 1.0) and an attack stretch (64 = the patch's own).
+ * Like the INSTRUMENT patches the slots are PATCH / 10 and fixed forever (a defined slot is never reassigned or reordered); all ten are defined. Names: at most 7 characters. */
+#ifndef PX_S2_NV
+#define PX_S2_NV 5
+#endif
+typedef struct { int8_t semis, cents; uint8_t lvl, atk; } px_vc;
+typedef struct { const char *name; uint8_t nv; px_vc v[PX_S2_NV]; uint8_t trim; } px_stack;   /* trim: 64 = 1.0, the stack's own level (set by ear and measurement) */
+static const px_stack PX_STACKS[PX_PATCH_SLOTS] = {
+    {"UNISON",  3, {{0, 0, 64, 64}, {0, -11, 36, 72}, {0, 10, 36, 80}}, 70},                                   /* the note and two drifting copies: a thicker, chorused single line */
+    {"OCT UP",  2, {{0, -4, 64, 64}, {12, 5, 56, 80}}, 68},                                                    /* the note and the octave above (violins over the cellos) */
+    {"OCT DN",  2, {{0, -4, 64, 64}, {-12, 5, 64, 72}}, 65},                                                   /* the note and the octave below */
+    {"OCTAVES", 3, {{-12, -5, 56, 72}, {0, 0, 64, 64}, {12, 6, 52, 84}}, 67},                                  /* sub, note and octave above */
+    {"FIFTH",   2, {{0, -4, 64, 64}, {7, 5, 56, 76}}, 67},                                                     /* a parallel fifth */
+    {"POWER",   3, {{-12, -4, 56, 72}, {0, 0, 64, 64}, {7, 5, 56, 76}}, 66},                                   /* sub octave, root and fifth */
+    {"MAJOR",   3, {{0, -3, 64, 64}, {4, 4, 56, 74}, {7, -5, 56, 84}}, 67},                                    /* a parallel major triad */
+    {"MINOR",   3, {{0, -3, 64, 64}, {3, 4, 56, 74}, {7, -5, 56, 84}}, 67},                                    /* a parallel minor triad */
+    {"MAJ 7",   4, {{0, -3, 64, 64}, {4, 4, 52, 72}, {7, -4, 52, 80}, {11, 5, 48, 88}}, 56},                  /* a major seventh chord */
+    {"OPEN",    5, {{-12, -4, 52, 72}, {0, 0, 60, 64}, {7, 4, 52, 76}, {12, -5, 48, 84}, {16, 5, 44, 92}}, 58}, /* an open major voicing: sub octave, root, fifth, octave, tenth */
+};
+static inline int px_stack_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }
 /* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */
 static inline int px_split_note(int v) { v = v < 0 ? 0 : v > 100 ? 100 : v; return 40 + (v * 36 + 50) / 100; }
 static inline int px_patch_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_PATCH_SLOTS ? PX_PATCH_SLOTS - 1 : s); }

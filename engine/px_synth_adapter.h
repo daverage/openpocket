@@ -14,7 +14,10 @@
  * and the engines. Control values (envelope, patch macros) are computed here as float once a block. Nothing allocates, nothing blocks. */
 #ifndef PX_SYNTH_ADAPTER_H
 #define PX_SYNTH_ADAPTER_H
-#define NVOICE 1
+#ifndef PX_S2_NV
+#define PX_S2_NV 5                                  /* the most voices one note can drive (ENSEMBLE's stacks; every other type uses voice 0 alone) */
+#endif
+#define NVOICE PX_S2_NV
 #define NPART 1
 #include "../third_party/felucca-engines/fe_tables.h"
 #include "../third_party/felucca-engines/src/felucca_engine.h"
@@ -29,6 +32,10 @@ static track_t trk[NPART];
 
 #define PX_ARCADE_SPLIT_AS PX_SYN_ARCADE
 #define PX_S2_DAMP_MS 40.0f                           /* release time constant after a hard mute: the patch's own would ring on for a second or more */
+#ifndef PX_S2_DRIFT_C
+#define PX_S2_DRIFT_C 8.0f                             /* ENSEMBLE: the rms of each voice's pitch wander, cents, at SPREAD noon (0 = off) */
+#endif
+#define PX_S2_DRIFT_K 0.0068f                          /* its corner: about 1.5 Hz (a one-pole per 32-sample block) */
 #define PX_S2_OUT 0.30f                                /* float output per Felucca full scale at LEVEL noon, trim 1.0 (set on the host against the loops' level) */
 
 typedef struct {
@@ -45,6 +52,10 @@ typedef struct {
     int stage;                                         /* 0 off, 1 attack, 2 decay / sustain, 3 release */
     float semis, pitch_cur;                            /* the note in MIDI semitones (continuous), what the voice plays now */
     float vel, expr_r, last_amp;
+    int nv; float v0semis, v0lvl;                      /* ENSEMBLE: the voices in play; voice 0's interval (semitones) and level (the single-voice types: 1, 0.0 and 1.0) */
+    struct { float semis, lvl, att_k, dec_k, rel_k, env, last_amp; int stage; } vc[PX_S2_NV];   /* voices 1.. (voice 0's state is the fields above) */
+    uint32_t rng[PX_S2_NV]; float drift[PX_S2_NV], spread;   /* ENSEMBLE: each voice's own slow random pitch wander (cents), and SPREAD's scale of it */
+    int blk_done;                                      /* this block's shared step (the LFO, the engine's per-block call) has run */
     float dmp_k; int damped;                                        /* the gate fell on a hard damp: the release is fast (PX_S2_DAMP_MS) */
     int pend_on, pend_re, pend_off;                    /* the block's events: a note starts, a sounding voice retriggers, the gate fell */
     int cnt, rpos; float ring[CTL];                    /* samples in this block; where the output is read */
@@ -61,25 +72,29 @@ static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000
 static inline int px_s2_clamp127(float v) { const int i = (int)(v + (v < 0.0f ? -0.5f : 0.5f)); return i < 0 ? 0 : i > 127 ? 127 : i; }
 static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
 {
-    const int ens = type == PX_SYN_INSTRUMENT;
+    const int ens2 = type == PX_SYN_ENSEMBLE;                                          /* ENSEMBLE: the INSTRUMENT patches, played by a stack of voices */
+    const int ens = type == PX_SYN_INSTRUMENT || ens2;
     const int arc = type == PX_SYN_ARCADE || type == PX_SYN_ARCADE_SPLIT;
     const px_patch *pa = ens ? &PX_INSTRUMENT_PATCHES[px_inst_slot(q[0])] : &(arc ? PX_ARCADE_PATCHES : PX_ANALOG_PATCHES)[px_patch_slot(q[0])];
     const float m1 = f01(q[1]), m2 = f01(q[2]), m3 = f01(q[3]), m4 = f01(q[4]);
-    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT: ANALOG, or WHEEL for the organ patches) */
+    const float mt = ens2 ? m3 : m1;                                                   /* TONE: INSTRUMENT's second setting, ENSEMBLE's fourth */
+    s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT and ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
     t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
     float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (INSTRUMENT), else tm */
     if (ens) {                                                                              /* INSTRUMENT: PATCH, TONE, ATTACK, RELEASE, LEVEL */
         if (pa->eng) {                                                                      /* WHEEL: TONE tilts the drawbars: up = upper bars +5 and body +1.5, sub bars -5 (one level is about 3 dB); 50 = as written */
-            const float tn = (m1 - 0.5f) * 2.0f, rh = tn < 0.0f ? -0.5f : 0.5f;
+            const float tn = (mt - 0.5f) * 2.0f, rh = tn < 0.0f ? -0.5f : 0.5f;
             t0->p[P_E1] = (int16_t)((int)pa->e[1] - (int)(tn * 5.0f + rh));
             t0->p[P_E2] = (int16_t)((int)pa->e[2] + (int)(tn * 1.5f + rh));
             t0->p[P_E3] = (int16_t)((int)pa->e[3] + (int)(tn * 5.0f + rh));
         } else
-        t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (m1 - 0.5f) * 127.0f);     /* TONE: the filter's cutoff, +-63 steps around the patch's */
-        tm = powf(2.0f, (m2 - 0.5f) * 4.0f);                                                /* ATTACK: x 1/4 .. x4 */
-        tmr = powf(2.0f, (m3 - 0.5f) * 4.0f);                                               /* RELEASE: x 1/4 .. x4 */
+        t0->p[P_E4] = (int16_t)px_s2_clamp127((float)pa->e[4] + (mt - 0.5f) * 127.0f);     /* TONE: the filter's cutoff, +-63 steps around the patch's */
+        if (!ens2) {
+            tm = powf(2.0f, (m2 - 0.5f) * 4.0f);                                            /* ATTACK: x 1/4 .. x4 */
+            tmr = powf(2.0f, (m3 - 0.5f) * 4.0f);                                           /* RELEASE: x 1/4 .. x4 */
+        }
         s->level = (m4 < 0.5f ? 4.0f * m4 * m4 : db2lin((m4 - 0.5f) * 12.0f)) * (pa->trim / 64.0f);
         s->dry = 0.0f;
     } else if (!arc) {
@@ -105,6 +120,24 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
     s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
     s->dmp_k = px_s2_ms_k(PX_S2_DAMP_MS);
+    s->nv = 1; s->v0semis = 0.0f; s->v0lvl = 1.0f;
+    if (ens2) {                                                                              /* ENSEMBLE: PATCH, VOICING, SPREAD, TONE, LEVEL */
+        const px_stack *st = &PX_STACKS[px_stack_slot(q[1])];
+        const float spread = m2 < 0.5f ? m2 * 2.0f : 1.0f + (m2 - 0.5f) * 4.0f;            /* SPREAD: the detune x0 .. x1 (50) .. x3 */
+        float sq = 0.0f;
+        for (int i = 0; i < st->nv; i++) sq += (st->v[i].lvl / 64.0f) * (st->v[i].lvl / 64.0f);
+        const float norm = 1.0f / sqrtf(sq);                                                 /* the voices' powers add up to one voice's */
+        s->nv = st->nv; s->spread = spread;
+        s->level *= st->trim / 64.0f;
+        for (int i = 0; i < st->nv; i++) {
+            const float so = (float)st->v[i].semis + (float)st->v[i].cents * spread * 0.01f, lv = st->v[i].lvl / 64.0f * norm, am = st->v[i].atk / 64.0f;
+            if (i == 0) { s->v0semis = so; s->v0lvl = lv; }
+            else { s->vc[i].semis = so; s->vc[i].lvl = lv; }
+            if (i > 0) { s->vc[i].att_k = px_s2_ms_k(atk_ms * tm * am); s->vc[i].dec_k = s->dec_k; s->vc[i].rel_k = s->rel_k; }
+        }
+        if (st->v[0].atk != 64) s->att_k = px_s2_ms_k(atk_ms * tm * (st->v[0].atk / 64.0f));
+    }
+    for (int i = s->nv; i < PX_S2_NV; i++) { trk[0].v[i].active = 0; trk[0].v[i].stage = 0; s->vc[i].env = 0.0f; s->vc[i].stage = 0; s->vc[i].last_amp = 0.0f; }   /* voices a smaller stack no longer plays */
     s->sus = pa->env[2] / 127.0f;
     s->fenv_amp = (float)pa->fenv;
 }
@@ -163,11 +196,72 @@ static void px_s2_noise(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     }
     v->ph[0] = ph0; v->s[0] = held; v->s[1] = cnt; v->s[2] = (int32_t)nz; v->s[4] = lp;
 }
-/* one control block: the events, the voice, the envelope, the render. Writes ring[CTL]. */
+/* one voice's note start: its pitch (the tracked note plus the voice's interval), the envelope, Felucca's note_on; a voice still sounding keeps its level, phases and filter */
+static void px_s2_noteon(px_s2 *s, int vi, float *env, int *stage, float semis_off)
+{
+    track_t *t = &trk[0];
+    voice_t *v = &t->v[vi];
+    const int sounding = v->active && v->stage != 0;
+    uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
+    int32_t sv[8]; memcpy(sv, v->s, sizeof sv);
+    v->note = (uint8_t)((int)(s->pitch_cur + semis_off + 0.5f) & 127); v->vel = 100; v->gate = 1; v->active = 1; v->stage = 1; v->age++;
+    if (!sounding) *env = 0.0f;                                                       /* a voice still sounding keeps its level: the attack starts from it, no click */
+    *stage = 1;
+    px_s2_pitch(s->pitch_cur + semis_off, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
+    if (!sounding) v->env = v->env_out = 0;
+    s->eng->note_on(t, v);
+    if (sounding) {                                                                    /* Felucca's retrigger rule: keep the phases and the filter */
+        v->ph[0] = ph0; v->ph[1] = ph1; v->ph[2] = ph2;
+        for (int k = 0; k < 8; k++) if (k != 2 && k != 3 && (s->eng->keep >> k & 1)) v->s[k] = sv[k];
+    }
+}
+/* one voice's block: its envelope, its pitch and amplitude, the render into s->out (voice 0's state is the px_s2 fields, the others' is vc[]; the single-voice types run voice 0 alone, as before) */
+static void px_s2_voice(px_s2 *s, int vi, float *env, int *stage, float *last_amp, float att_k, float dec_k, float rel_k, float semis_off, float lvl)
+{
+    track_t *t = &trk[0];
+    voice_t *v = &t->v[vi];
+    if (!v->active) { *env = 0.0f; *last_amp = 0.0f; return; }
+    /* the envelope, once a block (ADSR: linear-ish attack by a one-pole, decay to the sustain, release to zero) */
+    switch (*stage) {
+    case 1: *env += (1.2f - *env) * att_k; if (*env >= 1.0f) { *env = 1.0f; *stage = 2; v->stage = 2; } break;
+    case 2: *env += (s->sus - *env) * dec_k; break;
+    case 3: *env -= *env * (s->damped && rel_k < s->dmp_k ? s->dmp_k : rel_k); if (*env < 0.001f) { *env = 0.0f; *stage = 0; v->stage = 0; v->active = 0; } break;
+    default: break;
+    }
+    /* Felucca's amplitude hook (LOFI's stepped envelope, CHIP = STEP): it reads and writes the voice's ADSR (Q24) and returns the amplitude */
+    float shape = *env;
+    if (s->eng->amp) {
+        v->env = (int32_t)(*env * 16777216.0f);
+        const int32_t a = s->eng->amp(t, v, (int32_t)(*env * 32767.0f));
+        *env = (float)v->env * (1.0f / 16777216.0f);
+        shape = (float)a * (1.0f / 32767.0f);
+        if (!v->active) { *env = 0.0f; *stage = 0; *last_amp = 0.0f; return; }
+    }
+    const float vg = 0.35f + 0.65f * s->vel;                                           /* pick strength */
+    const float amp = shape * vg * (0.6f + 0.4f * s->expr_r) * lvl;                    /* and the string's own decay; the voice's level in a stack */
+    vmod_t m;
+    memset(&m, 0, sizeof m);
+    px_s2_pitch(s->pitch_cur + semis_off, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
+    const uint32_t base = pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047));
+    m.pitch16 = v->pitch16; m.fine = v->fine; m.inc = base + (uint32_t)((int32_t)(base >> 12) * v->fine);
+    m.amp0 = (int32_t)(*last_amp * 32767.0f); m.amp1 = (int32_t)(amp * 32767.0f); *last_amp = amp;
+    m.envq15 = m.amp1;
+    m.cutoff = (int32_t)(s->fenv_amp * *env) << 8;                                     /* the envelope into the filter */
+    if (!s->blk_done) {                                                                /* once a block, whichever voice renders first */
+        s->lfo += 0.0021f; if (s->lfo >= 1.0f) s->lfo -= 1.0f;                          /* the pulse-width sweep: 0.5 Hz triangle */
+        if (s->eng->block) s->eng->block(t);                                           /* Felucca's per-block step (WHEEL: bar gains, percussion, rotors) */
+        s->blk_done = 1;
+    }
+    const float tri = s->lfo < 0.5f ? 4.0f * s->lfo - 1.0f : 3.0f - 4.0f * s->lfo;
+    m.shape = (64 << 8) + (int32_t)(tri * (float)s->patch->pwm * 128.0f * (1.0f / 2.0f));
+    if (s->patch->noise) px_s2_noise(t, v, s->out, CTL, &m); else s->eng->render(t, v, s->out, CTL, &m);
+    s->blk++;
+}
+/* one control block: the events, the voices, the envelopes, the render. Writes ring[CTL]. */
 static __attribute__((noinline)) void px_s2_block(px_s2 *s)
 {
     track_t *t = &trk[0];
-    voice_t *v = &t->v[0];
+    const int nv = s->nv;
     if (s->pend_on && s->f0 > 0.0f && s->type == PX_SYN_ARCADE_SPLIT) {        /* the note's range picks its patch (the notes from the split up are UPPER) */
         const int up = (int)(12.0f * 1.442695f * logf(s->f0 * (1.0f / 440.0f)) + 69.5f) >= s->split_note;
         if (up != s->upper) { s->upper = up; px_s2_set(s, PX_SYN_ARCADE_SPLIT, s->sq); }
@@ -177,60 +271,32 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
         if (s->pend_on || s->pitch_cur == 0.0f) s->pitch_cur = target;               /* a new note: there, no glide from the last */
         else s->pitch_cur += (target - s->pitch_cur) * 0.5f;                            /* a bend or vibrato: a short smoothing (about 1.5 ms) */
     }
-    if (s->pend_on && s->f0 > 0.0f) {
-        const int sounding = v->active && v->stage != 0;
-        uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
-        int32_t sv[8]; memcpy(sv, v->s, sizeof sv);
-        v->note = (uint8_t)((int)(s->pitch_cur + 0.5f) & 127); v->vel = 100; v->gate = 1; v->active = 1; v->stage = 1; v->age++;
-        if (!sounding) s->env = 0.0f;                                                  /* a voice still sounding keeps its level: the attack starts from it, no click */
-        s->stage = 1;
-        px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
-        if (!sounding) v->env = v->env_out = 0;
-        s->eng->note_on(t, v);
-        if (sounding) {                                                                 /* Felucca's retrigger rule: keep the phases and the filter */
-            v->ph[0] = ph0; v->ph[1] = ph1; v->ph[2] = ph2;
-            for (int k = 0; k < 8; k++) if (k != 2 && k != 3 && (s->eng->keep >> k & 1)) v->s[k] = sv[k];
+    if (nv > 1 && PX_S2_DRIFT_C > 0.0f) {                                              /* ENSEMBLE: every voice drifts by itself (a deterministic xorshift, filtered): the beating of the copies is irregular, a chorus and not a phaser */
+        const float amp = PX_S2_DRIFT_C * s->spread / 0.57735f / sqrtf(PX_S2_DRIFT_K / (2.0f - PX_S2_DRIFT_K));
+        for (int vi = 0; vi < nv; vi++) {
+            uint32_t r = s->rng[vi] ? s->rng[vi] : 0x9E3779B9u * (uint32_t)(vi + 1);
+            r ^= r << 13; r ^= r >> 17; r ^= r << 5; s->rng[vi] = r;
+            const float u = (float)(int32_t)r * (1.0f / 2147483648.0f);
+            s->drift[vi] += (u * amp - s->drift[vi]) * PX_S2_DRIFT_K;
         }
     }
-    if (s->pend_off && v->active) { v->gate = 0; v->stage = 3; s->stage = 3; }
+    if (s->pend_on && s->f0 > 0.0f) {
+        for (int vi = 0; vi < nv; vi++) {
+            uint8_t gsave[PX_S2_NV];
+            if (vi == 0 && nv > 1) for (int k = 1; k < nv; k++) { gsave[k] = t->v[k].gate; t->v[k].gate = 0; }   /* (WHEEL strikes its percussion once per chord: on the first voice, whatever still rings) */
+            px_s2_noteon(s, vi, vi ? &s->vc[vi].env : &s->env, vi ? &s->vc[vi].stage : &s->stage, (vi ? s->vc[vi].semis : s->v0semis) + s->drift[vi] * 0.01f);
+            if (vi == 0 && nv > 1) for (int k = 1; k < nv; k++) t->v[k].gate = gsave[k];
+        }
+    }
+    if (s->pend_off) for (int vi = 0; vi < nv; vi++) if (t->v[vi].active) { t->v[vi].gate = 0; t->v[vi].stage = 3; if (vi) s->vc[vi].stage = 3; else s->stage = 3; }
     s->pend_on = s->pend_re = s->pend_off = 0;
     for (int i = 0; i < CTL; i++) s->ring[i] = 0.0f;
-    if (!v->active) { s->env = 0.0f; s->last_amp = 0.0f; return; }
-    /* the envelope, once a block (ADSR: linear-ish attack by a one-pole, decay to the sustain, release to zero) */
-    switch (s->stage) {
-    case 1: s->env += (1.2f - s->env) * s->att_k; if (s->env >= 1.0f) { s->env = 1.0f; s->stage = 2; v->stage = 2; } break;
-    case 2: s->env += (s->sus - s->env) * s->dec_k; break;
-    case 3: s->env -= s->env * (s->damped && s->rel_k < s->dmp_k ? s->dmp_k : s->rel_k); if (s->env < 0.001f) { s->env = 0.0f; s->stage = 0; v->stage = 0; v->active = 0; } break;
-    default: break;
-    }
-    /* Felucca's amplitude hook (LOFI's stepped envelope, CHIP = STEP): it reads and writes the voice's ADSR (Q24) and returns the amplitude */
-    float shape = s->env;
-    if (s->eng->amp) {
-        v->env = (int32_t)(s->env * 16777216.0f);
-        const int32_t a = s->eng->amp(t, v, (int32_t)(s->env * 32767.0f));
-        s->env = (float)v->env * (1.0f / 16777216.0f);
-        shape = (float)a * (1.0f / 32767.0f);
-        if (!v->active) { s->env = 0.0f; s->stage = 0; s->last_amp = 0.0f; return; }
-    }
-    const float vg = 0.35f + 0.65f * s->vel;                                           /* pick strength */
-    const float amp = shape * vg * (0.6f + 0.4f * s->expr_r);                          /* and the string's own decay */
-    vmod_t m;
-    memset(&m, 0, sizeof m);
-    px_s2_pitch(s->pitch_cur, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
-    const uint32_t base = pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047));
-    m.pitch16 = v->pitch16; m.fine = v->fine; m.inc = base + (uint32_t)((int32_t)(base >> 12) * v->fine);
-    m.amp0 = (int32_t)(s->last_amp * 32767.0f); m.amp1 = (int32_t)(amp * 32767.0f); s->last_amp = amp;
-    m.envq15 = m.amp1;
-    m.cutoff = (int32_t)(s->fenv_amp * s->env) << 8;                                   /* the envelope into the filter */
-    s->lfo += 0.0021f; if (s->lfo >= 1.0f) s->lfo -= 1.0f;                              /* the pulse-width sweep: 0.5 Hz triangle */
-    const float tri = s->lfo < 0.5f ? 4.0f * s->lfo - 1.0f : 3.0f - 4.0f * s->lfo;
-    m.shape = (64 << 8) + (int32_t)(tri * (float)s->patch->pwm * 128.0f * (1.0f / 2.0f));
     memset(s->out, 0, sizeof s->out);
-    if (s->eng->block) s->eng->block(t);                                               /* Felucca's per-block step (WHEEL: bar gains, percussion, rotors) */
-    if (s->patch->noise) px_s2_noise(t, v, s->out, CTL, &m); else s->eng->render(t, v, s->out, CTL, &m);
+    s->blk_done = 0;
+    px_s2_voice(s, 0, &s->env, &s->stage, &s->last_amp, s->att_k, s->dec_k, s->rel_k, s->v0semis + s->drift[0] * 0.01f, s->v0lvl);
+    for (int vi = 1; vi < nv; vi++) px_s2_voice(s, vi, &s->vc[vi].env, &s->vc[vi].stage, &s->vc[vi].last_amp, s->vc[vi].att_k, s->vc[vi].dec_k, s->vc[vi].rel_k, s->vc[vi].semis + s->drift[vi] * 0.01f, s->vc[vi].lvl);
     const float g = s->level * PX_S2_OUT * (1.0f / 32768.0f);
     for (int i = 0; i < CTL; i++) s->ring[i] = (float)s->out[i] * g;
-    s->blk++;
 }
 /* ARCADE's guitar share, ramped over the n samples: the caller mixes it with the signal that reaches the SYNTH block (after the blocks before it in the order) */
 static inline void px_s2_dry(float *g0, float *g1) { px_s2 *s = &px_s2_st; *g0 = s->dry_c; s->dry_c += (s->dry - s->dry_c) * 0.25f; *g1 = s->dry_c; }

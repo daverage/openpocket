@@ -283,8 +283,94 @@ static float peak_hz(const float *v, int a, int len, float f)
     for (int c = -100; c <= 100; c += 2) { const double ff = f * pow(2.0, c / 1200.0); const float l = gz_db(v, a, len, ff); if (l > best) { best = l; bf = (float)ff; } }
     return bf;
 }
-/* INSTRUMENT (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/research/synth2/SYNTH2-INSTRUMENT.md) */
+/* ENSEMBLE (Synth2 stage F): the INSTRUMENT patches played by a stack of voices from the one tracked note */
 static void ensemble_suite(void)
+{
+    g_type = PX_SYN_ENSEMBLE;
+    static const float H[1] = {110.0f}, ST[1] = {0.1f};
+    {   /* the names and the controls */
+        char buf[8]; px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 0, 15, buf); CHECK(!strcmp(buf, "STRINGS"), "ENSEMBLE PATCH 15 reads STRINGS (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 1, 65, buf); CHECK(!strcmp(buf, "MAJOR"), "ENSEMBLE VOICING 65 reads MAJOR (%s)", buf);
+        px_param_text(PX_B_SYN, PX_SYN_ENSEMBLE, 1, 100, buf); CHECK(!strcmp(buf, "OPEN"), "ENSEMBLE VOICING 100 reads OPEN (%s)", buf);
+        CHECK(px_nparams(PX_B_SYN, PX_SYN_ENSEMBLE) == 5 && !strcmp(px_type_name(PX_B_SYN, PX_SYN_ENSEMBLE), "ENSEMBLE") && px_stack_slot(100) == 9 && px_stack_slot(49) == 4, "ENSEMBLE has five controls and ten voicing slots");
+    }
+    {   /* every voicing plays its intervals (the voices' fundamentals at the note's semitones are there, a note not in the chord is not) on STRINGS (a saw: the fundamental is strong) */
+        static const int EXPECT[10][5] = {{0, 99, 99, 99, 99}, {0, 12, 99, 99, 99}, {-12, 0, 99, 99, 99}, {-12, 0, 12, 99, 99}, {0, 7, 99, 99, 99}, {-12, 0, 7, 99, 99}, {0, 4, 7, 99, 99}, {0, 3, 7, 99, 99}, {0, 4, 7, 11, 99}, {-12, 0, 7, 12, 16}};
+        for (int v = 0; v < 10; v++) {
+            const uint8_t q[5] = {15, (uint8_t)(v * 10 + 5), 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+            string(x, N_, H, ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            float lv[29]; float mx = -1e9f; for (int st = -12; st <= 16; st++) { lv[st + 12] = gz_db(y, 44100, 44100, 110.0 * pow(2.0, st / 12.0)); if (lv[st + 12] > mx) mx = lv[st + 12]; }
+            for (int k = 0; k < 5 && EXPECT[v][k] != 99; k++) CHECK(lv[EXPECT[v][k] + 12] > mx - 14.0f, "ENSEMBLE %s: the voice at %+d semitones is there (%.1f dB under the strongest)", PX_STACKS[v].name, EXPECT[v][k], mx - lv[EXPECT[v][k] + 12]);
+            for (int nt = 1; nt <= 11; nt += 5) { int in = 0; for (int k = 0; k < 5 && EXPECT[v][k] != 99; k++) if (EXPECT[v][k] == nt || EXPECT[v][k] - 12 == nt || EXPECT[v][k] + 12 == nt) in = 1;
+                if (!in && nt != 6 && nt != 1 && nt != 11) continue;
+                if (!in) CHECK(lv[nt + 12] < mx - 12.0f, "ENSEMBLE %s: the note at %+d semitones is not played (%.1f dB under)", PX_STACKS[v].name, nt, mx - lv[nt + 12]); }
+        }
+    }
+    {   /* every patch x voicing x spread x tone: finite and bounded; silence in, silence out */
+        static const float Hh[2] = {98.0f, 196.0f}, Sh[2] = {0.05f, 0.8f}; static const uint8_t SP[3] = {0, 50, 100}, TN[2] = {0, 100}; float peak_all = 0; int n = 0;
+        string(x, 44100, Hh, Sh, 2, 0.7f, 0.99995f, 0);
+        for (int pa = 0; pa < 10; pa++) for (int vo = 0; vo < 10; vo++) for (int sp = 0; sp < 3; sp++) for (int tn = 0; tn < 2; tn++) {
+            const uint8_t q[5] = {(uint8_t)(pa * 10 + 5), (uint8_t)(vo * 10 + 5), SP[sp], TN[tn], 50}; px_preset_t p; preset_of(&p, q);
+            render(&p, x, y, 44100, 64);
+            int ok = 1; float pk = 0; for (int i = 0; i < 44100; i++) { if (y[i] != y[i]) ok = 0; if (fabsf(y[i]) > pk) pk = fabsf(y[i]); }
+            if (!ok || pk > 2.0f) { bad++; printf("FAIL ENSEMBLE patch %d voicing %d spread %d tone %d: %s peak %.2f\n", pa, vo, SP[sp], TN[tn], ok ? "too loud" : "NaN", pk); }
+            if (pk > peak_all) peak_all = pk; n++;
+        }
+        { const uint8_t q[5] = {55, 95, 50, 50, 50}; px_preset_t p; preset_of(&p, q); static float z[8192]; memset(z, 0, sizeof z); render(&p, z, y2, 8192, 64);
+          for (int i = 0; i < 8192; i++) if (fabsf(y2[i]) > 1e-6f) { bad++; printf("FAIL ENSEMBLE: not silent on silence\n"); break; } }
+        printf("ENSEMBLE: %d patch/voicing/macro combinations: all finite, loudest peak %.2f\n", n, peak_all);
+    }
+    {   /* deterministic, and the call size does not matter */
+        static const float H2[2] = {146.83f, 196.0f}, ST2[2] = {0.1f, 1.2f}; const uint8_t q[5] = {55, 85, 60, 40, 50}; px_preset_t p; preset_of(&p, q);
+        string(x, N_, H2, ST2, 2, 0.4f, 0.99995f, 0); render(&p, x, y, N_, 64); render(&p, x, y2, N_, 64);
+        CHECK(!memcmp(y, y2, sizeof y), "ENSEMBLE: the same settings and input give the same output");
+        const int n = (N_ / 64) * 64; render(&p, x, y2, n, 48);
+        float d = 0; for (int k = 0; k < n; k++) { const float a = fabsf(y[k] - y2[k]); if (a > d) d = a; }
+        CHECK(d == 0.0f, "ENSEMBLE: the output does not depend on the call size (%g)", d);
+    }
+    {   /* the copies' beating is irregular (a chorus), not a periodic swell (a phaser), and no deep dips: on STRINGS and SOFTPAD, UNISON / OCT UP / MAJOR, three notes: the envelope's periodicity
+         * (the strongest autocorrelation of the 10 ms RMS at lags 0.25-2 s) stays under 0.6 (INSTRUMENT STRINGS, the single voice the user accepted, is 0.67-0.82) and the peak level swings less than 15 dB */
+        static const float NT[3] = {82.41f, 164.81f, 329.63f}; static const int VO[3] = {0, 1, 6};
+        for (int pi = 0; pi < 2; pi++) for (int vi = 0; vi < 3; vi++) for (int k = 0; k < 3; k++) {
+            const uint8_t q[5] = {(uint8_t)(pi ? 15 : 5), (uint8_t)(VO[vi] * 10 + 5), 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+            static float xl[44100 * 7], yl[44100 * 7]; const int NL = 44100 * 7; float ph = 0, env = 0.5f;
+            for (int i = 0; i < NL; i++) { ph += NT[k] / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f; xl[i] = i < 4410 ? 0.0f : 0.4f * env * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)); env *= 0.999995f; }
+            px_engine_init(&e, FS_); px_engine_set(&e, &p); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&e, xl + at, yl + at, 64);
+            float lo = 1e9f, hi = 0; for (int i = 44100 * 2; i + 441 < NL - 22050; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(yl[i + j]) > pk) pk = fabsf(yl[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
+            static float rr[900]; const int nb = (NL - 44100 * 3 - 882) / 441; double m = 0;
+            for (int b = 0; b < nb; b++) { double a = 0; for (int j = 0; j < 441; j++) a += (double)yl[44100 * 2 + b * 441 + j] * yl[44100 * 2 + b * 441 + j]; rr[b] = (float)sqrt(a / 441); m += rr[b]; }
+            m /= nb; double v0 = 0; for (int b = 0; b < nb; b++) v0 += (rr[b] - m) * (rr[b] - m);
+            double best = 0; for (int lag = 25; lag <= 200 && lag < nb / 2; lag++) { double c = 0; for (int b = 0; b + lag < nb; b++) c += (rr[b] - m) * (rr[b + lag] - m); c /= v0; if (c > best) best = c; }
+            CHECK(best < 0.6, "ENSEMBLE %s %s on %.0f Hz: the beating is irregular (periodicity %.2f)", PX_INSTRUMENT_PATCHES[pi ? 1 : 0].name, PX_STACKS[VO[vi]].name, NT[k], best);
+            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 15.0f, "ENSEMBLE %s %s on %.0f Hz: no deep dips (%.1f dB)", PX_INSTRUMENT_PATCHES[pi ? 1 : 0].name, PX_STACKS[VO[vi]].name, NT[k], 20.0f * log10f(hi / (lo + 1e-9f)));
+        }
+    }
+    {   /* every voice releases: after the guitar stops no voice rings on (STRINGS OPEN, 5 voices, RELEASE as written) and a hard mute stops all of them fast (ORGAN OPEN) */
+        { static const float H3[1] = {110.0f}, S3[1] = {0.1f}; const uint8_t q[5] = {15, 95, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+          string(x, 44100 * 2, H3, S3, 1, 0.5f, 0.9999f, 0); memset(x + 44100 * 2, 0, sizeof(float) * (N_ - 44100 * 2)); render(&p, x, y, N_, 64);
+          const float mid = rms(y, (int)(0.8f * FS_), 4096), soon = rms(y, (int)(2.3f * FS_), 4096), late = rms(y, (int)(4.8f * FS_), 4096);
+          CHECK(mid > 0.005f && late < 0.5f * soon && late < 0.35f * mid, "ENSEMBLE STRINGS OPEN: sounds, and the tail of all five voices keeps falling (%.4f, %.4f, %.4f)", mid, soon, late); }
+        { float ph = 0, env = 0.5f; const int tm = 44100; for (int i = 0; i < 44100 * 3; i++) { ph += 110.0f / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f; float g = env; if (i >= tm) g = env * expf(-(float)(i - tm) / FS_ * 1000.0f / 6.0f); else env *= 0.99997f;
+              x[i] = i < 2000 ? 0.0f : g * 0.4f * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)); }
+          for (int ci = 0; ci < 2; ci++) { const uint8_t q[5] = {(uint8_t)(ci ? 15 : 55), 95, 50, 50, 50}; px_preset_t p; preset_of(&p, q); render(&p, x, y, 44100 * 3, 64);
+              const float before = rms(y, tm - 4410, 2048), after = rms(y, tm + (int)(0.40f * FS_), 2048);
+              CHECK(after < 0.03f * before, "ENSEMBLE %s OPEN: after a hard mute every voice is 30 dB down within 400 ms (%.1f dB)", ci ? "STRINGS" : "ORGAN", 20.0f * log10f(after / (before + 1e-9f))); } }
+    }
+    {   /* the voicing and the patch switched while playing stay finite, and a smaller stack leaves no voice behind (the bigger one first, then UNISON: the level settles to a fresh UNISON's) */
+        static const float H4[1] = {130.81f}; string(x, N_, H4, ST, 1, 0.5f, 0.99997f, 0);
+        const uint8_t q[5] = {55, 95, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+        px_engine_init(&e, FS_); px_engine_set(&e, &p); int ok = 1;
+        for (int at = 0; at + 64 <= N_; at += 64) {
+            if (at % (44100 / 2) == 0) { px_preset_t r = e.cur; r.p[PX_B_SYN][1] = (uint8_t)((at / (44100 / 2)) * 23 % 101); r.p[PX_B_SYN][0] = (uint8_t)((at / (44100 / 2)) * 17 % 101); if (px_engine_change(&e, &r) == PX_CH_KNOBS) { px_engine_prepare(&e, &r); px_engine_knobs(&e, &r); } }
+            px_engine_process(&e, x + at, y + at, 64);
+            for (int i = 0; i < 64; i++) if (y[at + i] != y[at + i] || fabsf(y[at + i]) > 4.0f) ok = 0;
+        }
+        CHECK(ok, "ENSEMBLE: switching patch and voicing while playing stays finite");
+    }
+    g_type = PX_SYN_ANALOG;
+}
+/* INSTRUMENT (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/research/synth2/SYNTH2-INSTRUMENT.md) */
+static void instrument_suite(void)
 {
     g_type = PX_SYN_INSTRUMENT;
     static const float NOTES[3] = {82.41f, 164.81f, 329.63f}, ST[1] = {0.1f};
@@ -499,7 +585,8 @@ int main(void)
     arcade_suite();
     pass1_suite();
     routing_split_suite();
+    instrument_suite();
     ensemble_suite();
-    printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + ensemble synth ok", bad);
+    printf("%s: %d problems\n", bad ? "FAILED" : "analog + arcade + instrument + ensemble synth ok", bad);
     return bad != 0;
 }
