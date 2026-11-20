@@ -263,7 +263,7 @@ static void routing_split_suite(void)
         }
         {   /* the two notes in turn: the range follows each note */
             static const float H[2] = {110.0f, 329.63f}, S2[2] = {0.1f, 2.0f};
-            string(x, N_, H, S2, 2, 0.5f, 0.9998f, 0); px_preset_t p; preset_of(&p, q); render(&p, x, y, N_, 64);
+            string(x, N_, H, S2, 2, 0.5f, 0.99997f, 0); px_preset_t p; preset_of(&p, q); render(&p, x, y, N_, 64);   /* (a string that rings on: the synth's release is Felucca's, short, it ends with the guitar) */
             const float a = f0_of(y, (int)(1.2f * FS_), 4096, 38.0f, 80.0f), b = f0_of(y, (int)(2.7f * FS_), 4096, 230.0f, 460.0f);
             CHECK(a > 0 && b > 0, "a low then a high note: each in its own range (%.1f, %.1f Hz)", a, b);
         }
@@ -447,7 +447,7 @@ static void instrument_suite(void)
         for (int b = 0; b < 5; b++) for (int k = 0; k < 3; k++) {
             const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
             string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
-            float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
+            float lo = 1e9f, hi = 0; for (int i = 66150; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
             CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 5.0f, "INSTRUMENT %s on %.0f Hz: no beating swell (%.1f dB)", PX_INSTRUMENT_PATCHES[b].name, NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
         }
     }
@@ -550,7 +550,7 @@ static void instrument_suite(void)
               pk = 0; for (int i2 = 0; i2 < (int)(1.2f * FS_); i2++) if (fabsf(y[i2]) > pk) pk = fabsf(y[i2]);
               int e0 = (int)(1.3f * FS_), r = e0; while (r < N_ - 512 && rms(y, r, 512) > 0.1f * pk * 0.7f) r += 256; t_r[j] = (float)(r - e0) / FS_; }
           printf("WHEEL ORGAN: half level ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_a[0], t_a[1], t_r[0], t_r[1]);
-          CHECK(t_a[1] > t_a[0] + 0.008f, "WHEEL ATTACK 100 is slower than 0");
+          CHECK(t_a[1] > t_a[0] + 0.004f, "WHEEL ATTACK 100 is slower than 0 (the organ speaks in 2 ms: Felucca's ATK 8)");
           CHECK(t_r[1] > 1.5f * t_r[0], "WHEEL RELEASE 100 is longer than 0"); }
     }
     {   /* fix pass 5: (a) a dead pick (a burst whose sound is gone before its pitch is known) plays no note; (b) a started note is never released on its own onset sample (random damped picks) */

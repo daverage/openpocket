@@ -15,7 +15,7 @@
 #ifndef PX_SYNTH_ADAPTER_H
 #define PX_SYNTH_ADAPTER_H
 #ifndef PX_S2_NV
-#define PX_S2_NV 5                                  /* the most voices one note can drive (ENSEMBLE's stacks; every other type uses voice 0 alone) */
+#define PX_S2_NV 9                                  /* the most voices one note can drive (ENSEMBLE's stacks; every other type uses voice 0 alone) */
 #endif
 #define NVOICE PX_S2_NV
 #define NPART 1
@@ -31,6 +31,12 @@ static track_t trk[NPART];
 #include "px_synth_patches.h"
 
 #define PX_ARCADE_SPLIT_AS PX_SYN_ARCADE
+/* The envelope as Felucca's host plays it (felucca voice.c env_tick; tables from tools/gen_tables.py): a time T = 1 ms x 10000^(v/127) for each of ATK, DEC, REL (v 0..127: 1 ms .. 10 s); the attack is
+ * LINEAR and reaches full level in T; decay (toward SUS) and release are exponential, 99 % of the way after T (a time constant of T / 4.6). Builds 907-914 used my own curves (a one-pole whose time
+ * constant was 1 + (v/127)^2 x 1500..3000 ms), 4-15 times slower than the presets were written for. PX_S2_ENV_ORIG 0 restores those (for the A/B and the identity tests). */
+#ifndef PX_S2_ENV_ORIG
+#define PX_S2_ENV_ORIG 1
+#endif
 #define PX_S2_DAMP_MS 40.0f                           /* release time constant after a hard mute: the patch's own would ring on for a second or more */
 #ifndef PX_S2_DRIFT_C
 #define PX_S2_DRIFT_C 8.0f                             /* ENSEMBLE: the rms of each voice's pitch wander, cents, at SPREAD noon (0 = off) */
@@ -54,6 +60,8 @@ typedef struct {
     float vel, expr_r, last_amp;
     int nv; float v0semis, v0lvl;                      /* ENSEMBLE: the voices in play; voice 0's interval (semitones) and level (the single-voice types: 1, 0.0 and 1.0) */
     struct { float semis, lvl, att_k, dec_k, rel_k, env, last_amp; int stage; } vc[PX_S2_NV];   /* voices 1.. (voice 0's state is the fields above) */
+    uint8_t grp[PX_S2_NV]; int16_t vcut[PX_S2_NV]; int ngrp;   /* the voice's group (a singer, or the voice itself) and its filter cutoff (-1: the patch's) */
+    float vph[PX_S2_NV], vib[PX_S2_NV], vibd, vdel_ms; int vage;   /* vibrato: each group's phase and the semitones it adds now, the depth (semitones), the delay, blocks since the note started */
     uint32_t rng[PX_S2_NV]; float drift[PX_S2_NV], spread;   /* ENSEMBLE: each voice's own slow random pitch wander (cents), and SPREAD's scale of it */
     int blk_done;                                      /* this block's shared step (the LFO, the engine's per-block call) has run */
     float dmp_k; int damped;                                        /* the gate fell on a hard damp: the release is fast (PX_S2_DAMP_MS) */
@@ -64,6 +72,8 @@ typedef struct {
 } px_s2;
 static px_s2 px_s2_st PX_LO(px_s2_st);
 
+static inline float px_s2_tms(int v) { return powf(10000.0f, (float)v * (1.0f / 127.0f)); }                       /* Felucca's time for a 0..127 value, ms */
+static inline float px_s2_att_step(float ms) { const float st = (float)CTL * 1000.0f / (FS * (ms < 0.5f ? 0.5f : ms)); return st > 1.0f ? 1.0f : st; }   /* the linear attack's step a block */
 static inline float px_s2_ms_k(float ms) { return 1.0f - expf(-(float)CTL * 1000.0f / (FS * (ms < 0.5f ? 0.5f : ms))); }   /* a one-pole per block */
 
 /* the patch and the macros from the block's five settings (all of them are the preset's: nothing else shapes the sound).
@@ -81,7 +91,7 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     s->type = type; s->arc = arc; s->patch = pa; s->eng = arc ? &ENG_LOFI : (ens && pa->eng) ? &ENG_WHEEL : &ENG_ANALOG;   /* (INSTRUMENT and ENSEMBLE: ANALOG, or WHEEL for the organ patches) */
     track_t *t0 = &trk[0];
     for (int k = 0; k < 8; k++) t0->p[P_E0 + k] = pa->e[k];
-    t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = 0;
+    t0->p[P_ATK] = pa->env[0]; t0->p[P_REL] = pa->env[3]; t0->p[P_FTYPE] = pa->ftype;
     float tm = 1.0f, tdec = 1.0f, tmr = -1.0f;                                                /* tmr: the release's own multiplier (INSTRUMENT), else tm */
     if (ens) {                                                                              /* INSTRUMENT: PATCH, TONE, ATTACK, RELEASE, LEVEL */
         if (pa->eng) {                                                                      /* WHEEL: TONE tilts the drawbars: up = upper bars +5 and body +1.5, sub bars -5 (one level is about 3 dB); 50 = as written */
@@ -115,27 +125,34 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
         s->level = pa->trim / 64.0f * (m4 * 2.0f < 1.0f ? m4 * 2.0f : 1.0f);              /* MIX: 0 guitar only .. 50 both .. 100 synth only */
         s->dry = (1.0f - m4) * 2.0f < 1.0f ? (1.0f - m4) * 2.0f : 1.0f;
     }
+#if PX_S2_ENV_ORIG
+    const float atk_ms = px_s2_tms(pa->env[0]), dec_ms = px_s2_tms(pa->env[1]) * (1.0f / 4.6f), rel_ms = px_s2_tms(pa->env[3]) * (1.0f / 4.6f);   /* (decay and release as time constants) */
+    s->att_k = px_s2_att_step(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+#else
     const float atk_ms = 1.0f + (pa->env[0] / 127.0f) * (pa->env[0] / 127.0f) * 1500.0f;
     const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
     const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
     s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+#endif
     s->dmp_k = px_s2_ms_k(PX_S2_DAMP_MS);
-    s->nv = 1; s->v0semis = 0.0f; s->v0lvl = 1.0f;
+    s->nv = 1; s->v0semis = 0.0f; s->v0lvl = 1.0f; s->ngrp = 1;
+    for (int i = 0; i < PX_S2_NV; i++) { s->vcut[i] = -1; s->grp[i] = (uint8_t)i; }
+    s->vibd = pa->vib * 0.01f; s->vdel_ms = pa->vdel * 10.0f;
     if (ens2) {                                                                              /* ENSEMBLE: PATCH, VOICING, SPREAD, TONE, LEVEL */
         const px_stack *st = &PX_STACKS[px_stack_slot(q[1])];
         const float spread = m2 < 0.5f ? m2 * 2.0f : 1.0f + (m2 - 0.5f) * 4.0f;            /* SPREAD: the detune x0 .. x1 (50) .. x3 */
         float sq = 0.0f;
         for (int i = 0; i < st->nv; i++) sq += (st->v[i].lvl / 64.0f) * (st->v[i].lvl / 64.0f);
         const float norm = 1.0f / sqrtf(sq);                                                 /* the voices' powers add up to one voice's */
-        s->nv = st->nv; s->spread = spread;
+        s->nv = st->nv; s->spread = spread; s->ngrp = st->nv;
         s->level *= st->trim / 64.0f;
         for (int i = 0; i < st->nv; i++) {
             const float so = (float)st->v[i].semis + (float)st->v[i].cents * spread * 0.01f, lv = st->v[i].lvl / 64.0f * norm, am = st->v[i].atk / 64.0f;
             if (i == 0) { s->v0semis = so; s->v0lvl = lv; }
             else { s->vc[i].semis = so; s->vc[i].lvl = lv; }
-            if (i > 0) { s->vc[i].att_k = px_s2_ms_k(atk_ms * tm * am); s->vc[i].dec_k = s->dec_k; s->vc[i].rel_k = s->rel_k; }
+            if (i > 0) { s->vc[i].att_k = PX_S2_ENV_ORIG ? px_s2_att_step(atk_ms * tm * am) : px_s2_ms_k(atk_ms * tm * am); s->vc[i].dec_k = s->dec_k; s->vc[i].rel_k = s->rel_k; }
         }
-        if (st->v[0].atk != 64) s->att_k = px_s2_ms_k(atk_ms * tm * (st->v[0].atk / 64.0f));
+        if (st->v[0].atk != 64) s->att_k = PX_S2_ENV_ORIG ? px_s2_att_step(atk_ms * tm * (st->v[0].atk / 64.0f)) : px_s2_ms_k(atk_ms * tm * (st->v[0].atk / 64.0f));
     }
     for (int i = s->nv; i < PX_S2_NV; i++) { trk[0].v[i].active = 0; trk[0].v[i].stage = 0; s->vc[i].env = 0.0f; s->vc[i].stage = 0; s->vc[i].last_amp = 0.0f; }   /* voices a smaller stack no longer plays */
     s->sus = pa->env[2] / 127.0f;
@@ -155,6 +172,7 @@ static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
     memset(trk, 0, sizeof trk);
     memset(drw_t, 0, sizeof drw_t); memset(drw_v, 0, sizeof drw_v);                     /* WHEEL's own state (eng_wheel.c: rotors, bar gains, phases) */
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
+    for (int i = 0; i < PX_S2_NV; i++) { s->vcut[i] = -1; s->grp[i] = (uint8_t)i; }
     px_s2_set(s, type, q);
     s->dry_c = s->dry;
 }
@@ -223,7 +241,11 @@ static void px_s2_voice(px_s2 *s, int vi, float *env, int *stage, float *last_am
     if (!v->active) { *env = 0.0f; *last_amp = 0.0f; return; }
     /* the envelope, once a block (ADSR: linear-ish attack by a one-pole, decay to the sustain, release to zero) */
     switch (*stage) {
+#if PX_S2_ENV_ORIG
+    case 1: *env += att_k; if (*env >= 1.0f) { *env = 1.0f; *stage = 2; v->stage = 2; } break;                 /* linear, as env_tick */
+#else
     case 1: *env += (1.2f - *env) * att_k; if (*env >= 1.0f) { *env = 1.0f; *stage = 2; v->stage = 2; } break;
+#endif
     case 2: *env += (s->sus - *env) * dec_k; break;
     case 3: *env -= *env * (s->damped && rel_k < s->dmp_k ? s->dmp_k : rel_k); if (*env < 0.001f) { *env = 0.0f; *stage = 0; v->stage = 0; v->active = 0; } break;
     default: break;
@@ -254,6 +276,7 @@ static void px_s2_voice(px_s2 *s, int vi, float *env, int *stage, float *last_am
     }
     const float tri = s->lfo < 0.5f ? 4.0f * s->lfo - 1.0f : 3.0f - 4.0f * s->lfo;
     m.shape = (64 << 8) + (int32_t)(tri * (float)s->patch->pwm * 128.0f * (1.0f / 2.0f));
+    if (s->vcut[vi] >= 0) t->p[P_E4] = s->vcut[vi];                                    /* CHOIR: each voice is a formant, its own filter */
     if (s->patch->noise) px_s2_noise(t, v, s->out, CTL, &m); else s->eng->render(t, v, s->out, CTL, &m);
     s->blk++;
 }
@@ -273,18 +296,27 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     }
     if (nv > 1 && PX_S2_DRIFT_C > 0.0f) {                                              /* ENSEMBLE: every voice drifts by itself (a deterministic xorshift, filtered): the beating of the copies is irregular, a chorus and not a phaser */
         const float amp = PX_S2_DRIFT_C * s->spread / 0.57735f / sqrtf(PX_S2_DRIFT_K / (2.0f - PX_S2_DRIFT_K));
-        for (int vi = 0; vi < nv; vi++) {
-            uint32_t r = s->rng[vi] ? s->rng[vi] : 0x9E3779B9u * (uint32_t)(vi + 1);
-            r ^= r << 13; r ^= r >> 17; r ^= r << 5; s->rng[vi] = r;
+        for (int g = 0; g < s->ngrp; g++) {                                          /* (a group: a singer's formant voices share one pitch, or a voice is its own group) */
+            uint32_t r = s->rng[g] ? s->rng[g] : 0x9E3779B9u * (uint32_t)(g + 1);
+            r ^= r << 13; r ^= r >> 17; r ^= r << 5; s->rng[g] = r;
             const float u = (float)(int32_t)r * (1.0f / 2147483648.0f);
-            s->drift[vi] += (u * amp - s->drift[vi]) * PX_S2_DRIFT_K;
+            s->drift[g] += (u * amp - s->drift[g]) * PX_S2_DRIFT_K;
         }
     }
+    if (s->vibd > 0.0f) {                                                              /* vibrato: ~5.3 Hz, each group its own rate and phase, fading in after the delay (bowed strings, singers) */
+        const float tms = (float)s->vage * (float)CTL * 1000.0f / FS, fade = tms < s->vdel_ms ? 0.0f : (tms - s->vdel_ms) < 300.0f ? (tms - s->vdel_ms) * (1.0f / 300.0f) : 1.0f;
+        for (int g = 0; g < s->ngrp; g++) {
+            s->vph[g] += (5.3f + 0.27f * (float)g) * (float)CTL / FS; if (s->vph[g] >= 1.0f) s->vph[g] -= 1.0f;
+            s->vib[g] = s->vibd * fade * sinf(6.2831853f * s->vph[g]) * (1.0f - 0.12f * (float)(g & 1));
+        }
+        s->vage++;
+    }
     if (s->pend_on && s->f0 > 0.0f) {
+        if (!(t->v[0].active && t->v[0].stage != 0)) { s->vage = 0; for (int g = 0; g < PX_S2_NV; g++) { s->vph[g] = 0.37f * (float)g; s->vib[g] = 0.0f; } }   /* a new note starts its vibrato over */
         for (int vi = 0; vi < nv; vi++) {
             uint8_t gsave[PX_S2_NV];
             if (vi == 0 && nv > 1) for (int k = 1; k < nv; k++) { gsave[k] = t->v[k].gate; t->v[k].gate = 0; }   /* (WHEEL strikes its percussion once per chord: on the first voice, whatever still rings) */
-            px_s2_noteon(s, vi, vi ? &s->vc[vi].env : &s->env, vi ? &s->vc[vi].stage : &s->stage, (vi ? s->vc[vi].semis : s->v0semis) + s->drift[vi] * 0.01f);
+            px_s2_noteon(s, vi, vi ? &s->vc[vi].env : &s->env, vi ? &s->vc[vi].stage : &s->stage, (vi ? s->vc[vi].semis : s->v0semis) + s->drift[s->grp[vi]] * 0.01f + s->vib[s->grp[vi]]);
             if (vi == 0 && nv > 1) for (int k = 1; k < nv; k++) t->v[k].gate = gsave[k];
         }
     }
@@ -293,8 +325,8 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     for (int i = 0; i < CTL; i++) s->ring[i] = 0.0f;
     memset(s->out, 0, sizeof s->out);
     s->blk_done = 0;
-    px_s2_voice(s, 0, &s->env, &s->stage, &s->last_amp, s->att_k, s->dec_k, s->rel_k, s->v0semis + s->drift[0] * 0.01f, s->v0lvl);
-    for (int vi = 1; vi < nv; vi++) px_s2_voice(s, vi, &s->vc[vi].env, &s->vc[vi].stage, &s->vc[vi].last_amp, s->vc[vi].att_k, s->vc[vi].dec_k, s->vc[vi].rel_k, s->vc[vi].semis + s->drift[vi] * 0.01f, s->vc[vi].lvl);
+    px_s2_voice(s, 0, &s->env, &s->stage, &s->last_amp, s->att_k, s->dec_k, s->rel_k, s->v0semis + s->drift[s->grp[0]] * 0.01f + s->vib[s->grp[0]], s->v0lvl);
+    for (int vi = 1; vi < nv; vi++) px_s2_voice(s, vi, &s->vc[vi].env, &s->vc[vi].stage, &s->vc[vi].last_amp, s->vc[vi].att_k, s->vc[vi].dec_k, s->vc[vi].rel_k, s->vc[vi].semis + s->drift[s->grp[vi]] * 0.01f + s->vib[s->grp[vi]], s->vc[vi].lvl);
     const float g = s->level * PX_S2_OUT * (1.0f / 32768.0f);
     for (int i = 0; i < CTL; i++) s->ring[i] = (float)s->out[i] * g;
 }

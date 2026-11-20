@@ -16,6 +16,8 @@ typedef struct {
     uint8_t pwm;                 /* pulse-width sweep (the WAVE PWM and SYNC), 0 none .. 127 */
     uint8_t noise;               /* 1: the adapter's own xorshift noise voice (the Arcade Poly noise of the synth branch) instead of Felucca's engine */
     uint8_t eng;                 /* INSTRUMENT only: 0 Felucca ANALOG, 1 Felucca WHEEL (e[] is then REG, SUB, BODY, TOP, PERC, CLICK, DRV, ROTR) */
+    uint8_t vib, vdel;           /* a bowed-string vibrato: depth in cents (0 none), and the delay before it starts in units of 10 ms; it fades in over 300 ms (fix pass 6) */
+    uint8_t ftype;               /* the ANALOG filter: 0 low-pass, 1 band-pass, 2 high-pass */
 } px_patch;
 enum { PX_PATCH_SLOTS = 10 };
 /* Fix pass 4: CLASSIC, FATSAW, PULSE, PWM and SWEEP have the second oscillator at MIX 16 (was 64, 64, 40, 30, 64) and their trims lowered by the loudness this adds (0.6-1.8 dB): detuned
@@ -76,7 +78,7 @@ static inline int px_inst_slot(int value) { int s = value / 10; return s < 0 ? 0
  * stack of up to PX_S2_NV voices: each has an interval (semitones), a small fixed detune (cents, scaled by SPREAD), a level (64 = 1.0) and an attack stretch (64 = the patch's own).
  * Like the INSTRUMENT patches the slots are PATCH / 10 and fixed forever (a defined slot is never reassigned or reordered); all ten are defined. Names: at most 7 characters. */
 #ifndef PX_S2_NV
-#define PX_S2_NV 5
+#define PX_S2_NV 9
 #endif
 typedef struct { int8_t semis, cents; uint8_t lvl, atk; } px_vc;
 typedef struct { const char *name; uint8_t nv; px_vc v[PX_S2_NV]; uint8_t trim; } px_stack;   /* trim: 64 = 1.0, the stack's own level (set by ear and measurement) */
