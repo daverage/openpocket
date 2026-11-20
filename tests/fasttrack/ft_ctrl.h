@@ -43,6 +43,7 @@ typedef struct {
     int since, leg_n, sub_n; float leg_f, sub_f;
     long frames; float sr;
     int last_reason; float fhist[8]; int fh;
+    int oracle_pick, oracle_on; float oracle_hz;                    /* DIAGNOSTIC ORACLES (host benchmark only): annotated pick this sample / annotated pitch (0 = none) */
 } ft_ctrl;
 typedef struct { int ev; float f0, vel; int gate; int reason; float t_pick_ms; int cand_frames; } ft_ctrl_out;
 static void ft_ctrl_init(ft_ctrl *c, float sr) { memset(c, 0, sizeof *c); c->sr = sr; }
@@ -76,9 +77,10 @@ static void ft_ctrl_run(ft_ctrl *c, const px_track *t, float x, int framed, ft_c
     /* DAMP: a deliberate rapid damp releases the voice at once; nothing else changes and nothing is locked out */
     if (c->gate && !c->cand && c->pk > 0.01f && c->fe < 0.1f * c->pk) { o->ev |= FTC_DAMP | FTC_NOTE_OFF; c->gate = 0; c->pk = c->fe; }
     int flux_ok = framed && t->onset > 0.0f;
+    if (c->oracle_pick) { flux_ok = 1; }
     if (flux_ok && FTC_RISE > 0.0f) { float mn = 1e9f; for (int k = 0; k < 8; k++) if (c->fhist[k] < mn) mn = c->fhist[k]; flux_ok = c->fe > FTC_RISE * (mn + 1e-5f); }
     if (framed) { c->fhist[c->fh] = c->fe; c->fh = (c->fh + 1) & 7; }
-    if (rise || flux_ok) {           /* a genuine pick may interrupt anything, a pending candidate included; a sounding note keeps sounding until a new one is admitted */
+    if (c->oracle_pick || (!c->oracle_on && (rise || flux_ok))) {           /* a genuine pick may interrupt anything, a pending candidate included; a sounding note keeps sounding until a new one is admitted */
         ftc_votes_clear(c); c->cand = 1; c->onset_peak = 0.0f; c->peak_n = 0; c->leg_n = 0; o->ev |= FTC_PICK;
     }
     if (framed) {
@@ -89,6 +91,7 @@ static void ft_ctrl_run(ft_ctrl *c, const px_track *t, float x, int framed, ft_c
             for (int k = 0; k < 4; k++) { tot += c->slot[k].v; if (c->slot[k].v > bv) { bv = c->slot[k].v; bi = k; } }
             const float share = bv / tot, f = c->slot[bi].f; const int fr = c->cand_frames;
             int admit = 0; float pitch = 0.0f;
+            if (c->oracle_hz > 0.0f && fr >= FTC_ADM_MIN) { admit = 1; pitch = c->oracle_hz; } else
             if (fr >= FTC_ADM_MIN && f > 0.0f && share >= (fr >= FTC_ADM_MAX ? FTC_SHARE_MAX : FTC_SHARE)) {
                 pitch = pxt_pick_fundamental(t, f);              /* above 300 Hz: a clearly better lower period replaces it; 0 = cannot be verified */
                 if (pitch > 0.0f) admit = pxt_confirm_pick(t, pitch, fr) || (FTC_BOUND_ADMIT && fr >= FTC_ADM_MAX);   /* the waveform must repeat at this period and no longer period fits better */
