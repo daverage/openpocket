@@ -1,11 +1,11 @@
 /* OpenPocket Synth2: the one monophonic tracker's interface (stage 2).
  *
  * The tracker is engine/px_track.h (the v49 band-bank tracker: pxt_run) and its note layer (pxt_layer_run), kept after the
- * host benchmark against Cycfi Q's BACF (docs/SYNTH2-TRACKER.md). This header is all a synthesis voice may know of it: one call per
+ * host benchmark against Cycfi Q's BACF (docs/research/synth2/SYNTH2-TRACKER.md). This header is all a synthesis voice may know of it: one call per
  * input sample, one small result. Pitch is continuous (bends, slides and vibrato follow within 120 cents a frame; no semitone
  * grid), a new pick, a hammer-on or slur after 15 ms, or a corrected octave sets `onset`, and the gate falls when the string
  * has died away (-> `release`). The input is the clean guitar (after the DC blocker, before the gate, the octave and every
- * other effect: the caller's job, docs/SYNTH2-PLAN.md).
+ * other effect: the caller's job, docs/research/synth2/SYNTH2-PLAN.md).
  *
  * Two ranges of the same tracker: guitar (default, 60 Hz: B1 and up) and bass (px_mono_init(.., PX_MONO_BASS): 38 Hz, E1 with
  * room for a down-tuned bass). On the host the bass range gives 84 % notes right on the bass lines against 63 %, with no loss
@@ -19,7 +19,7 @@
 #define PX_MONO_GUITAR 0.0f              /* the default floor, PXT_FMIN (60 Hz) */
 #define PX_MONO_BASS   38.0f
 /* Synth2 fix pass 1 (the note-on beep): a note whose first pitch is above PXT_MW_F (200 Hz) waits this many tracker frames (1.45 ms each) before it
- * speaks, so that a low note's fundamental has time to arrive. Measured on DI (tools/sim/note_on_diag.c): octave-or-more corrections after the onset
+ * speaks, so that a low note's fundamental has time to arrive. Measured on DI (tools/research/note_on_diag.c): octave-or-more corrections after the onset
  * 23 of 31 notes at the layer's 5 frames, 6 of 31 at 17; rise-to-onset 12 -> 21 ms on those notes, unchanged below 200 Hz. */
 #define PX_MONO_MINWAIT 17
 typedef struct {
@@ -32,7 +32,10 @@ typedef struct {
     int retrigger;                       /* onset while the gate was already on: restart the envelope, keep the voice */
     int release;                         /* 1 on the sample the gate falls */
 } px_mono_out;
-typedef struct { px_track trk; pxt_layer lay; int was; } px_mono;
+/* Synth2 fix pass 2 (a hard mute plays another note): when the string is damped the tracker keeps the note open for ~120 ms and reads the muting thump as a new pick,
+ * at a junk pitch. The mute is detected here (the fast level falls 20 dB below the last 150 ms's peak): the voice is released at once, and until the note ends a
+ * "new note" is accepted only if its attack peak is within -10.5 dB of the peak before the mute (a real pick); a rejected one leaves the layer as it was. */
+typedef struct { px_track trk; pxt_layer lay; int was; float pk, pkl, fe, mute_pk; int mute; } px_mono;
 
 static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
 {
@@ -43,9 +46,25 @@ static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
 }
 static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_out *o)
 {
+    const float a = px_abs(x), sr = m->lay.sr;
+    m->pk = a > m->pk ? a : m->pk * (1.0f - 1.0f / (0.15f * sr));
+    m->pkl = a > m->pkl ? a : m->pkl * (1.0f - 1.0f / (0.30f * sr));              /* the level before the mute: a slower memory */
+    m->fe += (a - m->fe) * (a > m->fe ? 1.0f / (0.001f * sr) : 1.0f / (0.010f * sr));
+    pxt_layer sv;
+    if (m->mute) sv = m->lay;
     pxt_layer_run(&m->lay, &m->trk, x, pxt_run(e, &m->trk, x));
+    int rel = 0;
+    if (!m->mute) {
+        if (m->lay.gate && m->pk > 0.01f && m->fe < 0.1f * m->pk) { m->mute = 1; m->mute_pk = m->pkl; rel = 1; }
+    } else if (!m->lay.gate) m->mute = 0;                                          /* the note ended */
+    else if (m->lay.onset) {
+        if (m->lay.onset_peak < 0.3f * m->mute_pk) {                              /* a thump, not a pick: undo the retrigger */
+            const pxt_layer n = m->lay;
+            m->lay = sv; m->lay.env = n.env; m->lay.envs = n.envs; m->lay.key = n.key; m->lay.onset = 0; m->lay.state = 2;
+        } else m->mute = 0;
+    }
     const int g = m->lay.gate;
-    o->gate = g; o->onset = m->lay.onset; o->retrigger = m->lay.onset && m->was; o->release = m->was && !g;
+    o->gate = g; o->onset = m->lay.onset; o->retrigger = m->lay.onset && m->was; o->release = (m->was && !g) || rel;
     o->f0 = m->lay.f0; o->vel = m->lay.vel; o->expr = m->lay.expr; o->conf = m->trk.conf;
     m->was = g;
 }

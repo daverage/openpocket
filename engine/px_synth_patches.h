@@ -48,17 +48,17 @@ static const px_patch PX_ARCADE_PATCHES[PX_PATCH_SLOTS] = {
 /* ENSEMBLE: Felucca ANALOG again, patches for sustained instrument colours, played by the same mono tracker (one note at a time: NOT polyphonic,
  * a chord does not make a string section). The first three are Felucca's own ANALOG presets (src/eng_analog.c at the pin: SOFT PAD, STRINGS, BRASS)
  * with E0..E7, ATK/DEC/SUS/REL and the filter-envelope amount copied as they stand; Felucca's chorus / reverb "FX" and pattern fields are not used
- * (OpenPocket's MOD, DELAY and REVERB blocks come after the SYNTH block for that). SLOW STR and BRS LEAD are variations of STRINGS and BRASS (marked).
+ * (OpenPocket's MOD, DELAY and REVERB blocks come after the SYNTH block for that). Fix pass 2: MIX (the second oscillator's level) is 16, not Felucca's 64: with no chorus after it, the two detuned saws beat at 1-3 Hz at 8-10 dB depth (a phaser-like swell on a steady note); at 16 it is 3-4 dB. SLOW STR and BRS LEAD are variations of STRINGS and BRASS (marked).
  * The slot is PATCH / 10 as for ANALOG; slots 0..4 are defined and are final; slots 5..9 are reserved for later patches and play slot 4 until
  * they are filled (a defined slot is never reassigned or reordered). Names: at most 7 characters. */
 enum { PX_ENS_DEFINED = 5 };
 static const px_patch PX_ENSEMBLE_PATCHES[PX_PATCH_SLOTS] = {
     /* name       WAVE DTN MIX NOIS CUT RES DRV KTR     ATK DEC SUS REL  fenv semis trim pwm */
-    {"SOFTPAD", {0, 20, 64, 4, 60, 10,  0, 32}, {80, 90, 110, 95},  10,   0, 64, 0},   /* Felucca SOFT PAD */
-    {"STRINGS", {0, 25, 64, 0, 70, 10,  0, 32}, {70, 90, 115, 90},   5,   0, 64, 0},   /* Felucca STRINGS */
-    {"BRASS",   {0, 10, 64, 0, 45, 20, 10, 64}, {35, 70,  90, 45},  40,   0, 64, 0},   /* Felucca BRASS: the filter opens on every note (fenv 40) */
-    {"SLOWSTR", {0, 25, 64, 0, 62, 10,  0, 32}, {100, 90, 115, 105}, 4,   0, 64, 0},   /* variation of STRINGS: longer attack and release, a darker filter */
-    {"BRSLEAD", {0, 10, 64, 0, 55, 25, 10, 64}, {15, 70,  95, 35},  48,   0, 62, 0},   /* variation of BRASS: faster attack, brighter, more filter movement */
+    {"SOFTPAD", {0, 20, 16, 4, 60, 10,  0, 32}, {80, 90, 110, 95},  10,   0, 64, 0},   /* Felucca SOFT PAD */
+    {"STRINGS", {0, 25, 16, 0, 70, 10,  0, 32}, {70, 90, 115, 90},   5,   0, 64, 0},   /* Felucca STRINGS */
+    {"BRASS",   {0, 10, 16, 0, 45, 20, 10, 64}, {35, 70,  90, 45},  40,   0, 64, 0},   /* Felucca BRASS: the filter opens on every note (fenv 40) */
+    {"SLOWSTR", {0, 25, 16, 0, 62, 10,  0, 32}, {100, 90, 115, 105}, 4,   0, 64, 0},   /* variation of STRINGS: longer attack and release, a darker filter */
+    {"BRSLEAD", {0, 10, 16, 0, 55, 25, 10, 64}, {15, 70,  95, 35},  48,   0, 62, 0},   /* variation of BRASS: faster attack, brighter, more filter movement */
 };
 static inline int px_ens_slot(int value) { int s = value / 10; return s < 0 ? 0 : (s >= PX_ENS_DEFINED ? PX_ENS_DEFINED - 1 : s); }
 /* ARCADE SPLIT: the note (MIDI) the lower and upper ranges meet at, from the SPLIT setting 0..100: E2 (40) .. E5 (76); notes from it up play UPPER */

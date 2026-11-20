@@ -1,5 +1,5 @@
 /* Synth2 stages 3 and 4: ANALOG and ARCADE (Felucca ANALOG and LOFI) through the OpenPocket adapter (engine/px_synth_adapter.h), on synthetic plucks, through the whole engine.
- * Synthetic notes check the plumbing; whether it plays well is for a pedal and an ear (docs/SYNTH2-PLAN.md).
+ * Synthetic notes check the plumbing; whether it plays well is for a pedal and an ear (docs/research/synth2/SYNTH2-PLAN.md).
  *  - pitch: the synth plays the guitar's note (CLASSIC) and an octave below (SQ BASS), within 20 cents, from E2 up
  *  - a slide moves the pitch continuously (no semitone grid); a repicked note retriggers; the note releases after the guitar stops
  *  - the same five bytes give the same sound (fresh engines), and the sound does not depend on the call's block size (64, 48, 16, 1)
@@ -270,7 +270,7 @@ static void routing_split_suite(void)
     }
     g_type = PX_SYN_ARCADE;
 }
-/* ENSEMBLE (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/SYNTH2-ENSEMBLE.md) */
+/* ENSEMBLE (Stage A): Felucca ANALOG's SOFT PAD / STRINGS / BRASS patches and two variations, played by the mono tracker (docs/research/synth2/SYNTH2-ENSEMBLE.md) */
 static void ensemble_suite(void)
 {
     g_type = PX_SYN_ENSEMBLE;
@@ -341,6 +341,31 @@ static void ensemble_suite(void)
             for (int i = 0; i < 8192; i++) if (fabsf(y2[i]) > 1e-6f) { bad++; printf("FAIL ENSEMBLE patch %d: not silent on silence\n", pa); break; }
         }
         printf("ENSEMBLE: %d patch/macro combinations: all finite, loudest peak %.2f\n", n, peak_all);
+    }
+    {   /* fix pass 2: a steady note does not swell and fade (the detuned oscillators' beating): the peak level swings less than 5 dB */
+        for (int b = 0; b < PX_ENS_DEFINED; b++) for (int k = 0; k < 3; k++) {
+            const uint8_t q[5] = {(uint8_t)(b * 10 + 5), 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q);
+            string(x, N_, &NOTES[k], ST, 1, 0.5f, 0.99999f, 0); render(&p, x, y, N_, 64);
+            float lo = 1e9f, hi = 0; for (int i = 44100; i + 441 < 4 * 44100; i += 441) { float pk = 0; for (int j = 0; j < 441; j++) if (fabsf(y[i + j]) > pk) pk = fabsf(y[i + j]); if (pk < lo) lo = pk; if (pk > hi) hi = pk; }
+            CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 5.0f, "ENSEMBLE %s on %.0f Hz: no beating swell (%.1f dB)", PX_ENSEMBLE_PATCHES[b].name, NOTES[k], 20.0f * log10f(hi / (lo + 1e-9f)));
+        }
+    }
+    {   /* fix pass 2: a hard mute followed by a thump does not play another note, and the voice is released at the mute */
+        static unsigned rs = 777; static const float THUMP_DB[3] = {-24.0f, -21.0f, -18.0f}; static const float F[2] = {110.0f, 196.0f};
+        for (int fi = 0; fi < 2; fi++) for (int ti = 0; ti < 3; ti++) {
+            float ph = 0, env = 0.5f, lp = 0; const int tm = 44100;
+            for (int i = 0; i < 44100 * 2; i++) {
+                ph += F[fi] / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f;
+                float g = env; if (i >= tm) g = env * expf(-(float)(i - tm) / FS_ * 1000.0f / 6.0f); else env *= 0.99997f;
+                float th = 0; const int t0 = tm + (int)(30 * 44.1f);
+                if (i >= t0 && i < t0 + 2646) { rs = rs * 1664525u + 1013904223u; lp += ((float)(rs >> 8) * (1.0f / 8388608.0f) - 1.0f - lp) * 0.3f; th = lp * 3.0f * powf(10.0f, THUMP_DB[ti] / 20.0f) * 0.76f * env * expf(-(float)(i - t0) / FS_ * 1000.0f / 12.0f); }
+                x[i] = i < 2000 ? 0.0f : g * 0.4f * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp)) + th;
+            }
+            px_mono m; px_mono_init(&e, &m, PX_MONO_GUITAR); int on_after = 0, rel = -1;
+            for (int i = 0; i < 44100 * 2; i++) { px_mono_out o; px_mono_run(&e, &m, x[i], &o); if (o.onset && i >= tm) on_after++; if (o.release && i >= tm && rel < 0) rel = i - tm; }
+            CHECK(on_after == 0, "a thump (%.0f dB) after a hard mute on %.0f Hz re-triggers (%d)", THUMP_DB[ti], F[fi], on_after);
+            CHECK(rel >= 0 && rel < (int)(0.06f * FS_), "the hard mute releases the voice within 60 ms (%d ms)", rel < 0 ? -1 : rel * 1000 / 44100);
+        }
     }
     g_type = PX_SYN_ANALOG;
 }
