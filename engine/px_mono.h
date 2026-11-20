@@ -21,7 +21,18 @@
 /* Synth2 fix pass 1 (the note-on beep): a note whose first pitch is above PXT_MW_F (200 Hz) waits this many tracker frames (1.45 ms each) before it
  * speaks, so that a low note's fundamental has time to arrive. Measured on DI (tools/research/note_on_diag.c): octave-or-more corrections after the onset
  * 23 of 31 notes at the layer's 5 frames, 6 of 31 at 17; rise-to-onset 12 -> 21 ms on those notes, unchanged below 200 Hz. */
-#define PX_MONO_MINWAIT 17
+#ifndef PX_MONO_MINWAIT
+#define PX_MONO_MINWAIT 20
+#endif
+/* Synth2 fix pass 3 (the bleeps): a note speaks only after its pitch has been stable for PX_MONO_STAB tracker frames (the layer's default is 2: 3 ms), and no note speaks sooner than
+ * PX_MONO_WAIT_LO frames after its pick (PX_MONO_MINWAIT for notes above 200 Hz). Chosen on a real recording of palm mutes and tremolo, and on the Guitar-TECHS DI sets (docs/research/synth2/SYNTH2-FIXPASS2.md):
+ * a pitch more than 50 cents from where the note settles was spoken by 78 % of the onsets before, 19 % after; median latency +2..4 ms, 90th percentile +9..16 ms. */
+#ifndef PX_MONO_STAB
+#define PX_MONO_STAB 10
+#endif
+#ifndef PX_MONO_WAIT_LO
+#define PX_MONO_WAIT_LO 14
+#endif
 #ifndef PX_MONO_HOLD_AFTER
 #define PX_MONO_HOLD_AFTER 40            /* ... but only once the note has settled: this many tracker frames (1.45 ms) after it spoke */
 #endif
@@ -37,6 +48,7 @@ typedef struct {
     int onset;                           /* 1 on the sample a note starts (also a repick, slur or corrected octave) */
     int retrigger;                       /* onset while the gate was already on: restart the envelope, keep the voice */
     int release;                         /* 1 on the sample the gate falls */
+    int damp;                            /* 1 on the sample a hard damp is detected (with `release`): the voice should stop fast, not ring its patch's release */
 } px_mono_out;
 /* Synth2 fix pass 2 (a hard mute plays another note): when the string is damped the tracker keeps the note open for ~120 ms and reads the muting thump as a new pick,
  * at a junk pitch. The mute is detected here (the fast level falls 20 dB below the last 150 ms's peak): the voice is released at once, and until the note ends a
@@ -49,6 +61,7 @@ static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
     pxt_set_range(&m->trk, fmin_hz);
     pxt_reset(e, &m->trk, &m->lay);
     m->lay.minwait = PX_MONO_MINWAIT;
+    m->lay.stabreq = PX_MONO_STAB; m->lay.minwait_lo = PX_MONO_WAIT_LO;
 }
 static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_out *o)
 {
@@ -74,7 +87,7 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
         } else m->mute = 0;
     }
     const int g = m->lay.gate;
-    o->gate = g; o->onset = m->lay.onset; o->retrigger = m->lay.onset && m->was; o->release = (m->was && !g) || rel;
+    o->gate = g; o->onset = m->lay.onset; o->retrigger = m->lay.onset && m->was; o->release = (m->was && !g) || rel; o->damp = rel;
     o->f0 = m->lay.f0; o->vel = m->lay.vel; o->expr = m->lay.expr; o->conf = m->trk.conf;
     m->was = g;
 }

@@ -1,5 +1,5 @@
 /* OpenPocket Synth2: the host adapter between the mono tracker (px_mono.h) and Felucca's fixed-point synthesis engines
- * (third_party/felucca-engines, MIT; docs/SYNTH2-PLAN.md). Included once, at the end of px_dsp.c: one translation unit with the engine,
+ * (third_party/felucca-engines, MIT; docs/research/synth2/SYNTH2-PLAN.md). Included once, at the end of px_dsp.c: one translation unit with the engine,
  * so the pedal, the host tests, `make render` and the WebAssembly simulator run the same code.
  *
  * What it is: one monophonic voice, played by ANALOG or LOFI (the SYNTH types ANALOG and ARCADE). Each input sample goes through the tracker; every 32 samples (Felucca's block, CTL) the adapter turns
@@ -27,6 +27,7 @@ static track_t trk[NPART];
 #include "px_synth_patches.h"
 
 #define PX_ARCADE_SPLIT_AS PX_SYN_ARCADE
+#define PX_S2_DAMP_MS 40.0f                           /* release time constant after a hard mute: the patch's own would ring on for a second or more */
 #define PX_S2_OUT 0.30f                                /* float output per Felucca full scale at LEVEL noon, trim 1.0 (set on the host against the loops' level) */
 
 typedef struct {
@@ -43,6 +44,7 @@ typedef struct {
     int stage;                                         /* 0 off, 1 attack, 2 decay / sustain, 3 release */
     float semis, pitch_cur;                            /* the note in MIDI semitones (continuous), what the voice plays now */
     float vel, expr_r, last_amp;
+    float dmp_k; int damped;                                        /* the gate fell on a hard damp: the release is fast (PX_S2_DAMP_MS) */
     int pend_on, pend_re, pend_off;                    /* the block's events: a note starts, a sounding voice retriggers, the gate fell */
     int cnt, rpos; float ring[CTL];                    /* samples in this block; where the output is read */
     unsigned blk; int32_t out[CTL]; float lfo;
@@ -95,6 +97,7 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
     const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
     s->att_k = px_s2_ms_k(atk_ms * tm); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+    s->dmp_k = px_s2_ms_k(PX_S2_DAMP_MS);
     s->sus = pa->env[2] / 127.0f;
     s->fenv_amp = (float)pa->fenv;
 }
@@ -189,7 +192,7 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     switch (s->stage) {
     case 1: s->env += (1.2f - s->env) * s->att_k; if (s->env >= 1.0f) { s->env = 1.0f; s->stage = 2; v->stage = 2; } break;
     case 2: s->env += (s->sus - s->env) * s->dec_k; break;
-    case 3: s->env -= s->env * s->rel_k; if (s->env < 0.001f) { s->env = 0.0f; s->stage = 0; v->stage = 0; v->active = 0; } break;
+    case 3: s->env -= s->env * (s->damped && s->rel_k < s->dmp_k ? s->dmp_k : s->rel_k); if (s->env < 0.001f) { s->env = 0.0f; s->stage = 0; v->stage = 0; v->active = 0; } break;
     default: break;
     }
     /* Felucca's amplitude hook (LOFI's stepped envelope, CHIP = STEP): it reads and writes the voice's ADSR (Q24) and returns the amplitude */
@@ -229,8 +232,8 @@ PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n
     for (int k = 0; k < n; k++) {
         px_mono_out o;
         px_mono_run(e, &s->mono, in[k], &o);
-        if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; }
-        if (o.release) s->pend_off = 1;
+        if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; s->damped = 0; }
+        if (o.release) { s->pend_off = 1; if (o.damp) s->damped = 1; }
         s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f;
         out[k] = s->ring[s->rpos];                                                  /* (the dry guitar is added where the block stands in the chain: px_s2_dry) */
         s->rpos++;

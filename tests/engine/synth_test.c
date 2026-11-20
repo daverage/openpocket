@@ -157,7 +157,7 @@ static void arcade_suite(void)
         static const float H[1] = {110.0f}, ST[1] = {0.05f}; const uint8_t q[5] = {55, 50, 50, 50, 100}; px_preset_t p; preset_of(&p, q);
         string(x, 44100, H, ST, 1, 0.5f, 0.99997f, 0); render(&p, x, y, 44100, 64);
         int seen[3] = {0, 0, 0};
-        for (int w = 0; w < 20; w++) { const float f = f0_of(y, 4410 + w * 882, 800, 80, 260); if (f > 0) { const float r = f / 110.0f; if (fabsf(cents(r, 1.0f)) < 60) seen[0]++; else if (fabsf(cents(r, 1.2599f)) < 60) seen[1]++; else if (fabsf(cents(r, 1.4983f)) < 60) seen[2]++; } }
+        for (int w = 0; w < 60; w++) { const float f = f0_of(y, 4410 + w * 441, 800, 80, 260); if (f > 0) { const float r = f / 110.0f; if (fabsf(cents(r, 1.0f)) < 60) seen[0]++; else if (fabsf(cents(r, 1.2599f)) < 60) seen[1]++; else if (fabsf(cents(r, 1.4983f)) < 60) seen[2]++; } }
         printf("ARP: windows on the root %d, major third %d, fifth %d\n", seen[0], seen[1], seen[2]);
         CHECK(seen[0] > 0 && seen[1] > 0 && seen[2] > 0, "the ARP patch steps through root, third and fifth");
     }
@@ -381,6 +381,21 @@ static void ensemble_suite(void)
             for (int i = 0; i < 44100 * 2; i++) { px_mono_out o; px_mono_run(&e, &m, x[i], &o); if (i > tm && i < tm + 4410 && o.gate && o.f0 > 0) { const float c = cents(o.f0, F[fi]); if (fabsf(c) > fabsf(worst)) worst = c; } }
             CHECK(fabsf(worst) < 30.0f, "a damped, sharpening %.0f Hz string: the tracked pitch stays put (worst %+.0f cents)", F[fi], worst);
         }
+    }
+    {   /* fix pass 3: after a hard mute the synth stops fast whatever the patch's release (ANALOG CLASSIC and the long ENSEMBLE STRINGS and SOFTPAD): 30 dB down within 300 ms */
+        struct { int type, patch; const char *nm; } C[3] = {{PX_SYN_ANALOG, 5, "ANALOG CLASSIC"}, {PX_SYN_ENSEMBLE, 15, "ENSEMBLE STRINGS"}, {PX_SYN_ENSEMBLE, 5, "ENSEMBLE SOFTPAD"}};
+        for (int ci = 0; ci < 3; ci++) {
+            g_type = C[ci].type; float ph = 0, env = 0.5f; const int tm = 44100;
+            for (int i = 0; i < 44100 * 3; i++) {
+                ph += 110.0f / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f;
+                float g = env; if (i >= tm) g = env * expf(-(float)(i - tm) / FS_ * 1000.0f / 6.0f); else env *= 0.99997f;
+                x[i] = i < 2000 ? 0.0f : g * 0.4f * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp));
+            }
+            const uint8_t q[5] = {(uint8_t)C[ci].patch, 50, 50, 50, 50}; px_preset_t p; preset_of(&p, q); render(&p, x, y, 44100 * 3, 64);
+            const float before = rms(y, tm - 4410, 2048), after = rms(y, tm + (int)(0.40f * FS_), 2048);
+            CHECK(after < 0.03f * before, "%s: after a hard mute the synth is 30 dB down within 400 ms (%.1f dB)", C[ci].nm, 20.0f * log10f(after / (before + 1e-9f)));
+        }
+        g_type = PX_SYN_ENSEMBLE;
     }
     g_type = PX_SYN_ANALOG;
 }

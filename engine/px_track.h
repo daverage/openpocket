@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * POLY OCTAVE HQ's analysis (43 complex ERB band-pass filters, 65 Hz .. 4 kHz, 1.5x ERB bandwidth, at 22.05 kHz:
- * docs/POLYPHONIC-PITCH-RESEARCH.md) read as a spectrum with a frequency in every band:
+ * docs/research/POLYPHONIC-PITCH-RESEARCH.md) read as a spectrum with a frequency in every band:
  *  - each band's instantaneous frequency, from its phase advance against the band centre, accumulated over a frame
  *    of PXT_HOP quarter-rate samples (1.45 ms) and weighted by the band's power: one arctangent per band per frame;
  *  - partials: the bands above the floor, neighbours that hear the same partial merged;
@@ -24,7 +24,7 @@
 #define PXT_NOTES   6                  /* notes found per frame */
 #ifndef PXT_FMIN
 #define PXT_FMIN    60.0f              /* v72: back to 60 Hz (38 Hz in v71 let guitar notes drop an octave); was, from below a bass's E1 (41 Hz; v49..v67: 60 Hz, B1, which
-                                          played E1..A#1 an octave up: tools/research, docs/SYNTH-REBUILD.md) .. */
+                                          played E1..A#1 an octave up: tools/research, docs/archive/SYNTH-REBUILD.md) .. */
 #endif
 #define PXT_FMAX    1400.0f            /* .. F6 */
 #ifndef PXT_OCT_A
@@ -388,6 +388,7 @@ typedef struct {
     int gate, onset;                                  /* outputs: gate on; a new note this sample */
     float k_ea, k_er, k_xa, k_xr, sr;
     int minwait; float minwait_f;                     /* Synth2: frames a note above minwait_f Hz waits after its pick (0 = PXT_MINWAIT, PXT_MW_F) */
+    int stabreq, minwait_lo;                          /* Synth2: stable frames a note needs before it speaks (0 = 2); frames any note below minwait_f waits (0 = none) */
 } pxt_layer;
 
 static void pxt_layer_init(pxt_layer *L, float sr)
@@ -435,8 +436,8 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
             if (m > 0.0f && pxt_near(m, L->stab_f, 30.0f)) L->stab_n++; else { L->stab_f = m; L->stab_n = m > 0.0f; }
             /* v49: a note above PXT_MW_F waits PXT_MINWAIT frames after the pick: a low note's fundamental is still on
              * its way through the low bands and its high partials would speak first */
-            const int early = L->stab_f > (L->minwait_f > 0.0f ? L->minwait_f : PXT_MW_F) && L->wait_n < (L->minwait ? L->minwait : PXT_MINWAIT);
-            if (!early && (L->stab_n >= 2 || (L->wait_n > 55 && L->stab_n >= 1))) {        /* (80 ms: take what there is) */
+            const int early = (L->stab_f > (L->minwait_f > 0.0f ? L->minwait_f : PXT_MW_F) && L->wait_n < (L->minwait ? L->minwait : PXT_MINWAIT)) || L->wait_n < L->minwait_lo;
+            if (!early && (L->stab_n >= (L->stabreq ? L->stabreq : 2) || (L->wait_n > 55 && L->stab_n >= 1))) {        /* (80 ms: take what there is) */
                 float v = (8.685890f * logf(L->onset_peak + 1e-9f) + 40.0f) * (1.0f / 34.0f);
                 L->vel = v < 0.05f ? 0.05f : (v > 1.0f ? 1.0f : v);
                 L->peak_ref = L->envs > 1e-5f ? L->envs : 1e-5f;
