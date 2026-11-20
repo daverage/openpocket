@@ -23,3 +23,13 @@ Measured, not assumed: on a perfectly steady note the ANALOG engine's two oscill
 
 ## Verified (host)
 `make test` (the two sweep2 problems are the same two that FIXPASS1 records as failing before it); protected harness 937 lines identical to HEAD; ANALOG / ARCADE / ARCADE SPLIT 90 hashed renders identical to HEAD; `make wasm`, `make package-synth2`, `make ble`. RAM code 61 892 B, 24 112 B free. Pedal CPU not measured.
+
+# Fix pass 3 (test build 909): the pitch moves up on a hard mute
+
+Pedal result of build 908 (user): the stray note on a hard mute was still there every time (ANALOG, ARCADE, ENSEMBLE); a gentle damp did not trigger; a bleep every few picks on chugs and tremolo; **on a hard mute the note moves up about a semitone** and the ring that follows is at the new pitch. ENSEMBLE: less or no phasing on BRASS, SOFTPAD, BRSLEAD, a little on SLOWSTR; ANALOG CLASSIC still phasey (not changed); ARCADE at MIX 100 no phase.
+
+Finding: fix pass 2 chased a re-trigger that the synthetic thumps produced. The real cause of the "semitone up" is not an onset: while a damped string's level collapses, the tracker keeps following its strongest component, which drifts. On the Guitar-TECHS DI palm-mute recordings (P2) a note's tracked pitch stepped 60-83 cents up inside the note with no onset, and sometimes an octave or more away. A synthetic string sharpening 100 cents while damped reproduces it: the tracker followed it by +110 cents (110 Hz), +110 (196), +53 (330).
+
+Fix (`engine/px_mono.h`): once a note has settled (40 tracker frames, 58 ms after it spoke), its pitch is held while the fast level is under half of the last 150 ms's peak, until the level recovers or a new note speaks. Held-pitch synthetic test: worst error -2, +3, +10 cents. Real recordings (143 / 134 notes with MIDI truth, `directinput_PalmMute.wav` P1 / P2): notes whose pitch was off by more than 60 cents in the first 0.5 s 2 -> 1 (P1) and 11 -> 4 (P2); notes with a pitch step inside them 0 -> 0 and 7 -> 1; onsets found 128 / 120 of 143 / 134 and unchanged. Thresholds tried: 0.5 and 0.3 of the peak, settle 40, 100 and 200 frames (a hold from the first frame hurt P1: it blocks the early octave corrections).
+
+Not fixed, and known from the same data: the tracker reports extra onsets on palm-muted playing (20 and 105 extra against 143 and 134 real notes) and a few notes speak at a wrong pitch (4 of 97 on P2): these are the likely "bleeps" on chugs and tremolo, and they were there before fix pass 2. The mute detector of fix pass 2 doubles the number of releases on palm-muted playing (the voice ends at each damped chug), which is what a damp should do, but may shorten palm-muted notes more than wanted.

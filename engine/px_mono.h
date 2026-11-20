@@ -22,6 +22,12 @@
  * speaks, so that a low note's fundamental has time to arrive. Measured on DI (tools/research/note_on_diag.c): octave-or-more corrections after the onset
  * 23 of 31 notes at the layer's 5 frames, 6 of 31 at 17; rise-to-onset 12 -> 21 ms on those notes, unchanged below 200 Hz. */
 #define PX_MONO_MINWAIT 17
+#ifndef PX_MONO_HOLD_AFTER
+#define PX_MONO_HOLD_AFTER 40            /* ... but only once the note has settled: this many tracker frames (1.45 ms) after it spoke */
+#endif
+#ifndef PX_MONO_HOLD
+#define PX_MONO_HOLD 0.5f                /* hold the pitch while the fast level is under this share of the last 150 ms's peak (0: never) */
+#endif
 typedef struct {
     float f0;                            /* Hz while gate (continuous pitch); holds the last pitch after it falls */
     float vel;                           /* pick strength 0.05 .. 1, set at each onset (-40 .. -6 dBFS of the first 6 ms) */
@@ -52,7 +58,11 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     m->fe += (a - m->fe) * (a > m->fe ? 1.0f / (0.001f * sr) : 1.0f / (0.010f * sr));
     pxt_layer sv;
     if (m->mute) sv = m->lay;
+    const float f0_before = m->lay.f0;
     pxt_layer_run(&m->lay, &m->trk, x, pxt_run(e, &m->trk, x));
+    /* Synth2 fix pass 3: while the level collapses (a mute, a palm mute) the tracker's strongest component drifts, 60-80 cents up in the DI palm-mute recordings
+     * (Guitar-TECHS), and a damped string can drop an octave: the pitch is held (no follow, no slur or octave takeover) until the level recovers or a new note speaks */
+    if (PX_MONO_HOLD > 0.0f && m->was && !m->lay.onset && m->lay.state == 2 && m->lay.since >= PX_MONO_HOLD_AFTER && m->pk > 0.01f && m->fe < PX_MONO_HOLD * m->pk) { m->lay.f0 = f0_before; m->lay.cand_n = 0; m->lay.sub_n = 0; }
     int rel = 0;
     if (!m->mute) {
         if (m->lay.gate && m->pk > 0.01f && m->fe < 0.1f * m->pk) { m->mute = 1; m->mute_pk = m->pkl; rel = 1; }

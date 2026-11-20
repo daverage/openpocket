@@ -367,6 +367,21 @@ static void ensemble_suite(void)
             CHECK(rel >= 0 && rel < (int)(0.06f * FS_), "the hard mute releases the voice within 60 ms (%d ms)", rel < 0 ? -1 : rel * 1000 / 44100);
         }
     }
+    {   /* fix pass 3: a damped string sharpens (+100 cents over 60 ms) while the level falls; the tracked pitch must not follow it (the "semitone up on a hard mute") */
+        static const float F[3] = {110.0f, 196.0f, 330.0f};
+        for (int fi = 0; fi < 3; fi++) {
+            float ph = 0, env = 0.5f; const int tm = 44100 / 2; float worst = 0;
+            for (int i = 0; i < 44100 * 2; i++) {
+                float f = F[fi], g = env;
+                if (i >= tm) { const float t = (float)(i - tm) / FS_; g = env * expf(-t / 0.012f); f = F[fi] * powf(2.0f, 100.0f * (t < 0.06f ? t / 0.06f : 1.0f) / 1200.0f); } else env *= 0.99997f;
+                ph += f / FS_; ph -= floorf(ph); const float pp = ph * 6.2831853f;
+                x[i] = i < 2000 ? 0.0f : g * 0.4f * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.45f * sinf(3 * pp) + 0.3f * sinf(4 * pp));
+            }
+            px_mono m; px_mono_init(&e, &m, PX_MONO_GUITAR);
+            for (int i = 0; i < 44100 * 2; i++) { px_mono_out o; px_mono_run(&e, &m, x[i], &o); if (i > tm && i < tm + 4410 && o.gate && o.f0 > 0) { const float c = cents(o.f0, F[fi]); if (fabsf(c) > fabsf(worst)) worst = c; } }
+            CHECK(fabsf(worst) < 30.0f, "a damped, sharpening %.0f Hz string: the tracked pitch stays put (worst %+.0f cents)", F[fi], worst);
+        }
+    }
     g_type = PX_SYN_ANALOG;
 }
 int main(void)
