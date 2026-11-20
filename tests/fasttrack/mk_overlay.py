@@ -92,3 +92,8 @@ a = dst + '/px_synth_adapter.h'; t = open(a).read()
 t = rep(t, "        px_mono_run(e, &s->mono, in[k], &o);\n", "        px_mono_run(e, &s->mono, in[k], &o);\n        if (o.onset) FT_WHY('N', o.f0); if (o.slur) FT_WHY('L', o.f0); if (o.release) FT_WHY('X', (float)o.damp);\n        if (o.onset && s->pend_on) FT_WHY('P', o.f0);\n        if (o.release && s->pend_on) FT_WHY('Q', o.f0);\n")
 t = rep(t, "        s->pick_accent = 0.25f * s->vel;\n        s->pend_on = 0;", "        s->pick_accent = 0.25f * s->vel; FT_WHY('F', s->f0);\n        s->pend_on = 0;")
 open(a, 'w').write(t)
+
+# FT_FOLLOW=0/1: force the adapter's FOLLOW articulation on/off for any patch (tracker decisions untouched: only what the synth does with a note-on changes)
+t = open(a).read()
+t = rep(t, "    s->type = type; s->arc = arc; s->patch = pa;", "#ifdef FT_FOLLOW\n    s->follow = FT_FOLLOW;\n#endif\n    s->type = type; s->arc = arc; s->patch = pa;")
+open(a, 'w').write(t)
