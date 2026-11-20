@@ -768,11 +768,14 @@ static void legato_suite(void)
         #define AP_NOTE(t0, amp, secs) for (int i = 0; i < (int)((secs) * FS_) && (int)((t0) * FS_) + i < NL; i++) { const float tt = (float)i / FS_; xa[(int)((t0) * FS_) + i] += (amp) * expf(-tt * 9.0f) * (sinf(6.2832f * 196.0f * tt) + 0.5f * sinf(6.2832f * 392.0f * tt)); }
         /* rms (dB) of ya over [s0, s1) seconds */
         #define AP_DB(s0, s1) ({ double r_ = 0; int n_ = 0; for (int i = (int)((s0) * FS_); i < (int)((s1) * FS_); i++) { const float w_ = ya[i] - apg * xa[i]; r_ += w_ * w_; n_++; } 20.0f * log10f((float)sqrt(r_ / (n_ ? n_ : 1)) + 1e-9f); })
-        float apg = 0.4f;                              /* the guitar's share at MIX 100: the rest is the crowd */
+        float apg = 0.0f;                              /* the guitar's share at MIX 100: none, all of it is the crowd */
         memset(xa, 0, sizeof xa); AP_RENDER(&pr);
         { int z = 0; for (int i = 0; i < NL; i++) if (fabsf(ya[i]) > 1e-7f) z = 1; CHECK(!z, "APPLAUSE enabled with silence: absolute silence"); }
         for (int i = 0; i < NL; i++) xa[i] = 0.002f * sinf(0.3f * (float)i) * sinf(0.00017f * (float)i); AP_RENDER(&pr);
         CHECK(AP_DB(0.0f, 14.0f) < -50.0f, "APPLAUSE: continuous low-level noise does not trigger (%.1f dB)", AP_DB(0.0f, 14.0f));
+        /* MIX 100: no guitar at all in the output while it is played (the first 1 s of a note, before the audience reacts) */
+        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.3f, 1.0f); AP_RENDER(&pr);
+        { double r = 0; for (int i = (int)(1.0f * FS_); i < (int)(1.04f * FS_); i++) r += ya[i] * ya[i]; CHECK(sqrt(r / (0.04 * FS_)) < 1e-4, "APPLAUSE MIX 100: the guitar is not in the output (%.2g)", sqrt(r / (0.04 * FS_))); }
         /* one attack at 1 s: nothing before, an event after, silence at the end; further notes during the applause do not extend it */
         memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.3f, 1.0f); AP_RENDER(&pr);
         { const float pre = AP_DB(0.0f, 1.0f), mid = AP_DB(3.0f, 4.0f), end = AP_DB(11.0f, 14.0f);
@@ -787,7 +790,7 @@ static void legato_suite(void)
         memset(xa, 0, sizeof xa); for (int i = 0; i < (int)(3.0f * FS_); i++) xa[i] = 0.2f * sinf(6.2832f * 196.0f * (float)i / FS_);
         AP_RENDER(&pr); CHECK(AP_DB(0.0f, 14.0f) < -50.0f, "APPLAUSE: a sustained note does not trigger (%.1f dB)", AP_DB(0.0f, 14.0f));
         /* a distorted, chordal attack triggers; and the trigger does not depend on the MIX */
-        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.15f, 1.0f); for (int i = 0; i < NL; i++) xa[i] = tanhf(xa[i] * 12.0f) * 0.25f; { px_preset_t p2 = pr; p2.p[PX_B_SFX][3] = 20; apg = 1.0f - 0.12f; AP_RENDER(&p2); apg = 0.4f; }
+        memset(xa, 0, sizeof xa); AP_NOTE(1.0f, 0.15f, 1.0f); for (int i = 0; i < NL; i++) xa[i] = tanhf(xa[i] * 12.0f) * 0.25f; { px_preset_t p2 = pr; p2.p[PX_B_SFX][3] = 20; apg = 0.8f; AP_RENDER(&p2); apg = 0.0f; }
         CHECK(AP_DB(3.0f, 4.0f) > -50.0f, "APPLAUSE: a distorted attack triggers at a low MIX (%.1f dB)", AP_DB(3.0f, 4.0f));
         /* switching away mid-event leaves nothing: a type change and back is disarmed and silent */
         { px_engine ee; px_engine_init(&ee, FS_); px_engine_set(&ee, &pr); memset(xa, 0, sizeof xa); AP_NOTE(0.2f, 0.3f, 1.0f);

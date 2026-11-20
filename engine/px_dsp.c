@@ -2728,7 +2728,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 } break;
                 case PX_SFX_APPLAUSE: {
                     const float cr = ap_tick(e, apd[k]);
-                    x = x * (1.0f - e->sfx_mix * 0.6f) + px_tanh(cr * e->ap_g) * e->sfx_mix;
+                    x = x * (1.0f - e->sfx_mix) + px_tanh(cr * e->ap_g) * e->sfx_mix;      /* MIX 100: the crowd alone, no guitar */
                 } break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));
