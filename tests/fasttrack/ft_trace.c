@@ -15,9 +15,9 @@
  *   L t f      slur: the voice moves to f, no new attack
  *   X t d      release (d=1 hard damp)
  */
-#include "../../engine/px_dsp.c"
 #include <stdio.h>
 #include <stdlib.h>
+#include "../../engine/px_dsp.c"
 static float *rd(const char *p, long *n)
 {
     FILE *in = fopen(p, "rb"); if (!in) return 0;
@@ -46,6 +46,7 @@ int main(int argc, char **argv)
     px_mono_init(&e, &m, argc > 2 ? PX_MONO_BASS : PX_MONO_GUITAR);
     FILE *ff = getenv("FT_FRAMES") ? fopen(getenv("FT_FRAMES"), "wb") : 0;
     FILE *ft = getenv("FT_TRACE") ? fopen(getenv("FT_TRACE"), "wb") : 0;
+    const double dbg0 = getenv("FT_DBG0") ? atof(getenv("FT_DBG0")) : 0, dbg1 = getenv("FT_DBG1") ? atof(getenv("FT_DBG1")) : 0; int dbgf = -1;
     int pend_prev = 0, st_prev = 0, hyp_done = 0, stab_done = 0, frame_prev = -1;
     for (long i = 0; i < n; i++) {
         const pxt_layer b = m.lay;
@@ -62,6 +63,7 @@ int main(int argc, char **argv)
             if (!hyp_done && L->stab_n >= 1) { printf("H %.2f %.2f\n", t, L->stab_f); hyp_done = 1; }
             if (!stab_done && L->stab_n >= (L->stabreq ? L->stabreq : 2)) { printf("S %.2f %.2f\n", t, L->stab_f); stab_done = 1; }
         }
+        if (dbg0 > 0 && t >= dbg0 && t <= dbg1 && T->frame != dbgf) { dbgf = T->frame; printf("Z %.1f st=%d wait=%d stab=%d stab_f=%.1f weak=%d key=%d env=%.4f mute=%d fe=%.4f pk=%.4f gate=%d\n", t, L->state, L->wait_n, L->stab_n, L->stab_f, L->weak_pick, L->key, L->env, m.mute, m.fe, m.pk, L->gate); }
         st_prev = L->state;
         if (L->onset) {
             char d = 'N';
