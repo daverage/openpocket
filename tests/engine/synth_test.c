@@ -467,6 +467,30 @@ static void ensemble_suite(void)
           CHECK(t_a[1] > t_a[0] + 0.008f, "WHEEL ATTACK 100 is slower than 0");
           CHECK(t_r[1] > 1.5f * t_r[0], "WHEEL RELEASE 100 is longer than 0"); }
     }
+    {   /* fix pass 5: (a) a dead pick (a burst whose sound is gone before its pitch is known) plays no note; (b) a started note is never released on its own onset sample (random damped picks) */
+        px_mono m; static unsigned rs = 4242; int on_dead = 0, on_soft = 0, bad_same = 0;
+        { /* (a) a 12 ms noisy burst at 660 Hz, nothing else */
+            memset(x, 0, sizeof(float) * (size_t)(44100));
+            for (int i = 0; i < 530; i++) { rs = rs * 1664525u + 1013904223u; const float nz = (float)(rs >> 8) * (1.0f / 8388608.0f) - 1.0f; x[4410 + i] = (0.2f * sinf(6.2831853f * 660.0f * i / FS_) + 0.1f * nz) * expf(-(float)i / 100.0f); }
+            px_mono_init(&e, &m, PX_MONO_GUITAR);
+            for (int i = 0; i < 44100; i++) { px_mono_out o; px_mono_run(&e, &m, x[i], &o); if (o.onset) on_dead++; if (o.onset && o.release) bad_same++; } }
+        { /* (b) 160 random picks of a damped string (E2..E4, -10..-40 dB, palm-mute decays of 8-120 ms, 90-400 ms apart): a started note is never released on its own onset sample */
+            float ph = 0; unsigned r2 = 99; int pos = 4410; memset(x, 0, sizeof(float) * (size_t)N_); static float big[44100 * 40];
+            const int NB = 44100 * 40; memset(big, 0, sizeof big);
+            for (int k = 0; k < 160 && pos < NB - 44100; k++) {
+                r2 = r2 * 1664525u + 1013904223u; const float f = 82.4f * powf(2.0f, (float)((r2 >> 8) % 24) / 12.0f);
+                r2 = r2 * 1664525u + 1013904223u; const float amp = powf(10.0f, -(10.0f + (float)((r2 >> 8) % 30)) / 20.0f);
+                r2 = r2 * 1664525u + 1013904223u; const float tc = 0.008f + 0.112f * (float)((r2 >> 8) % 100) / 100.0f;
+                r2 = r2 * 1664525u + 1013904223u; const int gap = (int)((0.09f + 0.31f * (float)((r2 >> 8) % 100) / 100.0f) * FS_);
+                for (int i = 0; i < 20000 && pos + i < NB; i++) { ph += f / FS_; ph -= floorf(ph); const float pp = 6.2831853f * ph; big[pos + i] += amp * expf(-(float)i / FS_ / tc) * 0.5f * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.4f * sinf(3 * pp) + 0.2f * sinf(4 * pp)); }
+                pos += gap;
+            }
+            px_mono_init(&e, &m, PX_MONO_GUITAR);
+            for (int i = 0; i < pos + 22050 && i < NB; i++) { px_mono_out o; px_mono_run(&e, &m, big[i], &o); if (o.onset && o.release) bad_same++; on_soft += o.onset; } }
+        CHECK(on_dead == 0, "a dead pick (a 12 ms burst) plays no note (%d onsets)", on_dead);
+        CHECK(on_soft > 60, "the random damped picks do produce notes (%d onsets of 160)", on_soft);
+        CHECK(bad_same == 0, "a note is never released on its own onset sample (%d)", bad_same);
+    }
     g_type = PX_SYN_ANALOG;
 }
 int main(void)

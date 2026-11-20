@@ -33,6 +33,20 @@
 #ifndef PX_MONO_WAIT_LO
 #define PX_MONO_WAIT_LO 14
 #endif
+/* Synth2 fix pass 5 (the organ's bleeps): a note start whose pitch is a harmonic multiple (x2, x3, x4 or /2, /3, /4) of the note played in the last PX_MONO_REF_MS is usually the tracker
+ * locking on an upper partial of the pick transient, which corrects itself within 3-20 ms (bleep.wav). It is held back PX_MONO_CONFIRM_MS (the voice keeps the previous pitch; the layer
+ * may correct meanwhile) and then speaks at the pitch the layer has by then. 0 = off. */
+#ifndef PX_MONO_CONFIRM_MS
+#define PX_MONO_CONFIRM_MS 35
+#endif
+/* Synth2 fix pass 5: a pick whose sound is already gone when its pitch is known (a dead or muted string: the level is PX_MONO_DEAD x its own attack peak or less) is not a note: it would play
+ * a short note at a junk pitch (the bleep). 0 = off. */
+#ifndef PX_MONO_DEAD
+#define PX_MONO_DEAD 0.1f
+#endif
+#ifndef PX_MONO_REF_MS
+#define PX_MONO_REF_MS 800
+#endif
 #ifndef PX_MONO_HOLD_AFTER
 #define PX_MONO_HOLD_AFTER 40            /* ... but only once the note has settled: this many tracker frames (1.45 ms) after it spoke */
 #endif
@@ -53,7 +67,7 @@ typedef struct {
 /* Synth2 fix pass 2 (a hard mute plays another note): when the string is damped the tracker keeps the note open for ~120 ms and reads the muting thump as a new pick,
  * at a junk pitch. The mute is detected here (the fast level falls 20 dB below the last 150 ms's peak): the voice is released at once, and until the note ends a
  * "new note" is accepted only if its attack peak is within -10.5 dB of the peak before the mute (a real pick); a rejected one leaves the layer as it was. */
-typedef struct { px_track trk; pxt_layer lay; int was; float pk, pkl, fe, mute_pk; int mute; } px_mono;
+typedef struct { px_track trk; pxt_layer lay; int was; float pk, pkl, fe, mute_pk; int mute; float f_ref, f_hold; int ref_age, on_age, pend; } px_mono;
 
 static inline void px_mono_init(px_engine *e, px_mono *m, float fmin_hz)
 {
@@ -78,7 +92,7 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     if (PX_MONO_HOLD > 0.0f && m->was && !m->lay.onset && m->lay.state == 2 && m->lay.since >= PX_MONO_HOLD_AFTER && m->pk > 0.01f && m->fe < PX_MONO_HOLD * m->pk) { m->lay.f0 = f0_before; m->lay.cand_n = 0; m->lay.sub_n = 0; }
     int rel = 0;
     if (!m->mute) {
-        if (m->lay.gate && m->pk > 0.01f && m->fe < 0.1f * m->pk) { m->mute = 1; m->mute_pk = m->pkl; rel = 1; }
+        if (m->lay.gate && !m->lay.onset && m->pk > 0.01f && m->fe < 0.1f * m->pk) { m->mute = 1; m->mute_pk = m->pkl; rel = 1; }   /* (not on the sample a note starts: fix pass 5) */
     } else if (!m->lay.gate) m->mute = 0;                                          /* the note ended */
     else if (m->lay.onset) {
         if (m->lay.onset_peak < 0.3f * m->mute_pk) {                              /* a thump, not a pick: undo the retrigger */
@@ -86,9 +100,38 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
             m->lay = sv; m->lay.env = n.env; m->lay.envs = n.envs; m->lay.key = n.key; m->lay.onset = 0; m->lay.state = 2;
         } else m->mute = 0;
     }
+    /* fix pass 5: the harmonic-ratio start is held back (see PX_MONO_CONFIRM_MS) */
+    int onset = m->lay.onset;
+    if (PX_MONO_CONFIRM_MS > 0) {
+        if (onset) {
+            const float ref = m->ref_age < (int)(PX_MONO_REF_MS * 0.001f * sr) ? m->f_ref : 0.0f;
+            int sus = 0;
+            if (ref > 0.0f && m->lay.f0 > 0.0f) {
+                const float c = 1200.0f * 1.442695f * logf(m->lay.f0 / ref);        /* cents (ln 2 / 1200 = 1 / 1731) */
+                static const float K[6] = {1200.0f, 1901.955f, 2400.0f, -1200.0f, -1901.955f, -2400.0f};
+                for (int k = 0; k < 6; k++) { const float d = c - K[k]; if (d < 60.0f && d > -60.0f) sus = 1; }
+            }
+            if (sus) { m->pend = (int)(PX_MONO_CONFIRM_MS * 0.001f * sr); m->f_hold = f0_before; onset = 0; }
+            else m->pend = 0;
+        } else if (m->pend > 0) {
+            if (!m->lay.gate) m->pend = 0;
+            else if (--m->pend == 0) onset = 1;                                      /* it speaks now, at the pitch the layer has by now */
+        }
+        if (onset) { m->on_age = 0; if (m->lay.f0 > 0.0f) m->f_ref = m->lay.f0; m->ref_age = 0; }
+        else if (m->lay.gate) { if (m->on_age < 0x7fffff) m->on_age++; if (m->on_age > (int)(0.06f * sr) && m->pend == 0 && m->lay.f0 > 0.0f) { m->f_ref = m->lay.f0; m->ref_age = 0; } }
+        else if (m->ref_age < 0x7fffff) m->ref_age++;
+    }
+    if (onset && PX_MONO_DEAD > 0.0f && m->fe < PX_MONO_DEAD * m->lay.onset_peak) {   /* a dead pick: no note, and the pitch stays where it was */
+        onset = 0; m->pend = 0; m->lay.f0 = m->f_ref > 0.0f ? m->f_ref : f0_before;
+    }
+    if (onset) {                                                                  /* fix pass 5: a started note is judged against its own level, not the loud note before it (a soft pick after a loud one is not a mute) */
+        const float own = m->lay.onset_peak > m->fe ? m->lay.onset_peak : m->fe;
+        if (own < m->pk) m->pk = own;
+        if (own < m->pkl) m->pkl = own;
+    }
     const int g = m->lay.gate;
-    o->gate = g; o->onset = m->lay.onset; o->retrigger = m->lay.onset && m->was; o->release = (m->was && !g) || rel; o->damp = rel;
-    o->f0 = m->lay.f0; o->vel = m->lay.vel; o->expr = m->lay.expr; o->conf = m->trk.conf;
+    o->gate = g; o->onset = onset; o->retrigger = onset && m->was; o->release = (m->was && !g) || rel; o->damp = rel;
+    o->f0 = (m->pend > 0 && m->f_hold > 0.0f) ? m->f_hold : m->lay.f0; o->vel = m->lay.vel; o->expr = m->lay.expr; o->conf = m->trk.conf;
     m->was = g;
 }
 #endif

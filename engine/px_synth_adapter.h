@@ -241,8 +241,8 @@ PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n
     for (int k = 0; k < n; k++) {
         px_mono_out o;
         px_mono_run(e, &s->mono, in[k], &o);
-        if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; s->damped = 0; }
         if (o.release) { s->pend_off = 1; if (o.damp) s->damped = 1; }
+        if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; s->damped = 0; }   /* (a note that starts on the sample of a release wins: fix pass 5) */
         s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f;
         out[k] = s->ring[s->rpos];                                                  /* (the dry guitar is added where the block stands in the chain: px_s2_dry) */
         s->rpos++;
