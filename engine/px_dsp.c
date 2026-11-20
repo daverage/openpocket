@@ -491,10 +491,11 @@ static const char *const PN_CRUSH[] = {"BITS", "SR DIV", "MIX"};
 static const char *const PN_SLICE[] = {"RATE", "DEPTH", "PATTERN"};
 static const char *const PN_LOFI[] = {"TONE", "DRIVE", "MIX"};
 static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
+static const char *const PN_APP[] = {"ROOM", "CROWD", "WAVES", "MIX"};
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}};
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"APPLAUSE", 4, PN_APP}};
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -726,6 +727,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 0) { put_int(buf, 16 - (int)(x * 14.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
+        if (t == PX_SFX_APPLAUSE && k == 0) { static const char *const RN[5] = {"PUB", "HALL", "CHURCH", "ARENA", "STADIUM"}; put_str(buf, RN[(int)(x * 4.99f)]); return 1; }
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
         break;
     case PX_B_EQ:
@@ -1008,6 +1010,26 @@ static void rc_sfx(px_engine *e)
         e->sfx_c = 1.0f + f01(q[1]) * 8.0f;
         e->sfx_mix = f01(q[2]);
         break;
+    case PX_SFX_APPLAUSE: {                            /* a crowd: random claps (noise bursts) and the room's diffuse field. ROOM: PUB, HALL, CHURCH, ARENA, STADIUM */
+        static const float PEOPLE[5] = {35.0f, 110.0f, 80.0f, 350.0f, 800.0f};   /* claps a second at CROWD noon */
+        static const float CLAP_MS[5] = {3.5f, 5.0f, 6.0f, 8.0f, 11.0f};         /* a clap's length (distance blurs it) */
+        static const float RT[5] = {0.45f, 1.6f, 3.6f, 2.6f, 4.2f};              /* the room's decay, seconds */
+        static const float DIFF[5] = {0.25f, 0.5f, 0.7f, 0.6f, 0.75f};           /* the diffuse field's share */
+        static const float LPF[5] = {5200.0f, 4200.0f, 3000.0f, 3600.0f, 2300.0f};
+        const int m = (int)(f01(q[0]) * 4.99f);
+        e->ap_dens = PEOPLE[m] * powf(8.0f, f01(q[1]) * 2.0f - 1.0f) / sr;      /* CROWD: x 1/8 .. x8 */
+        e->ap_ckd = expf(-1.0f / (CLAP_MS[m] * 0.001f * sr));
+        static const float GDB[5] = {10.0f, 7.4f, 6.1f, 4.4f, 1.8f};                  /* each room's level trim: about -26 (a pub's few claps), -18, -18, -16 and -16 dBFS rms at full crowd */
+        e->ap_g = 0.16f * db2lin(GDB[m]) / sqrtf(0.25f + e->ap_dens * sr * CLAP_MS[m] * 0.001f);   /* the claps add as powers: a bigger crowd is not louder (a pub's few claps are the loudest single ones) */
+        e->ap_fkr = onepole_k(sr, RT[m] * 0.145f);
+        e->ap_d = DIFF[m];
+        e->ap_sw = f01(q[2]);
+        e->ap_inc = (0.03f + f01(q[2]) * 0.25f) / sr;
+        bq_highpass(&e->sfx_f1, sr, 650.0f, 0.7f);
+        bq_lowpass(&e->sfx_f2, sr, LPF[m], 0.7f);
+        e->sfx_mix = f01(q[3]);
+        if (e->ap_rng == 0) e->ap_rng = 0x2545F491u;
+    } break;
     default:                                           /* square synth: square + sub through a swept low-pass */
         if (t == PX_SFX_SYNTH_HQ) {
             if (!e->sfx_track_active) {
@@ -2563,6 +2585,21 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     e->sfx_g += (tg - e->sfx_g) * e->sfx_a;
                     if (e->sfx_g < 1e-6f) e->sfx_g = 0.0f;
                     x *= e->sfx_g;
+                } break;
+                case PX_SFX_APPLAUSE: {
+                    uint32_t r = e->ap_rng; r ^= r << 13; r ^= r >> 17; r ^= r << 5; e->ap_rng = r;
+                    const float n = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, (float)(int32_t)r * (1.0f / 2147483648.0f)));
+                    e->ap_ph = wrap1(e->ap_ph + e->ap_inc);
+                    const float sw = 1.0f - e->ap_sw * 0.5f * (1.0f + lfo_sin(e->ap_ph));       /* WAVES: the crowd swells and falls */
+                    r ^= r << 13; r ^= r >> 17; r ^= r << 5; e->ap_rng = r;
+                    if ((float)(r >> 8) * (1.0f / 16777216.0f) < e->ap_dens * sw * sw) {          /* a clap: its strength is mostly small, sometimes large */
+                        r ^= r << 13; r ^= r >> 17; r ^= r << 5; e->ap_rng = r;
+                        const float u = (float)(r >> 8) * (1.0f / 16777216.0f); e->ap_clap += 0.25f + 0.75f * u * u;
+                    }
+                    e->ap_clap *= e->ap_ckd;
+                    e->ap_field += (e->ap_clap - e->ap_field) * (e->ap_clap > e->ap_field ? 0.002f : e->ap_fkr);
+                    const float lvl = (1.0f - e->ap_d) * e->ap_clap + e->ap_d * 3.0f * e->ap_field;
+                    x = x * (1.0f - e->sfx_mix * 0.6f) + px_tanh(n * lvl * e->ap_g) * e->sfx_mix;
                 } break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));

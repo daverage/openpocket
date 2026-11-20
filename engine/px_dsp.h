@@ -41,7 +41,7 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_LOWEST_HQ,
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
-       PX_SFX_SYNTH_HQ, PX_SFX_COUNT };
+       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_COUNT };   /* APPLAUSE (v80?): a synthesised crowd, five rooms; it does not follow the guitar */
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
@@ -173,6 +173,7 @@ typedef struct {
     int   sfx_pat, crush_n, crush_k; float crush_v, crush_q;
     px_bq sfx_f1, sfx_f2;
     px_synth_tracking sfx_track;
+    uint32_t ap_rng; float ap_clap, ap_field, ap_ph, ap_dens, ap_ckd, ap_fkr, ap_d, ap_sw, ap_inc, ap_g;   /* APPLAUSE: the noise generator, the claps' and the room's levels, the swell's phase */
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */

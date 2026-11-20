@@ -1,5 +1,5 @@
 /* Synth2 stage 2: the mono tracker's interface (engine/px_mono.h) on synthetic plucks. Synthetic notes are a smoke test of the
- * interface, not evidence of tracking quality: that is the recorded-guitar benchmark (tools/research/mono_compare.py, docs/SYNTH2-TRACKER.md).
+ * interface, not evidence of tracking quality: that is the recorded-guitar benchmark (tools/research/mono_compare.py, docs/research/synth2/SYNTH2-TRACKER.md).
  *  - a plucked E2, A2, E3, E4: pitch within 25 cents, one onset, a gate that falls after the note dies
  *  - the same note picked again while it rings: a retrigger (onset with the gate on), same pitch
  *  - a slide (E3 up to G3 over 0.5 s): pitch follows continuously, no extra onset
@@ -68,7 +68,7 @@ int main(void)
         CHECK(r.onsets == 1, "a slide is one note (%d onsets)", r.onsets);
         CHECK(fabsf(cents(r.f_mid, want_mid)) < 60.0f && fabsf(cents(r.f_end, 196.0f)) < 60.0f, "the pitch follows the slide");
     }
-    {   /* bass E1: the bass range. A synthetic E1 with strong harmonics is a hard case: the bench's real bass DI is the evidence (docs/SYNTH2-TRACKER.md) */
+    {   /* bass E1: the bass range. A synthetic E1 with strong harmonics is a hard case: the bench's real bass DI is the evidence (docs/research/synth2/SYNTH2-TRACKER.md) */
         static const float H[1] = {41.2f}, S[1] = {0.1f};
         g_target = 41.2f;
         res g = run(PX_MONO_GUITAR, H, S, 1, 2.0f, 0.5f, 0.99995f, 0.0f), b = run(PX_MONO_BASS, H, S, 1, 2.0f, 0.5f, 0.99995f, 0.0f);

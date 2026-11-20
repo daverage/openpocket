@@ -687,6 +687,19 @@ static void legato_suite(void)
             float lo = 1e9f; for (int i = (int)(0.5f * FS_); i < (int)(1.4f * FS_); i += 441) { double r = 0; for (int j = 0; j < 441; j++) r += ys[i + j] * ys[i + j]; r = sqrt(r / 441); if (r < lo) lo = (float)r; }
             { const int na = (int)trk[0].v[0].age; CHECK(ty ? na >= 8 : na <= 3, "%s: the note was started %d times by 30 picks (a follow patch keeps one note, a restarting one starts most)", ty ? "SWEEP" : "CLASSIC", na); }
             CHECK(ty ? 1 : lo > 0.004f, "FOLLOW lead patch: no dip to silence between the picks of a fast run (quietest 10 ms %.4f)", lo); } }
+    {   /* SFX APPLAUSE: every room makes a bounded, finite crowd at a sensible level, a bigger room is denser (a lower crest), MIX 0 leaves the guitar alone */
+        static float xa[44100 * 4], ya[44100 * 4]; const int NL = 44100 * 4; float crest_pub = 0, crest_sta = 0;
+        for (int m = 0; m < 5; m++) { px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE;
+            { uint8_t q[5] = {(uint8_t)(m * 25), 50, 30, 100, 0}; memcpy(pr.p[PX_B_SFX], q, 5); }
+            px_engine e2; px_engine_init(&e2, FS_); px_engine_set(&e2, &pr); memset(xa, 0, sizeof xa); for (int at = 0; at + 64 <= NL; at += 64) px_engine_process(&e2, xa + at, ya + at, 64);
+            double r = 0; float pk = 0; int bad = 0; for (int i = 22050; i < NL; i++) { r += ya[i] * ya[i]; if (fabsf(ya[i]) > pk) pk = fabsf(ya[i]); if (!(fabsf(ya[i]) < 4.0f)) bad = 1; } r = sqrt(r / (NL - 22050));
+            const float db = 20.0f * log10f((float)r + 1e-9f), crest = 20.0f * log10f(pk / ((float)r + 1e-9f)); if (m == 0) crest_pub = crest; if (m == 4) crest_sta = crest;
+            CHECK(!bad && db > -34.0f && db < -10.0f, "APPLAUSE room %d: finite, rms %.1f dBFS (-34..-10)", m, db); }
+        CHECK(crest_sta + 4.0f < crest_pub, "APPLAUSE: the stadium is denser than the pub (crest %.1f against %.1f dB)", crest_sta, crest_pub);
+        px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE; { uint8_t q[5] = {50, 50, 0, 0, 0}; memcpy(pr.p[PX_B_SFX], q, 5); }
+        px_engine e3, e4; px_engine_init(&e3, FS_); px_engine_set(&e3, &pr); px_engine_init(&e4, FS_); pr.on[PX_B_SFX] = 0; px_engine_set(&e4, &pr);
+        for (int i = 0; i < 4096; i++) xa[i] = 0.2f * sinf(0.05f * (float)i); for (int at = 0; at < 4096; at += 64) { px_engine_process(&e3, xa + at, ya + at, 64); px_engine_process(&e4, xa + at, ya + 8192 + at, 64); }
+        float d = 0; for (int i = 0; i < 4096; i++) d += fabsf(ya[i] - ya[8192 + i]); CHECK(d < 1e-3f, "APPLAUSE with MIX 0 is the guitar (difference %.5f)", d); }
     g_type = PX_SYN_ANALOG;
 }
 int main(void)

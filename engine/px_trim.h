@@ -3,7 +3,7 @@
  * the others: dB per type with its knobs at noon, so that switching the block on keeps the loudness. */
 static const float CMP_DB[PX_CMP_COUNT] = {-4.97f, -2.14f, -1.97f, 9.34f};
 static const float PIT_DB[PX_PIT_COUNT] = {0.54f, 2.96f, -0.58f, 1.49f};   /* (v70: the retired POLY OCTAVE removed) */
-static const float SFX_DB[PX_SFX_COUNT] = {5.45f, 3.54f, 3.82f, -0.15f, 1.58f, -1.23f, -4.20f};
+static const float SFX_DB[PX_SFX_COUNT] = {5.45f, 3.54f, 3.82f, -0.15f, 1.58f, -1.23f, -4.20f, 0.0f, 0.0f};
 static const float MOD_DB[PX_MOD_COUNT] = {1.41f, 2.83f, 3.07f, 2.49f, 0.08f, 5.70f, 4.01f, 2.50f, 0.09f, -0.45f, 0.03f};
 static const float DLY_DB[PX_DLY_COUNT] = {-0.66f, -0.52f, -0.78f, -0.61f, -0.34f, -0.93f, -0.62f, -0.55f};
 static const float REV_DB[PX_REV_COUNT] = {1.74f, 1.97f, 1.83f, 1.51f, 1.63f, 2.00f, 1.81f, 1.56f};
