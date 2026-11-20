@@ -5,7 +5,7 @@
  * OCTAVE_VOICE=up or down isolates that voice in an organ, strings or choir.
  * TRIM_FROM=TYPE_NAME uses another type's calibrated block trim for A/B.
  * Prints the output RMS and peak to stderr.
- *   cc -O2 -Iengine -Ifirmware tools/sim/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
+ *   cc -O2 -Iengine -Ifirmware tools/legacy-synth/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
  */
 #define PX_PULSE_TEST 1
 #define PX_POLY_TEST 1

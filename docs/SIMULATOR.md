@@ -218,7 +218,7 @@ fake packages for a try.
 
 `tests/test_audio.mjs` feeds a test tone and each loop through the WebAssembly engine and the native build for all 52 presets (identical, all finite), checks each loop against `manifest.json` and `ATTRIBUTION.md`, and
 (with `EVIDENCE_DIR` set) writes the largest difference per preset and signal to `audio-parity.tsv`;
-`tests/test_audio_page.mjs` drives the Sound section in Chromium with a fake audio input (with Playwright installed).
+`tests/browser/test_audio_page.mjs` drives the Sound section in Chromium with a fake audio input (with Playwright installed).
 `tests/test_sim.mjs` (part of `make test`) starts the simulator and checks every row above, then runs the real editor
 (`docs/pxedit.js`) and installer (`docs/pxota.js`) code over the shim. `tests/test_pedal_input.mjs` checks the skin's input
-mapping, and `tests/test_pedal_page.mjs` drives the skin in Chromium when Playwright is installed.
+mapping, and `tests/browser/test_pedal_page.mjs` drives the skin in Chromium when Playwright is installed.

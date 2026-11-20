@@ -1,5 +1,5 @@
 /* OpenPocket Synth, stage 5: the octave bank's lowest-band selection as a signal (its bands at their own pitch,
- * 11.025 kHz float32), for tools/research/duo_bench.py.  lowsig_bench in.f32(44.1k) out.f32 SEL
+ * 11.025 kHz float32), for tools/legacy-synth/duo_bench.py.  lowsig_bench in.f32(44.1k) out.f32 SEL
  * cc -O2 -DPX_LOWSIG_HOST -Iengine tools/research/lowsig_bench.c firmware/px_math.c -lm */
 #include "../../engine/px_dsp.c"
 #include <stdio.h>

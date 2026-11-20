@@ -16,3 +16,16 @@ fm1-300.bin
 *.fcp
 openpocket.bundle
 node_modules/
+.DS_Store
+# local recordings / reaper projects (large, user-owned; referenced by path in research docs)
+My Audio/
+*.RPP
+*.RPP-bak
+# test-channel firmware builds (generated)
+docs/firmware/lowest-test/
+docs/firmware/poly-test/
+docs/firmware/resonator-test/
+docs/firmware/synth2/
+# python caches
+__pycache__/
+*.pyc

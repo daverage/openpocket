@@ -22,4 +22,4 @@ Read `.claude/skills/openpocket-flash/SKILL.md` first. Dry run before any write:
 ## What to write down for the report
 
 Per sound: wrong notes / octave jumps / missed attacks / stuck notes / gaps / glitches (yes, no, how often), the CPU readings, whether ANALOG's trims and the Arcade character are right (these were set on the host against the bundled loops), and whether you want a dry-guitar blend on ANALOG and the 38 Hz bass range on a bass patch.
-A DI recording of the guitar and the pedal's output for the same take would let the host tracker be compared with what the pedal played (docs/SYNTH2-TRACKER.md: pedal validation is open).
+A DI recording of the guitar and the pedal's output for the same take would let the host tracker be compared with what the pedal played (docs/research/synth2/SYNTH2-TRACKER.md: pedal validation is open).

@@ -36,12 +36,12 @@ Run it first whenever anything looks off.
 | --- | --- | --- |
 | Build and packages | `node tools/op.mjs package` | `build/SHA256SUMS`: same sources give the same bytes |
 | Engine, store, screen, update protocol, editor protocol | `node tools/op.mjs test` | every section ends `ok` / `passed`; `build/ui/*.ppm` are the drawn pages |
-| Installer page, update flow | `pages.sh` (runs `tests/test_page.mjs`) | `build/page/page_1..4*.png`, last line `page test passed` |
-| Editor page | `pages.sh` (runs `tests/test_editor_page.mjs`) | `build/editor/editor_1..10*.png`, last line `editor page test passed` |
+| Installer page, update flow | `pages.sh` (runs `tests/browser/test_page.mjs`) | `build/page/page_1..4*.png`, last line `page test passed` |
+| Editor page | `pages.sh` (runs `tests/browser/test_editor_page.mjs`) | `build/editor/editor_1..10*.png`, last line `editor page test passed` |
 | Screen layout | `cc ... tests/uisim.c` (see toolchain skill), `build/uisim build/ui` | PPM pages, `never drawn` absent from the log |
 | The pedal as a user plays it: footswitches, knob, pages, save, tuner, the live screen | `node tools/op.mjs sim`, then the HTTP API (skill `openpocket-simulator`, `docs/SIMULATOR.md`) | `GET /api/state` and `/api/screen.png` after each press; the flash file `build/sim/flash.bin` survives a restart |
-| The pedal skin: every control by mouse, touch and keyboard, the backlights, the live LCD | `pages.sh` (runs `tests/test_pedal_page.mjs`) | `build/pedal/pedal-skin*.png`, last line `pedal page: ok` |
-| The sound in the simulator: the engine on known signals, against its native build; the input picker, meters, bypass, the preset heard | `node tests/test_audio.mjs`, `pages.sh` (runs `tests/test_audio_page.mjs`) | every line `ok`; `build/audio/sound.png`; `node tools/sim/render.mjs DIR` renders WAV files to listen to |
+| The pedal skin: every control by mouse, touch and keyboard, the backlights, the live LCD | `pages.sh` (runs `tests/browser/test_pedal_page.mjs`) | `build/pedal/pedal-skin*.png`, last line `pedal page: ok` |
+| The sound in the simulator: the engine on known signals, against its native build; the input picker, meters, bypass, the preset heard | `node tests/test_audio.mjs`, `pages.sh` (runs `tests/browser/test_audio_page.mjs`) | every line `ok`; `build/audio/sound.png`; `node tools/sim/render.mjs DIR` renders WAV files to listen to |
 | Editor and installer pages by hand or with `chrome-devtools-axi` | `sim` serves them at `/site/editor.html` and `/site/index.html` with a virtual Web MIDI | Connect finds "OpenPocket"; an edit shows in `/api/state` |
 | MIDI musical messages | see `features/midi-usb.md` | host simulator tests when the USB-MIDI feature is in; hardware: `docs/MIDI-TEST.md` |
 

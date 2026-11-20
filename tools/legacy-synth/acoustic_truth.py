@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Host prototype (docs/REALISTIC-INSTRUMENT-PROTOTYPE.md): note-level ground truth for the bundled lead loop.
+"""Host prototype (docs/research/REALISTIC-INSTRUMENT-PROTOTYPE.md): note-level ground truth for the bundled lead loop.
 
-  python3 tools/sim/acoustic_truth.py [OUTDIR]        default OUTDIR: build/acoustic
+  python3 tools/legacy-synth/acoustic_truth.py [OUTDIR]        default OUTDIR: build/acoustic
 
 assets/loops/lead.wav is directinput_12.wav of Guitar-TECHS P3_music from 3.275 s to 13.566 s (assets/loops/prepare.py).
 The dataset's midi/midi_12.mid is a transcription of the same performance (its onsets are not on a grid, and one lands
 exactly on the loop's start), so its notes in that window, shifted to the loop's time, are a reference for what was
 played. Downloads P3_music.zip (130 MB, CC BY 4.0, https://zenodo.org/records/14963133) into OUTDIR/gtechs if missing
-and writes OUTDIR/lead.truth.csv (start s, end s, MIDI note, velocity) for tools/sim/acoustic_voice.c.
+and writes OUTDIR/lead.truth.csv (start s, end s, MIDI note, velocity) for tools/legacy-synth/acoustic_voice.c.
 """
 import hashlib, os, struct, sys, urllib.request, zipfile
 

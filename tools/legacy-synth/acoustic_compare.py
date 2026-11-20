@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Host prototype (docs/REALISTIC-INSTRUMENT-PROTOTYPE.md): how far is each synthetic voice's steady spectrum from
+"""Host prototype (docs/research/REALISTIC-INSTRUMENT-PROTOTYPE.md): how far is each synthetic voice's steady spectrum from
 the real instrument's at the same pitch and dynamic? A numeric proxy only: it says nothing about attacks, movement or
 noise, and it does not replace listening.
 
-  python3 tools/sim/acoustic_compare.py [DIR]        default DIR: build/acoustic (needs bank.json and out/raw/steady_*)
+  python3 tools/legacy-synth/acoustic_compare.py [DIR]        default DIR: build/acoustic (needs bank.json and out/raw/steady_*)
 
 For each recorded root and dynamic: the long-term average spectrum in 1/3-octave bands (100 Hz .. 8 kHz) of the
 recording's sustain loop, of the waveguide voice and of the engine's current BRASS / STRINGS (out/raw/steady_*,

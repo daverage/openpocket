@@ -1,6 +1,6 @@
 # What's new in OpenPocket v49: a clean HQ octave, a new note tracker
 
-The details and every measurement are in [NOTE-TRACKING.md](NOTE-TRACKING.md).
+The details and every measurement are in [NOTE-TRACKING.md](archive/NOTE-TRACKING.md).
 
 ## The HQ octave without the gargle, at half the DSP
 

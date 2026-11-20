@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Per-interval dyad accuracy of the poly tracker: raw candidates vs the two voices.
 
-  PYTHONPATH=tools/sim python3 tools/sim/poly_diag.py build/pulse_poly_bench [--set dev|held]
-  PYTHONPATH=tools/sim python3 tools/sim/poly_diag.py build/pulse_poly_bench --owner-di 'My Audio'
-  PYTHONPATH=tools/sim python3 tools/sim/poly_diag.py build/mono_bench --owner-di 'My Audio' --mono
+  PYTHONPATH=tools/research python3 tools/legacy-synth/poly_diag.py build/pulse_poly_bench [--set dev|held]
+  PYTHONPATH=tools/research python3 tools/legacy-synth/poly_diag.py build/pulse_poly_bench --owner-di 'My Audio'
+  PYTHONPATH=tools/research python3 tools/legacy-synth/poly_diag.py build/mono_bench --owner-di 'My Audio' --mono
 
-dev = GuitarSet comping takes 0..23 (tune here); held = 24..47 (report here, as tools/sim/poly_score.py).
+dev = GuitarSet comping takes 0..23 (tune here); held = 24..47 (report here, as tools/legacy-synth/poly_score.py).
 """
 import argparse, csv, subprocess, tempfile
 from pathlib import Path

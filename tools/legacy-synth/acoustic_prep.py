@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Host prototype (docs/REALISTIC-INSTRUMENT-SYNTHESIS.md, step 1): a small looped sample bank for the
-acoustic voice experiment (tools/sim/acoustic_voice.c).
+"""Host prototype (docs/research/REALISTIC-INSTRUMENT-SYNTHESIS.md, step 1): a small looped sample bank for the
+acoustic voice experiment (tools/legacy-synth/acoustic_voice.c).
 
-  python3 tools/sim/acoustic_prep.py [OUTDIR]          default OUTDIR: build/acoustic
+  python3 tools/legacy-synth/acoustic_prep.py [OUTDIR]          default OUTDIR: build/acoustic
 
 Downloads a few raw WAVs from Versilian Studios' VSCO 2 Community Edition (CC0 1.0) at a pinned commit, and for each:
 mono, 22.05 kHz, leading silence trimmed, f0 measured on the sustain (normalised autocorrelation with parabolic

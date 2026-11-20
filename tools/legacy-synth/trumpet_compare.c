@@ -1,7 +1,7 @@
 /* v49 host experiment: the trumpet voices compared on the same tracker. Not firmware.
- *   cc -O2 -Iengine -Ifirmware tools/sim/trumpet_compare.c firmware/px_math.c -lm -o build/trumpet_vsco
+ *   cc -O2 -Iengine -Ifirmware tools/legacy-synth/trumpet_compare.c firmware/px_math.c -lm -o build/trumpet_vsco
  *   cc -O2 -Iengine -Ifirmware -DPXA_BANK_FILE='"../build/iowa/px_acoustic_bank_iowa.h"' -DPTH_FILE='"../build/iowa/px_trumpet_harm.h"' \
- *      tools/sim/trumpet_compare.c firmware/px_math.c -lm -o build/trumpet_iowa
+ *      tools/legacy-synth/trumpet_compare.c firmware/px_math.c -lm -o build/trumpet_iowa
  *   build/trumpet_X OUTDIR [DI.wav]
  * Plucked DI notes (Karplus-Strong) at guitar E2, C3, C4 - TRUMPET sounds E3, C4, C5 - at a normal and a gentle pick:
  *  - pick to trigger: the shared note layer's onset; trigger to audible: the output's 5 ms RMS reaching 20 dB under

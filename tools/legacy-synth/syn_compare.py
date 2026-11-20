@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare old and HQ SYN implementations for catalogue consolidation (v63). Host only.
 
-  cc -O2 -Iengine -Ifirmware tools/sim/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
-  PYTHONPATH=tools/sim python3 tools/sim/syn_compare.py [--takes N]
+  cc -O2 -Iengine -Ifirmware tools/legacy-synth/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
+  PYTHONPATH=tools/research python3 tools/legacy-synth/syn_compare.py [--takes N]
 
 For every annotated single note of at least 150 ms in N GuitarSet solo takes (build/guitarset), the share of the
 output's energy (60 Hz .. 4 kHz, middle half of the note) that lies within 30 cents of the harmonics of the note's
@@ -81,7 +81,7 @@ def levels(y, w=441):
     return 10 * np.log10((y[:m * w].reshape(m, w).astype(float) ** 2).mean(1) + 1e-20)
 
 def wobble(x, y):
-    """Added level wobble (dB), as tools/sim/octave_banks.c: the wet level's 10 ms deviations from its own 150 ms
+    """Added level wobble (dB), as tools/research/octave_banks.c: the wet level's 10 ms deviations from its own 150 ms
     trend, relative to the dry level's, where the input is within 30 dB of its peak."""
     lx, ly = levels(x), levels(y); top = lx.max(); acc = []
     for j in range(9, len(lx) - 9):
