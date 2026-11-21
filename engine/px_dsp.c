@@ -491,10 +491,11 @@ static const char *const PN_CRUSH[] = {"BITS", "SR DIV", "MIX"};
 static const char *const PN_SLICE[] = {"RATE", "DEPTH", "PATTERN"};
 static const char *const PN_LOFI[] = {"TONE", "DRIVE", "MIX"};
 static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
+static const char *const PN_ENH[] = {"BETTER", "LOUDER"};
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}};   /* APPLAUSE: retired tombstone */
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -726,6 +727,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 0) { put_int(buf, 16 - (int)(x * 14.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
+        if (t == PX_SFX_ENHANCE && k == 1) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LOUDER in dB */
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
         break;
     case PX_B_EQ:
@@ -1032,6 +1034,7 @@ static void rc_sfx(px_engine *e)
         e->sfx_mix = f01(q[2]);
         break;
     case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
+    case PX_SFX_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER 0..100 (parallel harmonics), LOUDER 0..100 = 0..+12 dB; the filter state is kept on a knob move */
     default:                                           /* square synth: square + sub through a swept low-pass */
         if (t == PX_SFX_SYNTH_HQ) {
             if (!e->sfx_track_active) {
@@ -1406,12 +1409,14 @@ void px_engine_init(px_engine *e, float sr)
     e->oct_ff = 1.0f; e->oct_ff2 = 1.0f;
     e->dly_type = -1;
     e->syn_type = -1;
+    pxe_init(&e->enh, sr);
     px_preset_t p; px_preset_factory(&p, 0);
     px_engine_set(e, &p);
 }
 static void wl_clear(px_engine *e);
 void px_engine_set(px_engine *e, const px_preset_t *p)
 {
+    if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) pxe_init(&e->enh, e->sr);   /* ENHANCE: entering or leaving the effect starts it from unity with clean filters (no stale state, no click: the mix and level glide) */
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
@@ -2589,6 +2594,9 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     if (e->sfx_g < 1e-6f) e->sfx_g = 0.0f;
                     x *= e->sfx_g;
                 } break;
+                case PX_SFX_ENHANCE:
+                    x = pxe_tick(&e->enh, x);
+                    break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));
                     y = px_tanh(y * e->sfx_c) * (1.5f / (1.0f + e->sfx_c * 0.2f));
