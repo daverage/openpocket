@@ -16,7 +16,8 @@
 #define PX_DSP_H
 
 #include <stdint.h>
-#include "px_enhance.h"                                /* SFX ENHANCE's state (the engine holds one) */
+#include "px_enhance.h"
+#include "px_pedals.h"                                /* the analogue pedal circuit models (RANGEMASTER, ...) */                                /* SFX ENHANCE's state (the engine holds one) */
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,7 +43,7 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_LOWEST_HQ,
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
-       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
+       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
@@ -177,6 +178,7 @@ typedef struct {
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
+    px_rm rm;                                          /* SFX RANGEMASTER: the circuit (about 700 bytes), set up by pxp_rm_init like ENHANCE */
     px_enhance enh;                                    /* SFX ENHANCE v4 (about 40 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
     px_hb syn_fuzz_os[4];
     px_drive_state syn_fuzz;
