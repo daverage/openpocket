@@ -7,7 +7,7 @@
 int main(int argc, char **argv)
 {
     const float f = argc > 1 ? (float)atof(argv[1]) : 1000.0f, mv = argc > 2 ? (float)atof(argv[2]) : 100.0f, pk = argc > 3 ? (float)atof(argv[3]) : 0.0f;
-    px_rm r; pxp_rm_init(&r, 96000.0f / (float)PXP_OS); pxp_rm_set(&r, 100.0f, pk);
+    px_rm r; pxp_rm_init(&r, 96000.0f / (float)PXP_OS); pxp_rm_set(&r, 100.0f, pk, 0.0f);
     r.x = r.x_t = 1.0f;
     const int n = 96000 * 6 / 10; double re[3] = {0}, im[3] = {0}; float mx = -1e9f, mn = 1e9f; int cnt = 0;
     for (int i = 0; i < n; i++) {

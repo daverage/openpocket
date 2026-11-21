@@ -103,6 +103,7 @@ typedef struct {
     int follow;                                        /* FOLLOW patch (fix pass 7): a pick while the note sounds does not restart it; the level follows the guitar, the pitch glides (the SQUARE SYNTH HQ's way) */
     int pend_on, pend_re, pend_off;                    /* the block's events: a note starts, a sounding voice retriggers, the gate fell */
     int cnt, rpos; float ring[CTL];                    /* samples in this block; where the output is read */
+    uint8_t vrt[PX_S2_NV], vrt_on[PX_S2_NV];           /* the VOICE engine's random vowel for a note that landed on a sounding voice: the target the vowel slides to (0..127), and whether it is sliding */
     unsigned blk; int32_t out[CTL]; float lfo;
     float f0, gate;
 } px_s2;
@@ -270,6 +271,7 @@ static void px_s2_noteon(px_s2 *s, int vi, float *env, int *stage, float semis_o
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
     int32_t sv[8]; memcpy(sv, v->s, sizeof sv);
     v->note = (uint8_t)((int)(s->pitch_cur + semis_off + 0.5f) & 127); v->vel = 100; v->gate = 1; v->active = 1; v->stage = 1; v->age++;
+    if (!sounding) s->vrt_on[vi] = 0;
     if (!sounding) {                                                                  /* a voice still sounding keeps its level: the attack starts from it, no click */
         const float ak = vi ? s->vc[vi].att_k : s->att_k, tms = ak > 0.0f ? ((float)CTL * 1000.0f / FS) / ak : 0.0f;    /* the linear attack's time (ms) */
         float h = (tms - 30.0f) * (1.0f / 60.0f); h = h < 0.0f ? 0.0f : h > 1.0f ? 1.0f : h;
@@ -283,6 +285,11 @@ static void px_s2_noteon(px_s2 *s, int vi, float *env, int *stage, float semis_o
     if (sounding) {                                                                    /* Felucca's retrigger rule: keep the phases and the filter */
         v->ph[0] = ph0; v->ph[1] = ph1; v->ph[2] = ph2;
         for (int k = 0; k < 8; k++) if (k != 2 && k != 3 && (s->eng->keep >> k & 1)) v->s[k] = sv[k];
+        /* CHOIR clicked at every note change that landed on a sounding voice (a step 3-5 times the voice's own edges, 26-34 ms after the pick, measured over 10 intervals). Two causes in the VOICE engine's note_on:
+         * it takes a voice for a FRESH one when its own envelope fields (v->env, v->env_out: the adapter keeps the envelope in its own floats for this engine) are zero, and then zeroes the phases and the whole
+         * filter state (s[0..6]) under the sound; and it re-picks the random vowel (s[7]), which moves every formant target in one block. The filter state is restored with the phases; the new random vowel
+         * becomes a TARGET the vowel slides to over about 15-30 ms (px_s2_voice), so a new note still gets a new vowel. */
+        if (s->eng == &ENG_FORMANT) { const uint32_t nv7 = (uint32_t)v->s[7]; for (int k = 0; k < 8; k++) v->s[k] = sv[k]; s->vrt[vi] = (uint8_t)(nv7 >> 25); s->vrt_on[vi] = 1; }                                   /* CHOIR: note-on restarts the vowel morph and picks a new random vowel (s[7]); on a voice that is already sounding that snaps the formants and clicks at every note change: the vowel carries on */
     }
 }
 /* one voice's block: its envelope, its pitch and amplitude, the render into s->out (voice 0's state is the px_s2 fields, the others' is vc[]; the single-voice types run voice 0 alone, as before) */
@@ -317,6 +324,11 @@ static void px_s2_voice(px_s2 *s, int vi, float *env, int *stage, float *last_am
     vmod_t m;
     memset(&m, 0, sizeof m);
     px_s2_pitch(s->pitch_cur + semis_off, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
+    if (s->vrt_on[vi]) {                                                               /* the random vowel slides to its new value (about 1/12 of the way a 32-sample block) */
+        int cur = (int)((uint32_t)v->s[7] >> 25); const int tgt = (int)s->vrt[vi], d = tgt - cur; int st = d / 12; if (st == 0) st = d > 0 ? 1 : d < 0 ? -1 : 0;
+        cur += st; if (cur == tgt) s->vrt_on[vi] = 0;
+        v->s[7] = (int32_t)(((uint32_t)v->s[7] & 0x01FFFFFFu) | ((uint32_t)cur << 25));
+    }
     const uint32_t base = pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047));
     m.pitch16 = v->pitch16; m.fine = v->fine; m.inc = base + (uint32_t)((int32_t)(base >> 12) * v->fine);
     m.amp0 = (int32_t)(*last_amp * 32767.0f); m.amp1 = (int32_t)(amp * 32767.0f); *last_amp = amp;

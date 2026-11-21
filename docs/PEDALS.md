@@ -5,7 +5,7 @@ Four SFX types model analogue pedals as **circuits and structures**, not as fitt
 | Type | Controls | What it is | Confidence |
 |---|---|---|---|
 | **ENHANCE** (Better Box) | BETTER, LOUDER | a compander gain cell: the gain follows a fast rectified copy of the signal (no threshold, works at every level); harmonics without clipping | the mechanism is a hypothesis from the maker's words; every constant is a guess. No real unit was measured |
-| **RANGEMASTER** | VOLUME, PICKUP | the Dallas Rangemaster solved as a circuit: germanium Ebers-Moll stage, R1 470k, R2 68k, R3 3.9k, C1 5n, C3 47u, RV 10k, 9 V, and the guitar's pickup as the source (series R and L) | high for the circuit (reproduces ElectroSmash's numbers); the transistor is a typical part (Is, bf, br are choices) |
+| **RANGEMASTER** | VOLUME, PICKUP, BODY | the Dallas Rangemaster solved as a circuit: germanium Ebers-Moll stage, R1 470k, R2 68k, R3 3.9k, C1 5n, C3 47u, RV 10k, 9 V, and the guitar's pickup as the source (series R and L) | high for the circuit (reproduces ElectroSmash's numbers); the transistor is a typical part (Is, bf, br are choices) |
 | **EP BOOST** | GAIN, VOICE | an EP-3-style JFET stage (2N5484 numbers measured by Aion FX, 18 V, drain 22k, source 3.3k bypassed by 22 nF..470 nF) | **low**: the Xotic EP Booster's schematic is not published (others call it "inspired by" the EP-3); topology and values are a family guess |
 | **MAXIMIZER** (BBE) | LO CONTOUR, PROCESS | the BBE process as a structure: three bands, the low and mid bands delayed against the high band, band gains | structure from the published description; crossovers, delays and gains fitted to the real BBE 882i's measured response (0.76 dB RMS); the split of the two knobs is an assumption (only LO = PROCESS was measured) |
 
@@ -30,6 +30,10 @@ Measured with `node tests/pedal_levels.mjs OUT && python3 tests/pedal_levels_mea
 | ENHANCE BETTER 100 | -0.3 dB | -0.3 dB |
 The MAXIMIZER's makeup is `pxp_bbe_makeup_db` (a 3 x 3 grid over the knobs with a 1.2 dB margin); the tests use a K-weighted loudness measure so they follow the loops, not plain RMS (the BBE scoops the mids the weighting favours).
 
+## Rangemaster: VOLUME and BODY (owner feedback: unity was near 90; add a body option)
+* VOLUME is unity at 50 and +12 dB at 100 (a taper written in dB: +0.24 dB per step above 50, 0.8 dB per step below, silent at 0); measured on the guitar loops: 50 -> +0.1 dB, 70 -> +4.9, 90 -> +9.7, 100 -> +12.1.
+* BODY is the popular input-capacitor mod as a real circuit change to C1: 5 nF (the original treble booster, input corner 2.6 kHz) at 0, 100 nF (a full-range boost, corner about 130 Hz) at 100 (log). The loudness is kept (a makeup of 7.2 dB at 50 and 9.6 dB at 100 comes off the output: `pxp_rm_body_db`), so unity stays at VOLUME 50 for every BODY; 100 Hz gains 12 dB or more, the treble hardly moves. It also evens out the loops (the worst loop at VOLUME 100 is +10.9 dB at BODY 100, +7.1 dB at BODY 0).
+
 ## Rangemaster EQ curve (small signal, volume max; the stage's own gain in dB)
 | source | 100 Hz | 300 Hz | 1 kHz | 2.6 kHz | 5 kHz | 10 kHz |
 |---|---|---|---|---|---|---|
@@ -39,7 +43,7 @@ The MAXIMIZER's makeup is `pxp_bbe_makeup_db` (a 3 x 3 grid over the knobs with 
 The ideal-source column is the ElectroSmash circuit (first-order input corner 2.6 kHz, 37 dB at the top); a real Rangemaster capture (the NAM one, low-impedance source) rises 0 -> +9.3 dB (1 kHz) -> +19.5 dB (6 kHz), a corner near 3 kHz but with about 10 dB more low end than a first-order high-pass. With a pickup behind it the 12 kOhm input loads the coil's inductance and the highs fall away above 2-3 kHz: a mid-forward boost with little below 300 Hz and a smooth top, which is why the guitar's energy (80-800 Hz) gets far less gain than 1-3 kHz and the loudness dropped before the level fix.
 
 ## POLY OCTAVE HQ: the -1 and RANGE
-RANGE thins the octave-down out (the bank follows fewer notes): on a single low E the -1 was 7 dB quieter at RANGE 1 than at 100 (a chord 13 dB). It now gets the make-up LOWEST OCTAVE HQ has, `(100 / RANGE)^0.196` (`PX_POLY_RANGE_MAKEUP`, +7.8 dB at RANGE 1, nothing at 0 and 100): -35.8 to -37.1 dB from RANGE 1 to 99 (`tests/engine/poly_range_test.c`).
+RANGE thins the octave-down out (the bank follows fewer notes): on a single low E the -1 was 7 dB quieter at RANGE 1 than at 100 (a chord 13 dB), and LOWEST OCTAVE HQ is about 9 dB louder than this type anyway. Engaged (RANGE 1..99) the -1 now gets the make-up `(100 / RANGE)^0.196` (`PX_POLY_RANGE_MAKEUP`) and a further +9 dB (`PX_POLY_RANGE_LIFT`, LOWEST's volume; full by RANGE 90, fading out to nothing at 100 so there is no jump): about -27 to -28 dB across RANGE 1..90 on a single low E against -36.4 dB at 100 and LOWEST's -24 to -27 dB (`tests/engine/poly_range_test.c`). A chord at RANGE 1 is -36 dB against -45 before. RANGE 0 and 100 are unchanged.
 
 ## Not done / open
 * None of this has been **heard or measured on the pedal**. Level matching between the types and the factory presets is not done (their SFX trim is 0).

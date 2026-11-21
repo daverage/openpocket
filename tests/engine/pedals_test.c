@@ -1,6 +1,6 @@
 /* SFX RANGEMASTER, EP BOOST and MAXIMIZER (engine/px_pedals.h) through the whole engine. The expected numbers come from the FULL nodal simulator of the same circuit (tools/research/pedals/rm_circuit.py,
  * checked against ElectroSmash's analysis: 38 dB at full volume, input corner about 2.6 kHz, bias Vbe 0.30 V / 0.2 mA / collector 7.1 V), not from this implementation.
- * Level: one engine unit = 2 V of pickup EMF, engine out = 0.076 per collector volt (so engine gain = circuit gain - 16.36 dB).
+ * Level: one engine unit = 2 V of pickup EMF, engine out = 0.163 per collector volt (so engine gain = circuit gain - 9.74 dB at VOLUME 100).
  *  - catalogue, silence, no DC, polarity (not inverted)
  *  - small-signal response of a single coil into the stage (the loading by the 10-12 kOhm input is part of the circuit)
  *  - level behaviour: clean when small, second harmonic grows, the gain falls (the stage compresses), asymmetric
@@ -16,10 +16,11 @@ static int bad;
 #define FS 44100.0f
 enum { N = 44100 * 2 };
 static float x[N], y[N], z[N], ya[N], yb[N], yc[N];
+static int g_body;                                  /* RANGEMASTER's BODY for the helpers below (0 = the original 5 nF) */
 static void preset(px_preset_t *p, int on, int volume, int pickup)
 {
     px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
-    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_RANGEMASTER; p->p[PX_B_SFX][0] = (uint8_t)volume; p->p[PX_B_SFX][1] = (uint8_t)pickup;
+    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_RANGEMASTER; p->p[PX_B_SFX][0] = (uint8_t)volume; p->p[PX_B_SFX][1] = (uint8_t)pickup; p->p[PX_B_SFX][2] = (uint8_t)g_body;
 }
 static void render(const px_preset_t *p, const float *in, float *out, int n)
 {
@@ -165,6 +166,8 @@ static void nodrop_tests(void)
 {
     px_preset_t p; guitarish(x, N); { px_preset_t q; epreset(&q, 0, 0, 0); render(&q, x, z, N); } const float dry = rms1(z);
     preset(&p, 1, 100, 0); render(&p, x, y, N); CHECK(rms1(y) > dry * 0.95f, "RANGEMASTER VOLUME 100 is not quieter than the guitar (%.1f dB)", 20 * log10f(rms1(y) / dry));
+    preset(&p, 1, 50, 0); render(&p, x, y, N); CHECK(fabsf(20 * log10f(rms1(y) / dry)) < 3.5f, "RANGEMASTER VOLUME 50 is about unity (%.1f dB; the owner found unity near 90 before)", 20 * log10f(rms1(y) / dry));
+    for (int bd = 0; bd <= 100; bd += 50) { g_body = bd; preset(&p, 1, 50, 0); render(&p, x, y, N); CHECK(fabsf(20 * log10f(rms1(y) / dry)) < 3.5f, "RANGEMASTER at BODY %d keeps unity at VOLUME 50 (%.1f dB)", bd, 20 * log10f(rms1(y) / dry)); } g_body = 0;
     epreset(&p, 1, 0, 0); render(&p, x, y, N); CHECK(rms1(y) > dry * 0.9f, "EP BOOST at GAIN 0 is about unity (%.1f dB)", 20 * log10f(rms1(y) / dry));
     epreset(&p, 1, 0, 100); render(&p, x, y, N); CHECK(rms1(y) > dry * 0.9f, "EP BOOST at GAIN 0, FAT, is about unity (%.1f dB)", 20 * log10f(rms1(y) / dry));
     for (int k = 0; k < 5; k++) { const int lo[5] = {50, 100, 0, 100, 70}, pr[5] = {50, 100, 100, 50, 70}; bpreset(&p, 1, lo[k], pr[k]); render(&p, x, y, N);
@@ -174,7 +177,8 @@ int main(void)
 {
     px_preset_t p, off; char b[8];
     CHECK(px_type_retired(PX_B_SFX, PX_SFX_RANGEMASTER) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_RANGEMASTER), "RANGEMASTER"), "RANGEMASTER is a live type");
-    CHECK(px_nparams(PX_B_SFX, PX_SFX_RANGEMASTER) == 2 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 0), "VOLUME") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 1), "PICKUP"), "VOLUME and PICKUP");
+    CHECK(px_nparams(PX_B_SFX, PX_SFX_RANGEMASTER) == 3 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 0), "VOLUME") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 1), "PICKUP") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 2), "BODY"), "VOLUME, PICKUP and BODY");
+    CHECK(px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 2, 0, b) == 1 && !strcmp(b, "TREBLE") && px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 2, 100, b) == 1 && !strcmp(b, "FULL"), "BODY reads TREBLE .. FULL: '%s'", b);
     CHECK(px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 1, 0, b) == 1 && !strcmp(b, "SINGLE") && px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 1, 100, b) == 1 && !strcmp(b, "HUMBKR"), "PICKUP reads SINGLE .. HUMBKR: '%s'", b);
     /* silence, DC */
     preset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
@@ -187,7 +191,7 @@ int main(void)
       CHECK(fabs(ph - 45.0) < 25.0, "polarity restored: phase %.0f deg at 1 kHz after removing the half-band delay (reference +45)", ph); }
     /* small signal, single coil (6k, 2.5 H), volume max: MNA reference dB (circuit gain) - 20.35 */
     { const float f[] = {100, 300, 1000, 2600, 5000, 10000}, ref[] = {7.9f, 17.8f, 30.5f, 27.6f, 20.6f, 13.9f};
-      for (int k = 0; k < 6; k++) { const float g = gain_db(f[k], 1.0f, 100, 0, 0, 0) + 16.36f;
+      for (int k = 0; k < 6; k++) { const float g = gain_db(f[k], 1.0f, 100, 0, 0, 0) + 9.74f;
         CHECK(fabsf(g - ref[k]) < 1.6f, "single coil, %.0f Hz: circuit gain %.1f dB against the reference %.1f dB", f[k], g, ref[k]); } }
     /* level behaviour at 1 kHz */
     { float h2a, h2b, h2c, h3c; const float ga = gain_db(1000, 3.0f, 100, 0, &h2a, 0), gb = gain_db(1000, 30.0f, 100, 0, &h2b, 0), gc = gain_db(1000, 300.0f, 100, 0, &h2c, &h3c);
@@ -197,18 +201,24 @@ int main(void)
       CHECK(ga - gc > 4.0f, "the stage compresses: gain %.1f dB at 3 mV, %.1f dB at 300 mV", ga, gc); }
     /* PICKUP: a humbucker's inductance and resistance against the 12 kOhm input */
     { const float s5 = gain_db(5000, 1.0f, 100, 0, 0, 0), h5 = gain_db(5000, 1.0f, 100, 100, 0, 0); CHECK(s5 - h5 > 4.0f, "a humbucker has less 5 kHz into the stage (single coil %.1f, humbucker %.1f dB)", s5, h5); }
-    /* VOLUME: an attenuator after the clipping */
-    { float h2a, h2b; const float g100 = gain_db(1000, 100.0f, 100, 0, &h2a, 0), g50 = gain_db(1000, 100.0f, 50, 0, &h2b, 0);
-      CHECK(g100 - g50 > 14.0f && g100 - g50 < 26.0f, "VOLUME 50 is about -21 dB on a 10k log pot (%.1f dB)", g100 - g50);
+    /* VOLUME: an attenuator after the clipping: unity at 50, +12 dB at 100 */
+    { float h2a, h2b; const float g100 = gain_db(1000, 100.0f, 100, 0, &h2a, 0), g50 = gain_db(1000, 100.0f, 50, 0, &h2b, 0), g25 = gain_db(1000, 100.0f, 25, 0, 0, 0);
+      CHECK(fabsf((g100 - g50) - 12.0f) < 1.5f, "VOLUME 50 is 12 dB below 100 (unity at 50, +12 dB at 100): %.1f dB", g100 - g50);
+      CHECK(g50 - g25 > 14.0f, "below 50 the volume falls faster (50 -> 25: %.1f dB)", g50 - g25);
       CHECK(fabsf(h2a - h2b) < 1.0f, "the volume does not change the distortion (H2 %.1f / %.1f dB)", h2a, h2b); }
+    /* BODY: the input capacitor C1 from 5 nF (the original treble booster) to 100 nF (full range) */
+    { g_body = 0; const float lo0 = gain_db(100, 1.0f, 100, 0, 0, 0), hi0 = gain_db(3000, 1.0f, 100, 0, 0, 0); g_body = 100; const float lo1 = gain_db(100, 1.0f, 100, 0, 0, 0), hi1 = gain_db(3000, 1.0f, 100, 0, 0, 0); g_body = 50; const float lo5 = gain_db(100, 1.0f, 100, 0, 0, 0); g_body = 0;
+      CHECK(lo1 - lo0 + pxp_rm_body_db(1.0f) > 12.0f, "BODY 100 opens the low end: 100 Hz is %.1f dB more than at BODY 0 (before the loudness makeup)", lo1 - lo0 + pxp_rm_body_db(1.0f));
+      CHECK(lo5 + pxp_rm_body_db(0.5f) > lo0 + 3.0f && lo5 + pxp_rm_body_db(0.5f) < lo1 + pxp_rm_body_db(1.0f) - 3.0f, "BODY 50 is in between (100 Hz before makeup: %.1f, %.1f, %.1f dB)", lo0, lo5 + pxp_rm_body_db(0.5f), lo1 + pxp_rm_body_db(1.0f));
+      CHECK(fabsf(hi1 - hi0 + pxp_rm_body_db(1.0f)) < 4.5f, "BODY leaves the treble: the circuit moves 3 kHz by %.1f dB (the output loudness makeup of %.1f dB removed)", hi1 - hi0 + pxp_rm_body_db(1.0f), pxp_rm_body_db(1.0f)); }
     /* the level at the pedal: guitar peaks 0.14 engine units (280 mV EMF) */
     sine(x, N, 440.0f, 0.14f); preset(&p, 1, 100, 0); render(&p, x, y, N);
-    { float pk = 0; for (int i = 44100; i < N; i++) pk = fmaxf(pk, fabsf(y[i])); CHECK(pk > 0.05f && pk < 0.5f, "a hard-played note comes out at a usable level (peak %.3f)", pk); }
+    { float pk = 0; for (int i = 44100; i < N; i++) pk = fmaxf(pk, fabsf(y[i])); CHECK(pk > 0.05f && pk < 0.9f, "a hard-played note comes out at a usable level (peak %.3f; VOLUME 100 is +12 dB)", pk); }
     /* bounded, finite */
     for (int i = 0; i < N; i++) x[i] = ((i / 200) & 1) ? 1.0f : -1.0f; preset(&p, 1, 100, 50); render(&p, x, y, N);
-    { int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 1.0f, "a full-scale square: finite and bounded (peak %.3f)", pk); }
+    { int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 1.6f, "a full-scale square: finite and bounded (peak %.3f)", pk); }
     { unsigned r = 3u; for (int i = 0; i < N; i++) { r = r * 1664525u + 1013904223u; x[i] = ((float)(r >> 9) / 4194304.0f - 1.0f) * 0.5f; } render(&p, x, y, N);
-      int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 1.0f, "loud noise: finite and bounded (peak %.3f)", pk); }
+      int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 1.6f, "loud noise: finite and bounded (peak %.3f)", pk); }
     /* no click on switching or a knob jump */
     sine(x, N, 220.0f, 0.1f);
     {

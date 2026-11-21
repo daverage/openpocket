@@ -17,7 +17,7 @@
 #define PXP_EMF_PER_UNIT 2.0f
 #endif
 #ifndef PXP_OUT_PER_VOLT
-#define PXP_OUT_PER_VOLT 0.076f      /* +4 dB over the first version: on guitar loops VOLUME 100 is about +5 dB (it was +1.5 dB, and -3.5 dB on a low-mid loop: the stage's gain is at 1-3 kHz, the guitar's energy below it) */
+#define PXP_OUT_PER_VOLT 0.163f      /* with the VOLUME taper below: VOLUME 50 is unity on guitar loops and 100 is +12 dB (owner: unity was near 90). The stage's gain is at 1-3 kHz and the guitar's energy below it, so a plain volts-to-units scale left it quiet */
 #endif
 #ifndef PXP_OS
 #define PXP_OS 1                    /* circuit-rate factor: 1 (the circuit at the audio rate) or 2 (half-band in and out, twice the cost). Measured (tests/engine, hard-played 1.5 kHz at 300 mV): the energy off the harmonic bins is -48 dB at 1x, -57 dB at 2x; at normal levels -87 / -97 dB; the harmonics are the same. 1x is enough for a boost */
@@ -33,6 +33,7 @@ static inline float pxp_exp(float x)
     union { float f; unsigned u; } v; v.u = (unsigned)(n + 127) << 23; return p * v.f;
 }
 static inline float pxp_clamp(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
+static inline float pxp_lerp3(const float *xs, const float *ys, float x) { return x <= xs[1] ? ys[0] + (ys[1] - ys[0]) * (x - xs[0]) / (xs[1] - xs[0]) : ys[1] + (ys[2] - ys[1]) * (x - xs[1]) / (xs[2] - xs[1]); }
 /* a junction's exponential with a straight-line continuation above x = 18 (0.465 V: 0.12 A in a germanium junction, far beyond this circuit): finite value and slope, so a Newton overshoot cannot run away */
 static inline float pxp_expl(float x, float *d)
 {
@@ -63,7 +64,7 @@ typedef struct {
     float gL, gC1, gC3, Rtot, Rpar, Ge, invGe;                /* trapezoid conductances and the base / emitter equivalents at the circuit rate */
     float i, vL, vC, ve, iC3, vbe, vbc, vc_dc, pvbe, pvbc;      /* states (pvbe, pvbc: the previous sample's junction voltages, for the predictor) */
     float x, x_t, kx, hp_k, hp_z, hp_y;                       /* volume (the wiper fraction, glided) and the output DC block */
-    float Rs, L, sr2, pk, pk_t;
+    float Rs, L, C1, sr2, pk, pk_t, body;                  /* C1: the input capacitor (5 nF .. 100 nF with BODY) */
     pxp_os os;
 } px_rm;
 static inline void pxp_bjt(const px_rm *r, float vbe, float vbc, float *ic, float *ib, float *gbe, float *gbc)
@@ -90,10 +91,10 @@ static inline void pxp_newton(const px_rm *r, float ab, float rbb, float rbc, fl
     if (last > 1e-3f) pxp_bjt(r, vbe, vbc, &ic, &ib, &gbe, &gbc);      /* a large last step: the linearised currents are not good enough */
     *pvbe = vbe; *pvbc = vbc; *pib = ib; *pic = ic;
 }
-static inline void pxp_rm_coeffs(px_rm *r, float sr2, float Rs, float L)      /* the circuit-rate constants (outside the sample loop) */
+static inline void pxp_rm_coeffs(px_rm *r, float sr2, float Rs, float L, float C1)      /* the circuit-rate constants (outside the sample loop) */
 {
-    r->Rs = Rs; r->L = L; r->sr2 = sr2; const float dt = 1.0f / sr2;
-    r->gL = dt / (2.0f * L); r->gC1 = 2.0f * 5e-9f / dt; r->gC3 = 2.0f * 47e-6f / dt;
+    r->Rs = Rs; r->L = L; r->C1 = C1; r->sr2 = sr2; const float dt = 1.0f / sr2;
+    r->gL = dt / (2.0f * L); r->gC1 = 2.0f * C1 / dt; r->gC3 = 2.0f * 47e-6f / dt;
     r->Rtot = Rs + 1.0f / r->gL + 1.0f / r->gC1; r->Rpar = r->Rtot * r->Rbb / (r->Rtot + r->Rbb);
     r->Ge = 1.0f / r->R3 + r->gC3; r->invGe = 1.0f / r->Ge;
 }
@@ -102,7 +103,7 @@ static inline void pxp_rm_init(px_rm *r, float sr)
     *r = (px_rm){0};
     r->Is = 1.8e-9f; r->bf = 100.0f; r->br = 8.0f; r->R3 = 3900.0f; r->RV = 10000.0f; r->Vcc = 9.0f;
     const float R1 = 470000.0f, R2 = 68000.0f; r->Rbb = R1 * R2 / (R1 + R2); r->Vth = r->Vcc * R2 / (R1 + R2);
-    pxp_rm_coeffs(r, (float)PXP_OS * sr, 6000.0f, 2.5f);
+    pxp_rm_coeffs(r, (float)PXP_OS * sr, 6000.0f, 2.5f, 5e-9f);
     /* DC: capacitors open, no series current */
     float vbe = 0.25f, vbc = -5.0f, ib, ic;
     pxp_newton(r, r->Vth, r->Rbb + r->R3, r->R3, r->Vth - r->Vcc, r->Rbb, -r->RV, &vbe, &vbc, &ib, &ic);
@@ -110,12 +111,22 @@ static inline void pxp_rm_init(px_rm *r, float sr)
     r->kx = 1.0f - expf(-1.0f / (sr * 0.010f)); r->hp_k = 1.0f - expf(-6.2831853f * 16.0f / sr); r->x = r->x_t = 0.001f;
     r->pk = r->pk_t = 0.0f; pxp_os_reset(&r->os);
 }
-/* VOLUME 0..100 (a 10k log taper: the wiper's share of the resistance), PICKUP 0..100 (single coil .. humbucker) */
-static inline void pxp_rm_set(px_rm *r, float volume, float pickup)
+/* VOLUME 0..100: unity at 50, +12 dB at 100 (a pot is an attenuator on the stage's own level, so the taper is written in dB: +0.24 dB per step above 50, 0.8 dB per step below it, silent at 0);
+ * PICKUP 0..100 (single coil .. humbucker); BODY 0..100: the input capacitor C1 from the original 5 nF (a treble booster, corner 2.6 kHz) to 100 nF (a full-range boost, corner about 130 Hz): the
+ * popular "input cap mod" (ElectroSmash: 5/10/15 nF to keep the voicing, 47/100 nF to open it up). The loudness is kept: pxp_rm_body_db */
+static inline float pxp_rm_body_db(float w)      /* dB taken off the output as BODY opens the low end (measured on guitar loops, tests/pedal_levels.mjs) */
 {
-    const float v = pxp_clamp(volume, 0.0f, 100.0f) * 0.01f; r->x_t = (powf(30.0f, v) - 1.0f) / 29.0f; if (r->x_t < 0.001f) r->x_t = 0.001f;      /* a gentler log taper than a true 10k log pot: about -10 dB at 50, unity near 70 on guitar loops */
-    const float p = pxp_clamp(pickup, 0.0f, 100.0f) * 0.01f; r->pk_t = p;
-    if (fabsf(r->pk_t - r->pk) > 1e-4f) { r->pk = r->pk_t; pxp_rm_coeffs(r, r->sr2, 6000.0f + 3000.0f * p, 2.5f + 3.0f * p); }
+    static const float X[3] = {0.0f, 0.5f, 1.0f}, Y[3] = {0.0f, 7.2f, 9.6f};
+    return pxp_lerp3(X, Y, w);
+}
+static inline void pxp_rm_set(px_rm *r, float volume, float pickup, float body)
+{
+    const float v = pxp_clamp(volume, 0.0f, 100.0f);
+    const float db = v >= 50.0f ? (v - 50.0f) * 0.24f : (v - 50.0f) * 0.8f;
+    r->x_t = v < 1.0f ? 0.0f : powf(10.0f, (db - 12.0f - pxp_rm_body_db(pxp_clamp(body, 0.0f, 100.0f) * 0.01f)) * 0.05f);
+    const float p = pxp_clamp(pickup, 0.0f, 100.0f) * 0.01f, w = pxp_clamp(body, 0.0f, 100.0f) * 0.01f;
+    r->pk_t = p;
+    if (fabsf(p - r->pk) > 1e-4f || fabsf(w - r->body) > 1e-4f) { r->pk = p; r->body = w; pxp_rm_coeffs(r, r->sr2, 6000.0f + 3000.0f * p, 2.5f + 3.0f * p, 5e-9f * powf(20.0f, w)); }
 }
 static inline float pxp_rm_core(px_rm *r, float e)                         /* one circuit-rate step: EMF volts in, the wiper's AC volts out (inverted, as the stage is) */
 {

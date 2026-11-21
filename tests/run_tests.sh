@@ -45,6 +45,7 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/synth_test.c fir
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/enhance_test.c firmware/px_math.c -lm -o build/enhance_test && build/enhance_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pedals_test.c firmware/px_math.c -lm -o build/pedals_test && build/pedals_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/poly_range_test.c firmware/px_math.c -lm -o build/poly_range_test && build/poly_range_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/choir_click_test.c firmware/px_math.c -lm -o build/choir_click_test && build/choir_click_test | tail -1
 # Felucca's own golden renders for the vendored engines
 CC="$CC" sh third_party/felucca-engines/tests/felucca_ref.sh
 # Synth2: the mono tracker's interface (engine/px_mono.h)

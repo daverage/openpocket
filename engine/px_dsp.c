@@ -109,6 +109,9 @@ static float erb_ofc[ERB_O_BANDS];
 #ifndef PX_POLY_RANGE_MAKEUP
 #define PX_POLY_RANGE_MAKEUP 0.196f                 /* POLY OCTAVE HQ: the -1's make-up exponent as RANGE cuts (0 = none): the measured drop is about 1.7 dB per ln step of RANGE */
 #endif
+#ifndef PX_POLY_RANGE_LIFT
+#define PX_POLY_RANGE_LIFT 9.0f                     /* POLY OCTAVE HQ: dB added to the -1 once RANGE is engaged (LOWEST OCTAVE HQ's level), full by RANGE 90 */
+#endif
 #ifndef LOW_RANGE_BOOST
 #define LOW_RANGE_BOOST 0.7f                           /* Synth2: LOWEST OCTAVE HQ extra make-up at RANGE 1 (x1.7, +4.6 dB) */
 #endif
@@ -494,14 +497,14 @@ static const char *const PN_CRUSH[] = {"BITS", "SR DIV", "MIX"};
 static const char *const PN_SLICE[] = {"RATE", "DEPTH", "PATTERN"};
 static const char *const PN_LOFI[] = {"TONE", "DRIVE", "MIX"};
 static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
-static const char *const PN_RM[] = {"VOLUME", "PICKUP"};   /* RANGEMASTER: the 10k log volume pot; PICKUP is the source (single coil 0 .. humbucker 100): engine/px_pedals.h */
+static const char *const PN_RM[] = {"VOLUME", "PICKUP", "BODY"};   /* RANGEMASTER: VOLUME (unity at 50), PICKUP is the source (single coil 0 .. humbucker 100), BODY the input capacitor (5 nF treble booster .. 100 nF full range): engine/px_pedals.h */
 static const char *const PN_EP[] = {"GAIN", "VOICE"};   /* EP BOOST: the 500k log volume pot; VOICE is the source bypass (EARLY .. LATE .. FAT): engine/px_pedals.h */
 static const char *const PN_BBE[] = {"LO CONTOUR", "PROCESS"};   /* MAXIMIZER: the BBE process, fitted to the real unit: engine/px_pedals.h */
 static const char *const PN_ENH[] = {"BETTER", "LOUDER"};   /* ENHANCE v4: amount (harmonics + compression), clean boost 0..+12 dB: engine/px_enhance.h */
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}, {"RANGEMASTER", 2, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}, {"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -734,6 +737,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
         if (t == PX_SFX_EPBOOST && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "EARLY" : v < 67 ? "LATE" : "FAT"); return 1; }   /* VOICE */
+        if (t == PX_SFX_RANGEMASTER && k == 2) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "TREBLE" : v < 67 ? "MID" : "FULL"); return 1; }   /* BODY */
         if (t == PX_SFX_RANGEMASTER && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "SINGLE" : v < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
         if (t == PX_SFX_ENHANCE && k == 1) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LOUDER in dB */
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
@@ -966,8 +970,12 @@ static void rc_pitch(px_engine *e)
             const float rboost = v == 0 ? 1.0f : 1.0f + LOW_RANGE_BOOST * (1.0f - (float)(v - 1) / 99.0f);
             e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN * rboost; e->erb_pitch.down2 *= LOW_MAKEUP;
         }
-        if (t == PX_PIT_POLYOCT_HQ && raw == t && q[3] >= 1 && q[3] < 100)
-            e->ps_lvl[0] *= powf(100.0f / (float)q[3], PX_POLY_RANGE_MAKEUP);   /* RANGE thins the octave-down out (a single low E: -7 dB at RANGE 1, -2.7 dB at 25; a chord -13 dB at 1): the -1 gets the make-up LOWEST OCTAVE HQ already has, (100 / RANGE)^0.196 = +7.8 dB at 1, nothing at 100 */
+        if (t == PX_PIT_POLYOCT_HQ && raw == t && q[3] >= 1 && q[3] < 100) {
+            /* RANGE engaged: the -1 gets (a) the make-up for what RANGE thins out, (100 / RANGE)^0.196 (a single low E was -7 dB at RANGE 1, -2.7 dB at 25; a chord -13 dB at 1), and (b) the volume LOWEST OCTAVE HQ
+             * keeps (it is about 9 dB louder than this type on a single low note; owner: "still too quiet when RANGE is engaged"): + PX_POLY_RANGE_LIFT dB, reached by RANGE 90 and fading out to nothing at 100 (no jump) */
+            const float fade = (float)(100 - q[3]) * 0.1f;
+            e->ps_lvl[0] *= powf(100.0f / (float)q[3], PX_POLY_RANGE_MAKEUP) * powf(10.0f, PX_POLY_RANGE_LIFT * 0.05f * (fade > 1.0f ? 1.0f : fade));
+        }
         break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
@@ -1046,7 +1054,7 @@ static void rc_sfx(px_engine *e)
     case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
     case PX_SFX_MAXIMIZER: pxp_bbe_set(&e->bbe, (float)q[0], (float)q[1]); break;   /* LO CONTOUR, PROCESS */
     case PX_SFX_EPBOOST: pxp_ep_set(&e->ep, (float)q[0], (float)q[1], e->sr); break;   /* GAIN, VOICE */
-    case PX_SFX_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1]); break;   /* VOLUME, PICKUP: the state is kept on a knob move (the volume glides) */
+    case PX_SFX_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOLUME, PICKUP, BODY: the state is kept on a knob move (the volume glides) */
     case PX_SFX_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER, LOUDER; the filter state is kept on a knob move (the mixes glide over 10 ms) */
     default:                                           /* square synth: square + sub through a swept low-pass */
         if (t == PX_SFX_SYNTH_HQ) {
