@@ -177,7 +177,7 @@ typedef struct {
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
-    px_enhance enh;                                    /* SFX ENHANCE v3 (about 200 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
+    px_enhance enh;                                    /* SFX ENHANCE v4 (about 40 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
     px_hb syn_fuzz_os[4];
     px_drive_state syn_fuzz;
     float syn_fuzz_tone;

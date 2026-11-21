@@ -1,29 +1,29 @@
-# ENHANCE (SFX): a clean harmonic and tonal enhancer
+# ENHANCE (SFX): a compander harmonic enhancer
 
-Status: **v3**, host-tested; **not heard, not measured on the pedal.** An SFX type (id after the retired APPLAUSE tombstone), so it cannot run with another SFX. Three controls: **BETTER** 0-100 (overall amount, default 35), **TONE** 0-100 (0 WARM = warmth only, 50 BOTH, 100 BRIGHT = presence only), **LOUDER** 0-100 = 0 to +12 dB clean boost (shown in dB).
-History and why it was redone: `docs/ENHANCE-RESEARCH.md`. Short version: v1/v2 were a model of the NE570 gain cell's parabolic distortion (research package, reviewed). Its numbers match the datasheet (0.34 % H2 per mV at 0 dBm, +8 dBm saturation) but the chip's own distortion is small by design, the package had removed its dynamic-gain function, and on the owner's guitar (own second harmonic -19 dB re the fundamental) the best v2 setting moved the second harmonic by +1.9 dB and could not be pushed further (the cell saturates): inaudible on the pedal (builds 924 and 926).
+Status: **v4**, host-tested; **not heard, not measured on the pedal; every parameter is a guess** fitted to the maker's words. An SFX type (id after the retired APPLAUSE tombstone), so it cannot run with another SFX. Two controls, like the Better Box it follows: **BETTER** 0-100 (amount of harmonics and of compression) and **LOUDER** 0-100 (a clean 0..+12 dB boost, readout in dB).
+History: `docs/ENHANCE-RESEARCH.md`. v1/v2 modelled the NE570 gain cell's tiny static distortion (inaudible, builds 924/926); v3 was an Aphex-style exciter on a fixed curve (build 927: the owner heard no difference between WARM/BOTH/BRIGHT; the simulator on the bundled loops shows why: no loudness change, under 3 dB in the top bands). Both lacked what the maker describes.
 
-## What v3 is
-Two parallel side paths mixed into a dry signal that is never filtered or clipped. Built the way the classic exciters are built (Aphex US 4,150,253; BBE; SPL), adding energy **where the guitar is weak**:
-- **WARMTH:** band-pass 80-400 Hz, **full-wave rectifier** (a pure even-harmonic generator with nothing to saturate), 4-pole high-pass 100 Hz (the rectifier's DC and, on chords, its difference tones: 196 + 247 Hz leave a 51 Hz tone louder than the intended harmonic; the test caught that and moved the filter from a 70 Hz two-pole), low-pass 1.2 kHz. The added second harmonic is a fixed share of the note whatever the playing level.
-- **PRESENCE:** 2.5 kHz two-pole high-pass, a **one-sided soft clip with a threshold relative to the band's running level** (1.45 x its mean magnitude: only the louder peaks and pick transients are rounded; the Aphex's "only transients clip"), 10 kHz low-pass. Also level-relative.
-Both are level independent, so **no input-sensitivity setting is needed** (the v2 problem). Cost: six biquads, a rectifier, an envelope follower and a soft clip per sample; no buffers; about 200 bytes; no sqrt or powf in the sample loop.
+## What the maker says (not a circuit)
+TWA/Godlyke pages: an NE570 compander, "even and odd order harmonics **without distortion** / without diode clipping", "emphasizes even-order multiples of the fundamental being played, with a light dusting of specific odd-order harmonics in the upper registers", "subtle compressor", "evens out frequency response and creates punchy, tight pick attack"; BETTER "adjusts even/odd harmonic content". Nothing says how.
 
-## Measured (host; owner's DI clips, median of three; added = RMS of wet minus dry re dry)
-| BETTER | WARM | BOTH | BRIGHT |
+## What v4 is (the hypothesis)
+A gain cell whose control is a **fast rectified copy of the signal itself** modulates the signal with its own ripple: a half-wave detector ripples at f (so the output has 2f: even), a full-wave one at 2f (3f: odd). It clips nothing, compresses above a knee, and a fast attack follows the pick. Per sample, no sqrt/exp/log:
+`d = 0.5|x| + max(x,0)` (an equal mix of full- and half-wave: the guess) -> `env` (attack 0.1 ms, release 2 ms) -> `g = 1 / (1 + S * max(env - THR, 0) / THR)` -> `y = x * g`, a 10 Hz DC block, then LOUDER. `S = 0.6 * BETTER/100`, `THR = 0.04` (-28 dBFS in engine units; clean below). About 40 bytes of state. Constants: `PXE_THR`, `PXE_SMAX`, `PXE_MIX` in `engine/px_enhance.h`.
+
+## Measured (host, sine, BETTER 100)
+| 200 Hz amplitude | gain | H2 | H3 |
 |---|---|---|---|
-| 35 | -24.8 dB | -24.4 dB | -32.7 dB |
-| 100 | -15.7 dB | -15.2 dB | -23.5 dB |
-On the owner's single notes (own H2 -19.1 dB re the fundamental): WARM at BETTER 100 moves it to -9.3 dB (+10 dB); at BETTER 35 about +4.5 dB. PRESENCE at BETTER 100 lifts the 2.4-4.8 kHz band by about +2.3 dB and 4.8-9.6 kHz by +3.4 dB (a synthetic pluck: +2.5 dB at 3.2-8 kHz, the same at a level 20 dB lower). For comparison v2's best was +1.9 dB of second harmonic and ~0 in the high bands. WARM changes nothing above 1.5 kHz and not the fundamental; BRIGHT changes nothing below 400 Hz.
-`tests/enhance_proto.py` is the offline (numpy/scipy) prototype this was ported from; `tests/enhance_study.py [--renders]` reproduces the table and writes level-matched listening renders to `build/enhance5/matched/` (dry, BOTH 35, WARM 100, BRIGHT 100, BOTH 100, WARM 35, BRIGHT 35).
+| 0.01 (-40 dBFS) | -0.0 dB | below -100 | below -100 |
+| 0.03 | -0.2 | -35.8 | -38.7 |
+| 0.08 (about guitar level) | -4.1 | -16.2 | -25.5 |
+| 0.20 | -10.6 | -14.8 | -23.9 |
+Offline prototype (`/tmp`-only, not kept): detector full-wave -> H2 below -110 dB (odd only); half-wave -> H2 -18 / H3 -29 dB; the 50/50 mix -> H2 -21.7 / H3 -31 dB. The owner's own H2 is about -19 dB re the fundamental, so at BETTER 100 the second harmonic of a note is roughly doubled in level and the note is compressed about 4 dB: a thickening and levelling, not a tone change.
 
 ## Engine integration
-`engine/px_enhance.h`; `PX_SFX_ENHANCE` appended after `PX_SFX_APPLAUSE` (ids unchanged); catalogue entry BETTER / LOUDER / TONE; the setup case sets the targets (filter state is kept on a knob move: the mixes and level glide over 10 ms); the process case runs per sample in the SFX loop; state initialised in `px_engine_init` and whenever the SFX type or its on/off changes; `SFX_DB` trim 0 dB; LOUDER reads in dB and TONE as WARM / BOTH / BRIGHT. MIDI model slices and the editor count live types generically.
-Tests (`tests/engine/enhance_test.c`, in `tests/run_tests.sh`): the catalogue and its text; unity at BETTER 0 / LOUDER 0; silence; WARM's second harmonic (-16..-11 dB re the note at BETTER 100), the same 20 dB lower, the fundamental untouched, nothing at 4 kHz; PRESENCE's lift and its level independence, nothing below 400 Hz; TONE 100 adds no second harmonic to a pure low note; LOUDER +12 dB; finite and bounded on a full-scale square, 3x full scale and noise; the chord difference tone held down; no click on switching or a knob jump; a stored APPLAUSE still bypassed.
+`engine/px_enhance.h`; `PX_SFX_ENHANCE` after `PX_SFX_APPLAUSE` (ids unchanged); catalogue BETTER / LOUDER. Tests (`tests/engine/enhance_test.c`, in `tests/run_tests.sh`): catalogue and text, unity, silence, clean below the knee, H2 range and H2 dominating H3, falling gain, H2 rising with BETTER, no DC, LOUDER +12 dB, bounded on square / 3x / noise, no click on switching or a knob jump, stored APPLAUSE bypassed. Study tools: `tests/enhance_sim.mjs` + `tests/enhance_sim_measure.py` (the simulator's engine on the bundled loops), `tests/enhance_reamp.py` (re-amp A/B on the pedal; its selftest targets the v3 renderer).
 
 ## Open (needs ears and the pedal)
-1. **Listening**: do WARM, BRIGHT and BOTH sound like "presence and warmth without distorting"; the right amounts and the BETTER law; whether BETTER 35 is a good default; whether hard chords at high BETTER are congested.
-2. **Aliasing**: the presence clip generates harmonics up to its 10 kHz low-pass; at 44.1 kHz a little can alias. A 2x oversampled clip is the fix if it is audible.
-3. **Dynamics**: the manufacturer's "tighter pick attack" and the BBE's dynamic high band suggest an envelope-controlled side-path gain (more on transients, less on sustain); not in v3. The transient-discriminate generator (US 5,424,488) is the model.
-4. **CPU on the BlackBox** (`node tools/op.mjs dsp`): not measured.
-5. A real Better Box measurement (DI through a unit, bypassed and engaged) would say what that pedal actually adds; v3 is a design from the datasheet, the patents and reviews, not a copy.
+1. Everything above is a guess: detector mix, times, knee, slope. The only real Better Box audio is the owner's earlier clips (no clean on/off); a capture or DI A/B of a real unit would fit them.
+2. Knee in engine units: guitar peaks about 0.14 or 0.07 (unresolved), which moves the knee by 6 dB.
+3. A BETTER that moves the detector mix (even/odd balance) is a guess; v4 uses it only for amount.
+4. CPU on the BlackBox (`node tools/op.mjs dsp`): not measured.

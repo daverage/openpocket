@@ -10,7 +10,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = process.argv[2]; if (!out) { console.error("usage: node tests/enhance_sim.mjs OUTDIR"); process.exit(2); }
 mkdirSync(out, { recursive: true });
 const SFX = 4, ENHANCE = 9;                                  // block index of SFX; PX_SFX_ENHANCE
-const settings = { off: null, warm35: [35, 0, 0], both35: [35, 0, 50], bright35: [35, 0, 100], warm100: [100, 0, 0], both100: [100, 0, 50], bright100: [100, 0, 100], warm100_louder3: [100, 3, 0], both100_louder3: [100, 3, 50], bright100_louder3: [100, 3, 100] };
+const settings = { off: null, better35: [35, 0], better70: [70, 0], better100: [100, 0], better100_louder3: [100, 3] };
 const module = engineModule();
 const { loops } = JSON.parse(readFileSync(join(ROOT, "assets/loops/manifest.json")));
 for (const loop of loops) {
@@ -19,7 +19,7 @@ for (const loop of loops) {
   for (const [name, par] of Object.entries(settings)) {
     const on = Array(9).fill(0), type = Array(9).fill(0), p = Array.from({ length: 9 }, () => [0, 0, 0, 0, 0]);
     p[0][2] = 50;                                          // the preset level: 0 dB
-    if (par) { on[SFX] = 1; type[SFX] = ENHANCE; p[SFX] = [...par, 0, 0]; }
+    if (par) { on[SFX] = 1; type[SFX] = ENHANCE; p[SFX] = [...par, 0, 0, 0]; }
     const engine = new PxEngine(module); engine.factory(0); engine.volume(100);
     engine.preset(presetBytes({ name: "ENH TEST", on, type, p, order: [0, 1, 2, 3, 4, 5, 6, 7, 8] }));
     writeFileSync(join(out, `${loop.file.replace(".wav", "")}__${name}.wav`), wavBytes(run(engine, input)));

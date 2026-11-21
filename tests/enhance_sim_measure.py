@@ -10,7 +10,7 @@ def bands(s, sr):
     P = np.abs(np.fft.rfft(s * np.hanning(len(s)))) ** 2; fr = np.fft.rfftfreq(len(s), 1 / sr); tot = P[(fr > 60) & (fr < 16000)].sum()
     return np.array([10 * np.log10(P[(fr >= a) & (fr < b)].sum() / tot + 1e-14) for a, b in ((60, 150), (150, 400), (400, 1200), (1200, 2400), (2400, 4800), (4800, 9600))])
 out = sys.argv[1]; loops = sys.argv[2:] or ['chords', 'arpeggio', 'chug', 'riff', 'lead']
-order = ['warm35', 'both35', 'bright35', 'warm100', 'both100', 'bright100', 'warm100_louder3', 'both100_louder3', 'bright100_louder3']
+order = ['better35', 'better70', 'better100', 'better100_louder3']
 for loop in loops:
     off, sr = sf.read(f'{out}/{loop}__off.wav', dtype='float64'); l0 = lufs(f'{out}/{loop}__off.wav'); pk0 = 20 * np.log10(np.abs(off).max()); b0 = bands(off, sr)
     e = np.sqrt(np.convolve(off ** 2, np.ones(441) / 441, 'same')); act = e > 10 ** (-50 / 20)
