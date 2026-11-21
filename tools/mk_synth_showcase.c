@@ -17,7 +17,6 @@ static const spec S[] = {
  {"STRING ENSEMB","chords",{{PX_B_SYN,PX_SYN_ENSEMBLE,{15,15,50,50,50}},{PX_B_REVERB,PX_REV_HALL,{55,50,30,0,0}},E,E,E,E}},
  {"CHOIR AAH","chords",{{PX_B_SYN,PX_SYN_CHOIR,{5,50,50,50,50}},{PX_B_REVERB,PX_REV_CATHEDRAL,{60,45,30,0,0}},E,E,E,E}},
  {"BRASS + SQ HQ","lead",{{PX_B_SYN,PX_SYN_ENSEMBLE,{25,45,50,50,50}},{PX_B_SFX,PX_SFX_SYNTH_HQ,{40,30,60,30,0}},{PX_B_REVERB,PX_REV_PLATE,{35,50,18,0,0}},E,E,E}},
- {"STADIUM ROAR","chords",{{PX_B_SFX,PX_SFX_APPLAUSE,{100,70,40,100,0}},{PX_B_REVERB,PX_REV_HALL,{40,50,12,0,0}},E,E,E,E}},
 };
 static float *rd(const char*fn,int*n){FILE*f=fopen(fn,"rb");fseek(f,0,SEEK_END);long sz=ftell(f);fseek(f,44,SEEK_SET);*n=(sz-44)/2;short*s=malloc(*n*2);fread(s,2,*n,f);fclose(f);float*x=malloc(*n*4);for(int i=0;i<*n;i++)x[i]=s[i]/32768.f;return x;}
 int main(int argc,char**argv){

@@ -491,11 +491,10 @@ static const char *const PN_CRUSH[] = {"BITS", "SR DIV", "MIX"};
 static const char *const PN_SLICE[] = {"RATE", "DEPTH", "PATTERN"};
 static const char *const PN_LOFI[] = {"TONE", "DRIVE", "MIX"};
 static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
-static const char *const PN_APP[] = {"ROOM", "CROWD", "WAVES", "MIX"};
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"APPLAUSE", 4, PN_APP}};
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}};   /* APPLAUSE: retired tombstone */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -517,7 +516,7 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ENSEMBLE", 5, PN_ENSEMBLE},
     {"CHOIR", 5, PN_CHOIR},
 };
-int px_type_retired(int b, int t) { return b == PX_B_SYN && !px_syn_runs(t); }
+int px_type_retired(int b, int t) { return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && t == PX_SFX_APPLAUSE); }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
 int px_live_type(int b, int i)
 {
@@ -727,7 +726,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 0) { put_int(buf, 16 - (int)(x * 14.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
-        if (t == PX_SFX_APPLAUSE && k == 0) { static const char *const RN[5] = {"PUB", "HALL", "CHURCH", "ARENA", "STADIUM"}; put_str(buf, RN[(int)(x * 4.99f)]); return 1; }
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
         break;
     case PX_B_EQ:
@@ -811,7 +809,6 @@ static const fact_spec FACT[] = {
     {"STRING ENSEMB", {{PX_B_SYN, PX_SYN_ENSEMBLE, {15, 15, 50, 50, 50}}, {PX_B_REVERB, PX_REV_HALL, {55, 50, 30, 0, 0}}, FE}},
     {"CHOIR AAH",     {{PX_B_SYN, PX_SYN_CHOIR, {5, 50, 50, 50, 50}}, {PX_B_REVERB, PX_REV_CATHEDRAL, {60, 45, 30, 0, 0}}, FE}},
     {"BRASS + SQ HQ", {{PX_B_SYN, PX_SYN_ENSEMBLE, {25, 45, 50, 50, 50}}, {PX_B_SFX, PX_SFX_SYNTH_HQ, {40, 30, 60, 30, 0}}, {PX_B_REVERB, PX_REV_PLATE, {35, 50, 18, 0, 0}}}},
-    {"STADIUM ROAR",  {{PX_B_SFX, PX_SFX_APPLAUSE, {100, 70, 40, 100, 0}}, {PX_B_REVERB, PX_REV_HALL, {40, 50, 12, 0, 0}}, FE}},
 };
 void px_preset_factory(px_preset_t *p, int idx)
 {
@@ -1034,30 +1031,7 @@ static void rc_sfx(px_engine *e)
         e->sfx_c = 1.0f + f01(q[1]) * 8.0f;
         e->sfx_mix = f01(q[2]);
         break;
-    case PX_SFX_APPLAUSE: {                            /* a crowd that answers the guitar. ROOM: PUB, HALL, CHURCH, ARENA, STADIUM (near rooms: bright, distinct claps; far rooms: dark, soft, diffuse) */
-        static const float PEOPLE[5] = {35.0f, 110.0f, 80.0f, 350.0f, 800.0f};   /* claps a second at CROWD noon (the background's share is most of it in a big room) */
-        static const float CLAP_MS[5] = {3.5f, 5.0f, 6.0f, 8.0f, 11.0f};         /* a clap's length (distance blurs it) */
-        static const float RT[5] = {0.45f, 1.6f, 3.6f, 2.6f, 4.2f};              /* the room's decay, seconds */
-        static const float DIFF[5] = {0.25f, 0.5f, 0.7f, 0.6f, 0.75f};           /* the diffuse field's share */
-        static const float LPF[5] = {5200.0f, 4200.0f, 3000.0f, 3600.0f, 2300.0f};
-        static const float BRI[5] = {2400.0f, 2000.0f, 1500.0f, 1700.0f, 1200.0f};   /* the claps' band: near rooms bright, far ones dark */
-        static const float GDB[5] = {10.0f, 7.4f, 6.1f, 4.4f, 1.8f};
-        const int m = (int)(f01(q[0]) * 4.99f);
-        e->ap_dens = 0.7f * PEOPLE[m] * powf(8.0f, f01(q[1]) * 2.0f - 1.0f) / sr;      /* CROWD: x 1/8 .. x8 */
-        e->ap_cms = CLAP_MS[m];
-        e->ap_g = 0.3f * db2lin(GDB[m]) / sqrtf(0.25f + e->ap_dens * sr * CLAP_MS[m] * 0.001f * 1.4f);   /* the claps add as powers: a bigger crowd is not louder */
-        e->ap_fkr = onepole_k(sr, RT[m] * 0.145f);
-        e->ap_d = DIFF[m];
-        e->ap_bri = BRI[m];
-        e->ap_ncl = 2 + (int)(f01(q[1]) * 3.99f);                                      /* CROWD: 2..5 individual clappers */
-        e->ap_sw = f01(q[2]);                                                          /* WAVES: how much the crowd's intensity wanders */
-        e->ap_ka1 = onepole_k(sr, 0.001f); e->ap_kr1 = onepole_k(sr, 0.03f);           /* the trigger detector's two followers */
-        e->ap_ka2 = onepole_k(sr, 0.03f);  e->ap_kr2 = onepole_k(sr, 0.25f);
-        bq_highpass(&e->sfx_f1, sr, 650.0f, 0.7f);
-        bq_lowpass(&e->sfx_f2, sr, LPF[m], 0.7f);
-        e->sfx_mix = f01(q[3]);
-        if (e->ap_rng == 0) e->ap_rng = 0x2545F491u;
-    } break;
+    case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
     default:                                           /* square synth: square + sub through a swept low-pass */
         if (t == PX_SFX_SYNTH_HQ) {
             if (!e->sfx_track_active) {
@@ -1438,7 +1412,6 @@ void px_engine_init(px_engine *e, float sr)
 static void wl_clear(px_engine *e);
 void px_engine_set(px_engine *e, const px_preset_t *p)
 {
-    if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) e->ap_live = 0;   /* APPLAUSE: a switch of effect or a bypass disarms it and clears its voices */
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
@@ -2381,114 +2354,6 @@ int px_wet_run(px_engine *e, uint32_t deadline, volatile const uint8_t *stop)
     return 1;
 }
 
-/* ---- APPLAUSE: the guitar-triggered crowd (docs/APPLAUSE.md) ---- */
-static inline float ap_rnd(px_engine *e)
-{
-    uint32_t r = e->ap_rng; r ^= r << 13; r ^= r >> 17; r ^= r << 5; e->ap_rng = r;
-    return (float)(r >> 8) * (1.0f / 16777216.0f);
-}
-static void ap_reset(px_engine *e)                     /* enabling, a new preset, a switch to this type: silent, disarmed, until the guitar has been quiet */
-{
-    memset(e->ap_vc, 0, sizeof e->ap_vc);
-    e->ap_field = 0; e->ap_e1 = e->ap_e2 = e->ap_lvl = 0; e->ap_state = 0; e->ap_armed = 0; e->ap_t = e->ap_dur = 0;
-    e->ap_qual = e->ap_quiet = 0; e->ap_act = 0; e->ap_wv = e->ap_wt = 0; e->ap_wn = 0;
-    bq_reset(&e->sfx_f1); bq_reset(&e->sfx_f2);
-    e->ap_live = 1;
-}
-static void ap_clap(px_engine *e, float amp)           /* one hand clap: the quietest voice is taken if all are busy */
-{
-    int i = 0; float lo = 1e9f;
-    for (int v = 0; v < 12; v++) { if (!e->ap_vc[v].on) { i = v; break; } if (e->ap_vc[v].env < lo) { lo = e->ap_vc[v].env; i = v; } }
-    float fc = e->ap_bri * (0.55f + 1.3f * ap_rnd(e));  /* each clap its own colour */
-    float f = 6.2832f * fc / e->sr; if (f > 0.8f) f = 0.8f;
-    const float ms = e->ap_cms * (0.6f + 0.9f * ap_rnd(e));
-    const float q = 0.25f + 0.5f * ap_rnd(e);          /* damping: Q 2..4, a resonant peak */
-    const int two = ap_rnd(e) < 0.65f;                 /* hands that touch twice */
-    const float dly = 0.004f + 0.012f * ap_rnd(e);
-    px_ap_voice_t *v = &e->ap_vc[i];
-    v->env += amp; v->f = f; v->q = q; v->k = expf(-1.0f / (ms * 0.001f * e->sr));
-    v->d2 = two ? (int)(dly * e->sr) : 0; v->a2 = amp * 0.6f; v->on = 1;
-}
-/* one sample of the dry guitar in; one of the crowd out (0 when nothing is playing) */
-static float ap_tick(px_engine *e, float dry)
-{
-    const float sr = e->sr;
-    /* the trigger: a fast and a slow follower of the dry guitar; an attack = above the threshold and well above the slow one, for 3 ms,
-     * only when armed (the guitar was quiet for 60 ms); one event at a time; the guitar ringing when enabled never triggers */
-    { const float a = px_abs(dry);
-      e->ap_e1 += (a - e->ap_e1) * (a > e->ap_e1 ? e->ap_ka1 : e->ap_kr1);
-      e->ap_e2 += (a - e->ap_e2) * (a > e->ap_e2 ? e->ap_ka2 : e->ap_kr2);
-      if (e->ap_e1 < 0.008f) { if (++e->ap_quiet >= (int)(0.06f * sr)) e->ap_armed = 1; } else e->ap_quiet = 0;
-      if (e->ap_armed && e->ap_e1 > 0.02f && e->ap_e1 > 1.6f * e->ap_e2) {
-          if (++e->ap_qual >= (int)(0.003f * sr)) {
-              e->ap_armed = 0; e->ap_qual = 0;
-              if (e->ap_state == 0) {
-                  e->ap_state = 1; e->ap_t = 0; e->ap_dur = (int)((0.05f + 0.1f * ap_rnd(e)) * sr);   /* the audience reacts */
-                  for (int i = 0; i < 6; i++) {
-                      e->ap_per[i] = sr / (2.2f + 1.4f * ap_rnd(e));         /* each person's own speed */
-                      e->ap_next[i] = e->ap_per[i] * ap_rnd(e); e->ap_cam[i] = 0.5f + 0.5f * ap_rnd(e);
-                  }
-              }
-          }
-      } else e->ap_qual = 0;
-    }
-    if (e->ap_state == 0 && e->ap_act == 0 && e->ap_field < 1e-5f) { e->ap_field = 0; return 0.0f; }   /* nothing: nothing to compute */
-    /* the event's envelope */
-    if (e->ap_state) {
-        if (++e->ap_t >= e->ap_dur) {
-            e->ap_t = 0; e->ap_state++;
-            if (e->ap_state == 2) e->ap_dur = (int)(0.9f * sr);
-            else if (e->ap_state == 3) e->ap_dur = (int)((2.0f + 0.6f * ap_rnd(e)) * sr);
-            else if (e->ap_state == 4) e->ap_dur = (int)(1.3f * sr);
-            else { e->ap_state = 0; e->ap_lvl = 0; }
-        }
-        const float u = (float)e->ap_t / (float)(e->ap_dur ? e->ap_dur : 1);
-        switch (e->ap_state) {
-        case 1: e->ap_lvl = 0; break;
-        case 2: e->ap_lvl = u * u * (3.0f - 2.0f * u); break;
-        case 3: e->ap_lvl = 1.0f; break;
-        case 4: { const float w = 1.0f - u; e->ap_lvl = w * w * (3.0f - 2.0f * w); } break;
-        default: break;
-        }
-    }
-    /* WAVES: the crowd's intensity wanders (a random target every 0.2-0.5 s, smoothed: never periodic) */
-    if (--e->ap_wn <= 0) { e->ap_wn = (int)((0.2f + 0.3f * ap_rnd(e)) * sr); e->ap_wt = ap_rnd(e); }
-    e->ap_wv += (e->ap_wt - e->ap_wv) * (1.0f / (0.25f * sr));
-    const float L = e->ap_lvl * (1.0f - e->ap_sw * 0.6f * e->ap_wv);
-    if (e->ap_state && !(e->ap_state == 4 && e->ap_t > (int)(0.85f * (float)e->ap_dur)) && L > 0.0f) {
-        /* the individual clappers: each joins as the crowd builds and leaves as it fades; their speeds drift */
-        for (int i = 0; i < e->ap_ncl; i++) {
-            if (--e->ap_next[i] <= 0.0f) {
-                e->ap_per[i] *= 0.97f + 0.06f * ap_rnd(e);
-                if (e->ap_per[i] < sr * 0.22f) e->ap_per[i] = sr * 0.22f; else if (e->ap_per[i] > sr * 0.5f) e->ap_per[i] = sr * 0.5f;
-                e->ap_next[i] += e->ap_per[i] * (0.9f + 0.2f * ap_rnd(e));
-                if (L > 0.12f + 0.6f * (float)i / (float)e->ap_ncl) ap_clap(e, e->ap_cam[i] * (0.55f + 0.45f * ap_rnd(e)) * (0.4f + 0.6f * L));
-            }
-        }
-        /* the background: the rest of the people, unrelated claps */
-        if (ap_rnd(e) < e->ap_dens * L * L) { const float u = ap_rnd(e); ap_clap(e, (0.25f + 0.75f * u * u) * (0.5f + 0.5f * L)); }
-    }
-    /* the voices */
-    uint32_t r = e->ap_rng; r ^= r << 13; r ^= r >> 17; r ^= r << 5; e->ap_rng = r;
-    const float n = (float)(int32_t)r * (1.0f / 2147483648.0f);
-    float sum = 0.0f, act = 0.0f; int live = 0;
-    for (int i = 0; i < 12; i++) {
-        if (!e->ap_vc[i].on) continue;
-        float env = e->ap_vc[i].env * e->ap_vc[i].k;
-        if (e->ap_vc[i].d2 > 0 && --e->ap_vc[i].d2 == 0) env += e->ap_vc[i].a2;
-        const float hp = n - e->ap_vc[i].lp - e->ap_vc[i].q * e->ap_vc[i].bp;
-        e->ap_vc[i].bp += e->ap_vc[i].f * hp; e->ap_vc[i].lp += e->ap_vc[i].f * e->ap_vc[i].bp;
-        sum += (e->ap_vc[i].bp * 1.4f + hp * 0.5f * env) * env;
-        act += env;
-        if (env < 1e-3f && e->ap_vc[i].d2 == 0) { e->ap_vc[i].on = 0; e->ap_vc[i].env = 0; e->ap_vc[i].lp = e->ap_vc[i].bp = 0; } else { e->ap_vc[i].env = env; live++; }
-    }
-    e->ap_act = live;
-    e->ap_field += (act - e->ap_field) * (act > e->ap_field ? 0.002f : e->ap_fkr);
-    if (e->ap_field < 1e-5f && !live) e->ap_field = 0.0f;
-    const float nf = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, n));                 /* the room's diffuse field */
-    return (1.0f - e->ap_d) * sum + e->ap_d * 1.2f * e->ap_field * nf;
-}
-
 /* OpenPocket Synth: one pass over the chain, block by block (part: PX_PART_ALL only). */
 PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int part)
 {
@@ -2509,6 +2374,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         int b = e->ord[i];
         if (b != PX_B_GATE && !p->on[b]) continue;
         if (b == PX_B_SYN && !px_syn_runs(syn_t)) continue;   /* Synth2: a retired SYNTH type is bypassed (docs/research/synth2/SYNTH2-PLAN.md) */
+        if (b == PX_B_SFX && sfx_t == PX_SFX_APPLAUSE) continue;   /* APPLAUSE was removed: a stored one is bypassed, its settings kept */
         tr[ns] = e->btr[b];
         st[ns++] = (uint8_t)b;
     }
@@ -2529,9 +2395,6 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     float sy[PX_MAX_BLOCK];
     const int syn2 = p->on[PX_B_SYN] && px_syn_mono(syn_t);
     if (syn2) px_synth_run(e, xb, sy, n);
-    float apd[PX_MAX_BLOCK];                           /* APPLAUSE: the dry guitar, before any block: the trigger ignores the chain and the mix */
-    if (p->on[PX_B_SFX] && sfx_t == PX_SFX_APPLAUSE) { if (!e->ap_live) ap_reset(e); memcpy(apd, xb, sizeof(float) * (size_t)n); }
-    else e->ap_live = 0;
     for (int s = 0; s < ns; s++) {
         const int sblk = st[s];
         const float strim = tr[s];
@@ -2725,10 +2588,6 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     e->sfx_g += (tg - e->sfx_g) * e->sfx_a;
                     if (e->sfx_g < 1e-6f) e->sfx_g = 0.0f;
                     x *= e->sfx_g;
-                } break;
-                case PX_SFX_APPLAUSE: {
-                    const float cr = ap_tick(e, apd[k]);
-                    x = x * (1.0f - e->sfx_mix) + px_tanh(cr * e->ap_g) * e->sfx_mix;      /* MIX 100: the crowd alone, no guitar */
                 } break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));

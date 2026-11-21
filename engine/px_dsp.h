@@ -41,7 +41,7 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_LOWEST_HQ,
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
-       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_COUNT };   /* APPLAUSE (v80?): a synthesised crowd, five rooms; it does not follow the guitar */
+       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it */
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
@@ -143,7 +143,6 @@ typedef struct {
 #define PX_RV_M 16384                  /* reverb memory: one 16-bit ring (32 KB) at half rate, laid out per type */
 #define PX_GL_MAX 64                   /* v38: the most settings that glide (px_dsp.c: GL_F) */
 
-typedef struct { float env, k, a2, f, q, lp, bp; int d2, on; } px_ap_voice_t;   /* an APPLAUSE clap voice */
 typedef struct {
     float sr;
     px_preset_t cur;
@@ -174,13 +173,6 @@ typedef struct {
     int   sfx_pat, crush_n, crush_k; float crush_v, crush_q;
     px_bq sfx_f1, sfx_f2;
     px_synth_tracking sfx_track;
-    /* APPLAUSE (v80?): a guitar-triggered crowd. The detector reads the dry guitar; IDLE -> REACTION -> BUILD -> SUSTAIN -> DECAY -> IDLE;
-     * 12 clap voices (a resonant band, a sharp impact, a second hand contact), 6 individual clappers and a stochastic background */
-    uint32_t ap_rng; float ap_field, ap_dens, ap_cms, ap_fkr, ap_d, ap_sw, ap_g, ap_bri;
-    float ap_ka1, ap_kr1, ap_ka2, ap_kr2, ap_e1, ap_e2, ap_lvl, ap_wv, ap_wt;
-    int   ap_live, ap_state, ap_armed, ap_t, ap_dur, ap_qual, ap_quiet, ap_wn, ap_ncl, ap_nq, ap_qn, ap_act;
-    float ap_next[6], ap_per[6], ap_cam[6];
-    px_ap_voice_t ap_vc[12];
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
