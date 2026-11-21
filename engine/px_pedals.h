@@ -241,7 +241,7 @@ static inline float pxp_lerp_tab(const float *xs, const float *ys, int n, float 
 }
 static inline void pxp_bbe_init(px_bbe *b, float sr)
 {
-    *b = (px_bbe){0};
+    { unsigned char *z = (unsigned char *)b; for (unsigned k = 0; k < sizeof *b; k++) z[k] = 0; }
     for (int k = 0; k < 2; k++) { pxp_bq_design(&b->lp1[k], 0, 258.0f, sr); pxp_bq_design(&b->hp1[k], 1, 258.0f, sr); pxp_bq_design(&b->lp2[k], 0, 1821.0f, sr); pxp_bq_design(&b->hp2[k], 1, 1821.0f, sr); }
     b->nl = (int)(0.001362f * sr + 0.5f); b->nm = (int)(0.000589f * sr + 0.5f); if (b->nl > 127) b->nl = 127; if (b->nm > 63) b->nm = 63;
     b->gl = b->gl_t = b->gm = b->gm_t = b->gh = b->gh_t = 1.0f; b->mix = b->mix_t = 0.0f; b->kglide = 1.0f - expf(-1.0f / (sr * 0.010f));
