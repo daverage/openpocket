@@ -1,0 +1,97 @@
+recording,t_ms,action,pitch_midi,string,fret,expected_event,confidence,timing_basis,end_pitch_midi,duration_ms,notes
+bleep3_di,731.9,PICK,40,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 9 dB, ring 2.71, pitch None->82.0, decay 9.56"
+bleep3_di,761.7,PICK,40,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 21 dB, ring 3.64, pitch None->82.0, decay 0.77"
+bleep3_di,764.4,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,819.2,PALM_MUTE_PICK,40,,,NOTE_ON,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 2 dB, ring 1.69, pitch 82.9->82.0, decay 0.16"
+bleep3_di,862.1,NOISE,,,,NONE,0.3,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 2 dB, ring 1.28, pitch 82.0->165.8, decay 1.09"
+bleep3_di,906.0,PICK,52,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 29 dB, ring 0.78, pitch 82.0->164.9, decay 1.15"
+bleep3_di,952.9,PICK,52,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 13 dB, ring 0.16, pitch 82.0->164.9, decay 0.39"
+bleep3_di,1079.7,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,1152.5,PICK,50,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 19 dB, ring 0.09, pitch 165.4->146.9, decay 0.48"
+bleep3_di,1297.2,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,1357.0,PICK,52,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 14 dB, ring 0.13, pitch 146.0->163.9, decay 0.51"
+bleep3_di,1590.1,PICK,55,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 15 dB, ring 0.53, pitch 163.9->194.9, decay 0.48"
+bleep3_di,1781.1,PICK,52,,,NOTE_ON,0.4,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 16 dB, ring 0.78, pitch 194.9->163.9, decay 0.80"
+bleep3_di,1908.7,REPICK,52,,,REPICK,0.65,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 21 dB, ring 0.38, pitch 164.9->163.9, decay 0.52"
+bleep3_di,2004.6,NOISE,,,,NONE,0.3,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 4 dB, ring 0.70, pitch 148.2->164.9, decay 0.73"
+bleep3_di,2096.3,PICK,50,,,NOTE_ON,0.4,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 19 dB, ring 0.32, pitch 164.9->150.3, decay 0.90"
+bleep3_di,2115.3,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,2183.1,PICK,50,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 8 dB, ring 0.13, pitch 165.4->146.9, decay 1.54"
+bleep3_di,2460.5,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,2467.5,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst -3 dB, ring 1.15, pitch 82.0->81.5, decay 0.51"
+bleep3_di,2618.2,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,2680.4,PICK,52,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 24 dB, ring 0.27, pitch 82.0->163.9, decay 0.38"
+bleep3_di,2807.7,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,2895.7,PICK,50,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 26 dB, ring 0.24, pitch 166.8->146.9, decay 0.34"
+bleep3_di,3033.2,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,3125.6,PICK,52,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 24 dB, ring 0.24, pitch 146.0->164.9, decay 0.57"
+bleep3_di,3343.8,PICK,47,,,NOTE_ON,0.4,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 20 dB, ring 0.26, pitch 157.9->120.3, decay 0.47"
+bleep3_di,3344.5,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,3520.1,NOISE,,,,NONE,0.3,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 3 dB, ring 0.73, pitch 124.2->146.9, decay 1.37"
+bleep3_di,3641.2,PICK,47,,,NOTE_ON,0.4,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 17 dB, ring 0.52, pitch 146.9->122.8, decay 0.51"
+bleep3_di,3834.4,PALM_MUTE_PICK,45,,,NOTE_ON,0.4,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 26 dB, ring 0.67, pitch 122.8->108.8, decay 0.13"
+bleep3_di,3975.7,PULL_OFF,43,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 10 dB, ring 0.23, pitch 108.8->97.5, decay 0.80"
+bleep3_di,4204.5,PULL_OFF,40,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 6 dB, ring 0.50, pitch 97.5->81.5, decay 0.98"
+bleep3_di,4210.5,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,4366.2,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,4434.5,PICK,52,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 21 dB, ring 0.21, pitch 82.0->164.9, decay 0.31"
+bleep3_di,4543.8,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,4640.2,PICK,50,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 30 dB, ring 0.13, pitch None->146.0, decay 0.36"
+bleep3_di,4763.3,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,4871.2,PICK,52,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 27 dB, ring 0.14, pitch None->164.9, decay 0.26"
+bleep3_di,5111.2,PICK,55,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 25 dB, ring 0.52, pitch 162.5->194.9, decay 0.45"
+bleep3_di,5319.5,PICK,52,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 25 dB, ring 0.56, pitch 194.9->163.0, decay 0.75"
+bleep3_di,5433.7,REPICK,52,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 12 dB, ring 0.29, pitch 163.9->164.4, decay 0.91"
+bleep3_di,5672.4,PULL_OFF,50,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 5 dB, ring 0.30, pitch 164.9->146.9, decay 1.21"
+bleep3_di,5735.5,PICK,50,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 14 dB, ring 0.70, pitch 162.0->146.0, decay 0.66"
+bleep3_di,6015.5,REPICK,52,,,REPICK,0.65,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 23 dB, ring 0.54, pitch 164.9->164.9, decay 0.63"
+bleep3_di,6350.7,PICK,50,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 20 dB, ring 1.02, pitch 122.8->146.0, decay 0.51"
+bleep3_di,6643.0,NOISE,,,,NONE,0.3,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 3 dB, ring 0.93, pitch 108.2->98.0, decay 0.62"
+bleep3_di,6891.4,PICK,45,,,NOTE_ON,0.4,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 13 dB, ring 0.77, pitch 96.9->109.1, decay 0.60"
+bleep3_di,7118.9,HAMMER_ON,45,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 0 dB, ring 0.90, pitch 96.9->110.7, decay 0.75"
+bleep3_di,7382.3,PULL_OFF,43,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 10 dB, ring 0.46, pitch 110.0->97.5, decay 0.84"
+bleep3_di,7634.7,PICK,40,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 15 dB, ring 0.72, pitch 101.5->82.0, decay 0.97"
+bleep3_di,7638.8,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,7798.4,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+bleep3_di,7929.1,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 5 dB, ring 0.72, pitch 81.5->82.4, decay 0.90"
+bleep3_di,7988.9,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst -2 dB, ring 1.30, pitch 82.9->82.0, decay 0.83"
+bleep3_di,8037.8,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst -2 dB, ring 0.99, pitch 82.4->82.0, decay 0.82"
+bleep3_di,8079.7,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 1 dB, ring 0.97, pitch 82.4->82.0, decay 0.85"
+bleep3_di,8123.6,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 0 dB, ring 0.79, pitch 82.0->81.5, decay 0.82"
+bleep3_di,8166.5,REPICK,40,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst -0 dB, ring 0.93, pitch 82.0->81.5, decay 0.86"
+fast_play_di,1406.6,PICK,55,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 24 dB, ring 1.46, pitch None->193.8, decay 0.56"
+fast_play_di,2195.2,PICK,43,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 2 dB, ring 3.02, pitch None->97.5, decay 1.09"
+fast_play_di,2418.9,HAMMER_ON,48,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 10 dB, ring 0.41, pitch 110.0->130.1, decay 0.81"
+fast_play_di,2542.3,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,2593.5,REPICK,50,,,REPICK,0.55,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 18 dB, ring 0.45, pitch 146.0->146.0, decay 0.72"
+fast_play_di,2841.5,PICK,55,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 13 dB, ring 0.94, pitch 163.9->194.9, decay 0.53"
+fast_play_di,3002.3,HAMMER_ON,57,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 6 dB, ring 0.61, pitch 194.9->220.1, decay 0.41"
+fast_play_di,3091.1,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,3148.5,PICK,60,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 20 dB, ring 0.28, pitch 220.1->260.2, decay 0.56"
+fast_play_di,3309.9,PICK,62,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 17 dB, ring 0.50, pitch 260.2->292.1, decay 0.35"
+fast_play_di,3412.4,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,3469.2,PICK,63,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 12 dB, ring 0.16, pitch 290.4->319.4, decay 0.45"
+fast_play_di,3800.1,PULL_OFF,57,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 8 dB, ring 0.79, pitch 293.8->220.1, decay 0.39"
+fast_play_di,3972.9,PICK,60,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 23 dB, ring 0.65, pitch 219.4->261.7, decay 0.47"
+fast_play_di,4156.3,PICK,57,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 16 dB, ring 0.91, pitch 260.2->220.1, decay 0.47"
+fast_play_di,4346.2,PULL_OFF,52,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 5 dB, ring 0.74, pitch 208.1->163.9, decay 0.64"
+fast_play_di,4502.0,PICK,55,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 19 dB, ring 0.60, pitch 163.9->194.9, decay 0.71"
+fast_play_di,4669.5,PICK,51,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 13 dB, ring 0.52, pitch 194.9->156.5, decay 0.36"
+fast_play_di,4915.6,PICK,48,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 20 dB, ring 0.61, pitch 147.7->130.9, decay 0.76"
+fast_play_di,5052.6,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,5090.5,HAMMER_ON,50,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst -0 dB, ring 0.35, pitch 130.9->146.0, decay 0.68"
+fast_play_di,5255.4,PICK,51,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 19 dB, ring 0.44, pitch 146.0->154.7, decay 0.72"
+fast_play_di,5535.5,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,5589.4,NOISE,,,,NONE,0.3,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst -1 dB, ring 0.23, pitch 130.9->146.0, decay 0.68"
+fast_play_di,5779.2,PICK,48,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 18 dB, ring 0.33, pitch 144.4->130.9, decay 0.80"
+fast_play_di,6226.9,PULL_OFF,40,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 8 dB, ring 0.40, pitch 109.4->81.5, decay 1.36"
+fast_play_di,6348.7,PICK,43,,,NOTE_ON,0.7,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 20 dB, ring 0.99, pitch 81.5->97.5, decay 0.41"
+fast_play_di,6497.3,NOISE,,,,NONE,0.3,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 5 dB, ring 0.34, pitch 97.5->130.9, decay 1.28"
+fast_play_di,6573.7,HAMMER_ON,48,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 8 dB, ring 0.59, pitch 109.4->130.9, decay 0.76"
+fast_play_di,6762.7,HAMMER_ON,50,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 11 dB, ring 0.59, pitch 130.1->146.0, decay 0.58"
+fast_play_di,7052.1,PICK,50,,,NOTE_ON,0.6,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 18 dB, ring 0.61, pitch 163.9->147.7, decay 0.55"
+fast_play_di,7263.6,PULL_OFF,48,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 5 dB, ring 0.54, pitch 147.7->130.9, decay 0.91"
+fast_play_di,7546.9,PULL_OFF,45,,,LEGATO_CHANGE,0.5,spectrogram,,,"DRAFT (machine-assisted, not listened to): burst 5 dB, ring 0.79, pitch 138.6->109.4, decay 0.81"
+fast_play_di,7551.0,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,7724.6,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms
+fast_play_di,7878.2,HARD_MUTE,,,,DAMP,0.5,waveform,,,DRAFT: level fell >= 20 dB within 40 ms

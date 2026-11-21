@@ -83,3 +83,17 @@ The 42 fast picks show IDMT cannot test the fast stratum. The dead-note result i
 1. **Label `bleep3 di.wav` and `fast play di.wav`** with the v1 format (`labels_import.py draft` gives 51 and 31 onset candidates to correct; plain energy-rise detector, not the tracker). They are the user's real fast material and cost no recording. A labelled version of bleep3 would also test the swallowed-note hypothesis directly.
 2. **Record the protocol's E04, E07, E08 and E01 sets** (legato, hard mutes, noise, fast alternate picking). Without them the picked/legato, mute-recovery and 12.5-24 notes/s questions cannot be scored.
 3. Then the pitch-aware onset study, with the post-pick-level feature (AUC 0.93) and the precursor class as the first things to test; then the full-rate YIN/MPM test on the semitone pre-settle errors.
+
+## 9. Draft annotation of `bleep3 di.wav` and `fast play di.wav` (machine-assisted, UNVERIFIED)
+Done by `draft_annotate.py` + `review_plots.py`; files in `tests/fasttrack/gt/own_draft/` (annotations only, no audio; the recordings point at local mono 24-bit copies of the left channel in `build/fasttrack/labelling/`).
+**What it is:** an annotator that cannot hear. Onsets: an energy-rise detector independent of the FastTrack tracker, refined to the first waveform rise. Pitch: librosa pYIN. Class: transparent rules on the signal (pluck burst in 2-8 kHz, level collapse, pitch jump with no pluck burst, decay speed; rules in the script header). I reviewed 6 zoomed waveform+spectrogram strips (3 of them in full for both clips' first 4.5 s): picks sit at sharp rises, damps at level collapses, and the possible hammer-ons/pull-offs at bumps with no pluck burst; I did not verify every event, did not hear anything, and a NOISE rule that fired on pitch-estimator failures was changed after review. All confidences are capped at 0.7; `complete_annotation=0`. **A person must confirm or correct these before they count as ground truth.**
+Content: bleep3 di 60 events (PICK 24, REPICK 10, HARD_MUTE 15, PULL_OFF 4, HAMMER_ON 1, PALM_MUTE_PICK 2, NOISE 4), fast play di 36 (PICK 15, HAMMER_ON 5, PULL_OFF 5, HARD_MUTE 8, REPICK 1, NOISE 2). The validator passes (0 errors, 4 warnings).
+Diagnostic scores against the draft (events with confidence >= 0.5 only; n = 44 pick-like, 6 hammer-ons, 9 pull-offs, 23 damps: far too few for any conclusion, and the labels are unverified):
+| | legacy CLASSIC (FOLLOW) | legacy, FOLLOW off | controller A |
+|---|---|---|---|
+| PICK found / REPICK found | 33 % / 9 % | 61 % / 45 % | 73 % / 45 % |
+| wrong-pitch attacks on picks | 6 % | 15 % | 24 % |
+| HAMMER_ON treated as a new note / legato event | 17 % / 0 % | 100 % / 0 % | 100 % / 0 % |
+| PULL_OFF treated as a new note / legato event | 22 % / 33 % | 78 % / 33 % | 100 % / 22 % |
+| HARD_MUTE: damp event | 48 % | 48 % | 52 % |
+Reading, with the caveat above: on the user's own fast playing the production chain with FOLLOW makes an envelope attack for about a third of the picks, which fits the "misses notes" report; the controller finds most picks but plays 24 % at a wrong pitch; none of the variants has a working hammer-on/pull-off path, and about half the damps release nothing. These are hints for what to label properly, not results.
