@@ -29,6 +29,12 @@
 #ifndef PXE_VOICE
 #define PXE_VOICE 1             /* default voicing: 0 A (reference), 1 B, 2 C */
 #endif
+#ifndef PXE_A2
+#define PXE_A2 0.068f           /* the quadratic (offset) coefficient: 5 mV equivalent in the research prototype, H2 = A2 x A / 2 of the cell input A */
+#endif
+#ifndef PXE_RIPPLE
+#define PXE_RIPPLE 0.04f        /* the rectifier-ripple gain modulation (third harmonic) */
+#endif
 #ifndef PXE_KNEE
 #define PXE_KNEE 1.5f           /* B/C: the soft limiter saturates at the virtual input level 1.0 (reached at 1.5 x the 0.5 reference, see pxe_soft) */
 #endif
@@ -80,8 +86,8 @@ static inline void pxe_init(px_enhance *s,float sr) {
     s->kpost=pxe_k(sr,1.0f/(6.2831853f*7000.f));
     s->kglide=pxe_k(sr,0.010f);
     s->level=s->level_target=1.f;
-    s->a2=0.068f; /* 5 mV equivalent; H2=1.7% at A=0.5 before filtering */
-    s->ripple=0.04f; /* intentionally weak VCA control modulation */
+    s->a2=PXE_A2; /* 5 mV equivalent; H2=1.7% at A=0.5 before filtering */
+    s->ripple=PXE_RIPPLE; /* intentionally weak VCA control modulation */
     s->kdiag=pxe_k(sr,0.3f); s->kpk=pxe_k(sr,0.5f);
     pxe_set_input(s,PXE_SENS,PXE_VOICE);
 }
