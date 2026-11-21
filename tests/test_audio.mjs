@@ -63,7 +63,9 @@ check("a preset change changes the spectrum", () => {
   const fuzz = engine(0), on = [1, 0, 0, 1, 0, 0, 0, 0, 0], type = [0, 0, 0, 16, 0, 0, 0, 0, 0];
   const p = Array.from({ length: 9 }, () => [10, 20, 50, 0, 0]); p[3] = [0, 0, 80, 50, 60];
   fuzz.preset(presetBytes({ name: "FUZZ", on, type, p, order: [0, 1, 2, 3, 4, 5, 6, 7, 8] }));
-  const clean = harmonics(tail(run(engine(0), IN)), 220), metal = harmonics(tail(run(fuzz, IN)), 220);
+  // the first factory slots show the synths (test builds 921/922), so the clean reference is built here: the same preset with the fuzz block off (the gate only)
+  const cleanEng = engine(0); cleanEng.preset(presetBytes({ name: "CLEAN", on: on.map((v, i) => (i === 3 ? 0 : v)), type, p, order: [0, 1, 2, 3, 4, 5, 6, 7, 8] }));
+  const clean = harmonics(tail(run(cleanEng, IN)), 220), metal = harmonics(tail(run(fuzz, IN)), 220);
   const share = (h) => h.slice(1).reduce((a, b) => a + b) / h[0];
   assert.ok(share(metal) > 3 * share(clean), `harmonics over fundamental: ${share(clean)} ${share(metal)}`);
 });

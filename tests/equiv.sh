@@ -13,7 +13,7 @@ CC="${CC:-cc}"
 B=build/equiv
 rm -rf "$B/ref"
 mkdir -p "$B/ref"
-git archive "$REF" engine firmware/px_math.c | tar -x -C "$B/ref"
+git archive "$REF" engine firmware/px_math.c third_party/felucca-engines third_party/felucca-host | tar -x -C "$B/ref"
 $CC -O2 -w -fno-builtin -ffp-contract=off -I"$B/ref/engine" -o "$B/ref-run" tests/engine/equiv.c "$B/ref/firmware/px_math.c" -lm
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -o "$B/new-run" tests/engine/equiv.c firmware/px_math.c -lm
 "$B/ref-run" > "$B/ref.txt"
