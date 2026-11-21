@@ -492,11 +492,13 @@ static const char *const PN_SLICE[] = {"RATE", "DEPTH", "PATTERN"};
 static const char *const PN_LOFI[] = {"TONE", "DRIVE", "MIX"};
 static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
 static const char *const PN_RM[] = {"VOLUME", "PICKUP"};   /* RANGEMASTER: the 10k log volume pot; PICKUP is the source (single coil 0 .. humbucker 100): engine/px_pedals.h */
+static const char *const PN_EP[] = {"GAIN", "VOICE"};   /* EP BOOST: the 500k log volume pot; VOICE is the source bypass (EARLY .. LATE .. FAT): engine/px_pedals.h */
+static const char *const PN_BBE[] = {"LO CONTOUR", "PROCESS"};   /* MAXIMIZER: the BBE process, fitted to the real unit: engine/px_pedals.h */
 static const char *const PN_ENH[] = {"BETTER", "LOUDER"};   /* ENHANCE v4: amount (harmonics + compression), clean boost 0..+12 dB: engine/px_enhance.h */
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}, {"RANGEMASTER", 2, PN_RM}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}, {"RANGEMASTER", 2, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -728,6 +730,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 0) { put_int(buf, 16 - (int)(x * 14.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
+        if (t == PX_SFX_EPBOOST && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "EARLY" : v < 67 ? "LATE" : "FAT"); return 1; }   /* VOICE */
         if (t == PX_SFX_RANGEMASTER && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "SINGLE" : v < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
         if (t == PX_SFX_ENHANCE && k == 1) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LOUDER in dB */
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
@@ -1036,6 +1039,8 @@ static void rc_sfx(px_engine *e)
         e->sfx_mix = f01(q[2]);
         break;
     case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
+    case PX_SFX_MAXIMIZER: pxp_bbe_set(&e->bbe, (float)q[0], (float)q[1]); break;   /* LO CONTOUR, PROCESS */
+    case PX_SFX_EPBOOST: pxp_ep_set(&e->ep, (float)q[0], (float)q[1], e->sr); break;   /* GAIN, VOICE */
     case PX_SFX_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1]); break;   /* VOLUME, PICKUP: the state is kept on a knob move (the volume glides) */
     case PX_SFX_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER, LOUDER; the filter state is kept on a knob move (the mixes glide over 10 ms) */
     default:                                           /* square synth: square + sub through a swept low-pass */
@@ -1412,14 +1417,14 @@ void px_engine_init(px_engine *e, float sr)
     e->oct_ff = 1.0f; e->oct_ff2 = 1.0f;
     e->dly_type = -1;
     e->syn_type = -1;
-    pxe_init(&e->enh, sr); pxp_rm_init(&e->rm, sr);
+    pxe_init(&e->enh, sr); pxp_rm_init(&e->rm, sr); pxp_ep_init(&e->ep, sr); pxp_bbe_init(&e->bbe, sr);
     px_preset_t p; px_preset_factory(&p, 0);
     px_engine_set(e, &p);
 }
 static void wl_clear(px_engine *e);
 void px_engine_set(px_engine *e, const px_preset_t *p)
 {
-    if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) { pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); }   /* ENHANCE, RANGEMASTER: entering or leaving the effect starts it from unity with clean filters (no stale state, no click: the mix and level glide) */
+    if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) { pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); pxp_ep_init(&e->ep, e->sr); pxp_bbe_init(&e->bbe, e->sr); }   /* ENHANCE, RANGEMASTER, EP BOOST, MAXIMIZER: entering or leaving the effect starts it from unity with clean filters (no stale state, no click: the mix and level glide) */
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
@@ -2602,6 +2607,12 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     break;
                 case PX_SFX_RANGEMASTER:
                     x = pxp_rm_tick(&e->rm, x);
+                    break;
+                case PX_SFX_EPBOOST:
+                    x = pxp_ep_tick(&e->ep, x);
+                    break;
+                case PX_SFX_MAXIMIZER:
+                    x = pxp_bbe_tick(&e->bbe, x);
                     break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));

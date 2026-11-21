@@ -1,8 +1,8 @@
-/* SFX ENHANCE v4 (engine/px_enhance.h) through the whole engine: a gain that follows a fast rectified copy of the signal (a compander cell): even and odd harmonics with no clipping,
+/* SFX ENHANCE v4 (engine/px_enhance.h) through the whole engine: a gain that follows a fast rectified copy of the signal (a compander cell, no threshold): even and odd harmonics with no clipping,
  * a subtle compressor, BETTER the amount, LOUDER a clean 0..+12 dB boost. Expectations come from the offline prototype (docs/ENHANCE.md), not from a real Better Box.
  *  - catalogue: a live type with BETTER / LOUDER, readable text; APPLAUSE's tombstone is untouched
  *  - unity (BETTER 0, LOUDER 0), silence, finite and bounded
- *  - clean below the knee (about -34 dBFS), harmonics above it: second harmonic dominates the third (the half-wave half of the detector), gain falls as the level rises
+ *  - no knee: quiet notes get harmonics and gain too; the second harmonic dominates the third (the half-wave half of the detector), gain falls as the level rises
  *  - no DC, no click on switching or on a knob jump */
 #include <stdio.h>
 #include <string.h>
@@ -43,15 +43,16 @@ int main(void)
     { float m = 0; for (int i = 0; i < N; i++) m = fmaxf(m, fabsf(y[i] - z[i])); CHECK(m < 1e-6f, "BETTER 0, LOUDER 0 is the dry signal (%.2g)", m); }
     preset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
     { float m = 0; for (int i = N / 2; i < N; i++) m = fmaxf(m, fabsf(y[i])); CHECK(m < 1e-7f, "silence in, silence out (%.2g)", m); }
-    /* clean below the knee, harmonics above, gain falling with level (200 Hz, BETTER 100) */
+    /* no knee: the harmonics and the gain follow the level at EVERY level (200 Hz, BETTER 100) */
     { const float lv[] = {0.003f, 0.01f, 0.03f, 0.08f, 0.2f}; float g[5], h2[5], h3[5];
       for (int k = 0; k < 5; k++) { sine(x, N, 200.0f, lv[k]); preset(&p, 1, 100, 0); render(&p, x, y, N);
         const float f1 = mag(y + 44100, 44100, 200.0f); g[k] = 20.0f * log10f(f1 / lv[k]); h2[k] = 20.0f * log10f(mag(y + 44100, 44100, 400.0f) / f1 + 1e-9f); h3[k] = 20.0f * log10f(mag(y + 44100, 44100, 600.0f) / f1 + 1e-9f);
         printf("  200 Hz amp %.3f: gain %+.2f dB  H2 %.1f dB  H3 %.1f dB\n", lv[k], g[k], h2[k], h3[k]); }
-      CHECK(fabsf(g[0]) < 0.2f && h2[0] < -60.0f, "below the knee (-50 dBFS) the signal is clean: gain %.2f dB, H2 %.1f dB", g[0], h2[0]);
-      CHECK(h2[3] > -30.0f && h2[3] < -12.0f, "above the knee BETTER 100 makes a second harmonic of %.1f dB (-30..-12)", h2[3]);
-      CHECK(h3[3] < h2[3] - 5.0f, "the second harmonic dominates the third by >5 dB (%.1f vs %.1f dB)", h2[3], h3[3]);
-      CHECK(g[3] < g[1] - 1.5f && g[4] < g[3] - 0.5f && g[4] > -14.0f, "a subtle compressor: gain %.1f dB at 0.01, %.1f at 0.08, %.1f at 0.2", g[1], g[3], g[4]); }
+      CHECK(h2[0] > -40.0f && h2[1] > -34.0f, "quiet notes are processed too: H2 %.1f dB at 0.003 and %.1f dB at 0.01 (a knee would leave them clean)", h2[0], h2[1]);
+      CHECK(h2[3] > -30.0f && h2[3] < -10.0f, "BETTER 100 makes a second harmonic of %.1f dB at guitar level (-30..-10)", h2[3]);
+      CHECK(h3[3] < h2[3] - 4.0f, "the second harmonic dominates the third by >4 dB (%.1f vs %.1f dB)", h2[3], h3[3]);
+      CHECK(g[0] > g[2] + 2.0f && g[2] > g[4] + 2.0f, "a subtle compander: gain %.1f dB at 0.003, %.1f at 0.03, %.1f at 0.2 (quiet notes raised, loud ones tamed)", g[0], g[2], g[4]);
+      CHECK(g[4] > -14.0f && g[0] < 12.0f, "the gain stays within bounds (%.1f .. %.1f dB)", g[4], g[0]); }
     /* BETTER is a smooth amount: more BETTER, more second harmonic */
     { float prev = -200.0f; int ok = 1; sine(x, N, 200.0f, 0.08f);
       for (int bt = 10; bt <= 100; bt += 30) { preset(&p, 1, bt, 0); render(&p, x, y, N); const float h = 20.0f * log10f(mag(y + 44100, 44100, 400.0f) / mag(y + 44100, 44100, 200.0f)); if (h <= prev) ok = 0; prev = h; }

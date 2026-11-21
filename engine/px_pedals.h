@@ -26,7 +26,8 @@
 /* exp by range reduction (2^n and a degree-6 polynomial on |r| <= 0.35: relative error about 1e-6); no libm call in the sample loop */
 static inline float pxp_exp(float x)
 {
-    if (x > 30.0f) x = 30.0f; if (x < -30.0f) x = -30.0f;
+    if (x > 30.0f) x = 30.0f;
+    if (x < -30.0f) x = -30.0f;
     const float t = x * 1.44269504f; const int n = (int)(t + (t >= 0.0f ? 0.5f : -0.5f)); const float r = x - (float)n * 0.69314718f;
     const float p = 1.0f + r * (1.0f + r * (0.5f + r * (0.166666667f + r * (0.0416666667f + r * (0.00833333333f + r * 0.00138888889f)))));
     union { float f; unsigned u; } v; v.u = (unsigned)(n + 127) << 23; return p * v.f;
@@ -141,5 +142,127 @@ static inline float pxp_rm_tick(px_rm *r, float in)
 #endif
     r->hp_z += r->hp_k * (y - r->hp_z);                                   /* the output DC block */
     return -(y - r->hp_z) * PXP_OUT_PER_VOLT;
+}
+/* ---- EP BOOSTER: an EP-3-style JFET preamp stage (a common-source stage, one unknown: the drain current) ----
+ * The Xotic EP Booster's schematic is not published; it is described by others as "inspired by" the Echoplex EP-3 preamp (a TIS58 JFET stage). This is that family of circuit:
+ * JFET with the measured 2N5484 numbers from the Aion FX Ares documentation (IDSS 2.89 mA, Vp -1.32 V; the EP-3's TIS58 is the same kind of part), 18 V supply, drain 22k, source 3.3k bypassed
+ * by Cs (22 nF = the brighter EARLY voicing; larger = FAT), gate 1M to ground behind a 100 nF input cap, the pickup (Rs, L) as the source, then the 500k volume pot as an attenuator.
+ * Square-law JFET (saturation and triode regions, lambda 0.02). The topology and values are NOT verified against the Xotic; the level is scaled so that GAIN 100 (EARLY) is slightly above unity,
+ * as the Ares notes describe the EP-3; the Fat voicing boosts more. GAIN 0..100 (a 500k log pot); VOICE 0..100: Cs 22 nF (EARLY) .. 100 nF (LATE) .. 470 nF (FAT). */
+#ifndef PXP_EP_OUT
+#define PXP_EP_OUT 0.106f           /* drain volts -> engine units: GAIN 100 in the EARLY voicing is about +2 dB at 1 kHz (the Ares notes: the volume 'tops out just slightly above unity'); FAT adds boost */
+#endif
+typedef struct {
+    float Idss, Vp, lam, Rd, Rs, Vcc, Rg, beta;
+    float gL, gC1, gCs, Rtot, Rpar, Ge, invGe;
+    float i, vL, vC, vs, iCs, id, vd_dc, x, x_t, kx, hp_k, hp_z, voice;
+} px_ep;
+static inline float pxp_jfet(const px_ep *r, float vgs, float vds, float *dgs, float *dds)
+{
+    const float vov = vgs - r->Vp;
+    if (vov <= 0.0f) { *dgs = 0.0f; *dds = 0.0f; return 0.0f; }
+    if (vds < 0.0f) vds = 0.0f;
+    const float cl = 1.0f + r->lam * vds;
+    if (vds >= vov) { *dgs = 2.0f * r->beta * vov * cl; *dds = r->lam * r->beta * vov * vov; return r->beta * vov * vov * cl; }
+    *dgs = 2.0f * r->beta * vds * cl; *dds = r->beta * (2.0f * vov - 2.0f * vds) * cl + r->lam * r->beta * vds * (2.0f * vov - vds);
+    return r->beta * vds * (2.0f * vov - vds) * cl;
+}
+/* solve Id = f(Vgs = vg - Vs0 - Id/Ge, Vds = Vcc - Rd Id - Vs0 - Id/Ge) by a safeguarded Newton step from the previous Id */
+static inline float pxp_ep_solve(const px_ep *r, float vg, float vs0, float id0)
+{
+    const float idmax = (r->Vcc - vs0) / (r->Rd + r->invGe); float lo = 0.0f, hi = idmax > 0.0f ? idmax : 0.0f, id = id0 < lo ? lo : id0 > hi ? hi : id0;
+    for (int it = 0; it < 20; it++) {
+        const float vs = vs0 + id * r->invGe, vgs = vg - vs, vds = r->Vcc - r->Rd * id - vs; float dgs, dds;
+        const float f = pxp_jfet(r, vgs, vds, &dgs, &dds), F = id - f;
+        if (F > 0.0f) hi = id; else lo = id;
+        const float dF = 1.0f + dgs * r->invGe + dds * (r->Rd + r->invGe);
+        float nid = id - F / dF; if (nid < lo || nid > hi) nid = 0.5f * (lo + hi);
+        if (fabsf(nid - id) < 1e-9f) { id = nid; break; } id = nid;
+    }
+    return id;
+}
+static inline void pxp_ep_coeffs(px_ep *r, float sr, float Rs_pk, float L, float Cs)
+{
+    const float dt = 1.0f / sr; r->gL = dt / (2.0f * L); r->gC1 = 2.0f * 100e-9f / dt; r->gCs = 2.0f * Cs / dt;
+    r->Rtot = Rs_pk + 1.0f / r->gL + 1.0f / r->gC1; r->Rpar = r->Rtot * r->Rg / (r->Rtot + r->Rg); r->Ge = 1.0f / r->Rs + r->gCs; r->invGe = 1.0f / r->Ge;
+}
+static inline void pxp_ep_init(px_ep *r, float sr)
+{
+    *r = (px_ep){0};
+    r->Idss = 2.89e-3f; r->Vp = -1.32f; r->lam = 0.02f; r->Rd = 22000.0f; r->Rs = 3300.0f; r->Vcc = 18.0f; r->Rg = 1e6f; r->beta = r->Idss / (r->Vp * r->Vp);
+    pxp_ep_coeffs(r, sr, 6000.0f, 2.5f, 22e-9f); r->voice = 0.0f;
+    float id = 0.0f; for (int k = 0; k < 40; k++) { const float vs = id * r->Rs; float dgs, dds; id = pxp_jfet(r, -vs, r->Vcc - r->Rd * id - vs, &dgs, &dds) * 0.5f + id * 0.5f; }
+    r->id = id; r->vs = id * r->Rs; r->vd_dc = r->Vcc - r->Rd * id; r->vC = 0.0f;
+    r->kx = 1.0f - expf(-1.0f / (sr * 0.010f)); r->hp_k = 1.0f - expf(-6.2831853f * 3.0f / sr); r->x = r->x_t = 0.001f;
+}
+static inline void pxp_ep_set(px_ep *r, float gain, float voice, float sr)
+{
+    const float v = pxp_clamp(gain, 0.0f, 100.0f) * 0.01f; r->x_t = (powf(100.0f, v) - 1.0f) / 99.0f; if (r->x_t < 0.001f) r->x_t = 0.001f;
+    const float w = pxp_clamp(voice, 0.0f, 100.0f) * 0.01f;
+    if (fabsf(w - r->voice) > 1e-4f) { r->voice = w; pxp_ep_coeffs(r, sr, 6000.0f, 2.5f, 22e-9f * powf(21.36f, w)); }     /* 22 nF .. 470 nF */
+}
+static inline float pxp_ep_tick(px_ep *r, float in)
+{
+    r->x += r->kx * (r->x_t - r->x);
+    const float e = in * PXP_EMF_PER_UNIT;
+    const float hL = r->i + r->gL * r->vL, hC = r->gC1 * r->vC + r->i, hS = r->gCs * r->vs + r->iCs, Ah = hL / r->gL - hC / r->gC1;
+    const float vg = r->Rpar * ((e + Ah) / r->Rtot), vs0 = hS / r->Ge;
+    const float id = pxp_ep_solve(r, vg, vs0, r->id), vs = vs0 + id * r->invGe, i = (e - vg + Ah) / r->Rtot;
+    r->vL = (i - hL) / r->gL; r->vC = (i + hC) / r->gC1; r->i = i; r->iCs = r->gCs * vs - hS; r->vs = vs; r->id = id;
+    float y = r->x * ((r->Vcc - r->Rd * id) - r->vd_dc);
+    r->hp_z += r->hp_k * (y - r->hp_z);
+    return -(y - r->hp_z) * PXP_EP_OUT;
+}
+/* ---- MAXIMIZER: the BBE Sonic Maximizer's process as a structure ----
+ * Published description of the BBE process (Sound On Sound et al.): a phase correction that delays the lower frequencies progressively more (a total delay under 2 ms) plus frequency-
+ * dependent boosting. Built as that: a Linkwitz-Riley 4th-order three-way split, the low and mid bands DELAYED against the high band, band gains, sum. The crossovers (258 Hz, 1.82 kHz),
+ * the delays (1.36 ms low, 0.59 ms mid) and the gains were fitted to the real BBE 882i's measured magnitude response at five settings (offline measurement of captures: the fit is 0.76 dB RMS;
+ * tools/research/pedals/bbe_measure.py, bbe_fit.py), not copied from a schematic. LO CONTOUR sets the low-band gain; PROCESS the mid-band gain (down to 0.37) and the high-band gain (up to 1.27)
+ * ; below setting 1 of 10 on both knobs the processed path fades into the dry signal (0/0 is exactly bypass). Only the diagonal settings (LO = PROCESS) were measured: that split between the knobs is an assumption.
+ * Linear and level independent (the measured harmonics are below -43 dB at every level); no dynamic stage was found in the captures. */
+typedef struct { float b0, b1, b2, a1, a2, z1, z2; } pxp_bq;
+static inline void pxp_bq_design(pxp_bq *q, int high, float hz, float sr)       /* RBJ two-pole Butterworth (Q 0.7071) */
+{
+    const float w0 = 6.2831853f * hz / sr, cw = cosf(w0), sw = sinf(w0), al = sw / (2.0f * 0.70710678f), a0 = 1.0f + al;
+    if (high) { q->b0 = (1.0f + cw) * 0.5f / a0; q->b1 = -(1.0f + cw) / a0; q->b2 = q->b0; } else { q->b0 = (1.0f - cw) * 0.5f / a0; q->b1 = (1.0f - cw) / a0; q->b2 = q->b0; }
+    q->a1 = -2.0f * cw / a0; q->a2 = (1.0f - al) / a0; q->z1 = q->z2 = 0.0f;
+}
+static inline float pxp_bq_run(pxp_bq *q, float x) { const float y = q->b0 * x + q->z1; q->z1 = q->b1 * x - q->a1 * y + q->z2; q->z2 = q->b2 * x - q->a2 * y; return y; }
+typedef struct {
+    pxp_bq lp1[2], hp1[2], lp2[2], hp2[2];             /* LR4 = two cascaded Butterworth sections: split at f1 (low | rest), then the rest at f2 (mid | high) */
+    float dl[128], dm[64]; unsigned il, im; int nl, nm;       /* the delay lines of the low and mid bands, and their lengths in samples */
+    float gl, gm, gh, mix, gl_t, gm_t, gh_t, mix_t, kglide;
+} px_bbe;
+static inline float pxp_lerp_tab(const float *xs, const float *ys, int n, float x)      /* piecewise linear, clamped */
+{
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    int i = 1; while (x > xs[i]) i++; return ys[i - 1] + (ys[i] - ys[i - 1]) * (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
+}
+static inline void pxp_bbe_init(px_bbe *b, float sr)
+{
+    *b = (px_bbe){0};
+    for (int k = 0; k < 2; k++) { pxp_bq_design(&b->lp1[k], 0, 258.0f, sr); pxp_bq_design(&b->hp1[k], 1, 258.0f, sr); pxp_bq_design(&b->lp2[k], 0, 1821.0f, sr); pxp_bq_design(&b->hp2[k], 1, 1821.0f, sr); }
+    b->nl = (int)(0.001362f * sr + 0.5f); b->nm = (int)(0.000589f * sr + 0.5f); if (b->nl > 127) b->nl = 127; if (b->nm > 63) b->nm = 63;
+    b->gl = b->gl_t = b->gm = b->gm_t = b->gh = b->gh_t = 1.0f; b->mix = b->mix_t = 0.0f; b->kglide = 1.0f - expf(-1.0f / (sr * 0.010f));
+}
+/* LO CONTOUR, PROCESS 0..100 (the knob's 0..10 is one tenth of that). Gain nodes: the measured fits at settings 1(2), 3, 5, 7, 10. */
+static inline void pxp_bbe_set(px_bbe *b, float lo, float proc)
+{
+    static const float LX[5] = {0.0f, 3.0f, 5.0f, 7.0f, 10.0f}, LG[5] = {1.0f, 0.925f, 0.946f, 0.969f, 1.241f};
+    static const float PX[5] = {1.0f, 3.0f, 5.0f, 7.0f, 10.0f}, PM[5] = {1.082f, 0.937f, 0.804f, 0.620f, 0.371f}, PH[5] = {1.155f, 1.169f, 1.193f, 1.208f, 1.268f};
+    const float l = pxp_clamp(lo, 0.0f, 100.0f) * 0.1f, p = pxp_clamp(proc, 0.0f, 100.0f) * 0.1f;
+    b->gl_t = pxp_lerp_tab(LX, LG, 5, l); b->gm_t = pxp_lerp_tab(PX, PM, 5, p); b->gh_t = pxp_lerp_tab(PX, PH, 5, p); { const float m = p > l ? p : l; b->mix_t = m < 1.0f ? m : 1.0f; }   /* processing engages as either knob leaves 0 */
+}
+static inline float pxp_bbe_tick(px_bbe *b, float x)
+{
+    b->gl += b->kglide * (b->gl_t - b->gl); b->gm += b->kglide * (b->gm_t - b->gm); b->gh += b->kglide * (b->gh_t - b->gh); b->mix += b->kglide * (b->mix_t - b->mix);
+    if (b->mix < 1e-6f && b->mix_t < 1e-6f && b->gl_t == 1.0f) return x;
+    const float low = pxp_bq_run(&b->lp1[1], pxp_bq_run(&b->lp1[0], x)), rest = pxp_bq_run(&b->hp1[1], pxp_bq_run(&b->hp1[0], x));
+    const float mid = pxp_bq_run(&b->lp2[1], pxp_bq_run(&b->lp2[0], rest)), high = pxp_bq_run(&b->hp2[1], pxp_bq_run(&b->hp2[0], rest));
+    b->il++; b->dl[b->il & 127] = low; b->im++; b->dm[b->im & 63] = mid;
+    const float dlow = b->dl[(b->il - (unsigned)b->nl) & 127], dmid = b->dm[(b->im - (unsigned)b->nm) & 63];
+    const float proc = b->gl * dlow + b->gm * dmid + b->gh * high;
+    return x + b->mix * (proc - x);
 }
 #endif

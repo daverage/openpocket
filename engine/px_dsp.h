@@ -43,7 +43,7 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_LOWEST_HQ,
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
-       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
+       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_EPBOOST, PX_SFX_MAXIMIZER, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
@@ -178,6 +178,8 @@ typedef struct {
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
+    px_bbe bbe;                                        /* SFX MAXIMIZER: three bands, two delay lines (about 1 KB) */
+    px_ep ep;                                          /* SFX EP BOOST: the JFET stage (about 100 bytes) */
     px_rm rm;                                          /* SFX RANGEMASTER: the circuit (about 700 bytes), set up by pxp_rm_init like ENHANCE */
     px_enhance enh;                                    /* SFX ENHANCE v4 (about 40 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
     px_hb syn_fuzz_os[4];

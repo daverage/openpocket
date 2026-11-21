@@ -1,4 +1,4 @@
-/* SFX RANGEMASTER (engine/px_pedals.h) through the whole engine. The expected numbers come from the FULL nodal simulator of the same circuit (tools/research/pedals/rm_circuit.py,
+/* SFX RANGEMASTER, EP BOOST and MAXIMIZER (engine/px_pedals.h) through the whole engine. The expected numbers come from the FULL nodal simulator of the same circuit (tools/research/pedals/rm_circuit.py,
  * checked against ElectroSmash's analysis: 38 dB at full volume, input corner about 2.6 kHz, bias Vbe 0.30 V / 0.2 mA / collector 7.1 V), not from this implementation.
  * Level: one engine unit = 2 V of pickup EMF, engine out = 0.048 per collector volt (so engine gain = circuit gain - 20.35 dB).
  *  - catalogue, silence, no DC, polarity (not inverted)
@@ -41,6 +41,107 @@ static float gain_db(float hz, float emf_mv, int volume, int pickup, float *h2, 
     if (h2) *h2 = 20.0f * log10f(mag(y + 44100, n, 2 * hz) / a1 + 1e-9f);
     if (h3) *h3 = 20.0f * log10f(mag(y + 44100, n, 3 * hz) / a1 + 1e-9f);
     return 20.0f * log10f(a1 / amp);
+}
+
+/* ---- EP BOOST: an EP-3-style JFET stage (engine/px_pedals.h). Expectations are physical (a square-law JFET is even-order dominant; the source bypass sets the treble/bass gain) and the
+ * documented level (GAIN 100, EARLY: slightly above unity), not a reference simulation: the Xotic's schematic is not published. ---- */
+static void epreset(px_preset_t *p, int on, int gain, int voice)
+{
+    px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
+    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_EPBOOST; p->p[PX_B_SFX][0] = (uint8_t)gain; p->p[PX_B_SFX][1] = (uint8_t)voice;
+}
+static float epgain(float hz, float amp, int gain, int voice, float *h2, float *h3)
+{
+    px_preset_t p; sine(x, N, hz, amp); epreset(&p, 1, gain, voice); render(&p, x, y, N);
+    const float a1 = mag(y + 44100, 44100, hz);
+    if (h2) *h2 = 20.0f * log10f(mag(y + 44100, 44100, 2 * hz) / a1 + 1e-9f);
+    if (h3) *h3 = 20.0f * log10f(mag(y + 44100, 44100, 3 * hz) / a1 + 1e-9f);
+    return 20.0f * log10f(a1 / amp);
+}
+static int ep_tests(void)
+{
+    px_preset_t p; char b[8]; int before = bad;
+    CHECK(px_type_retired(PX_B_SFX, PX_SFX_EPBOOST) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_EPBOOST), "EP BOOST") && px_nparams(PX_B_SFX, PX_SFX_EPBOOST) == 2 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_EPBOOST, 0), "GAIN") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_EPBOOST, 1), "VOICE"), "EP BOOST: GAIN and VOICE");
+    CHECK(px_param_text(PX_B_SFX, PX_SFX_EPBOOST, 1, 0, b) == 1 && !strcmp(b, "EARLY") && px_param_text(PX_B_SFX, PX_SFX_EPBOOST, 1, 100, b) == 1 && !strcmp(b, "FAT"), "VOICE reads EARLY .. FAT: '%s'", b);
+    epreset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
+    { float m = 0; for (int i = N / 2; i < N; i++) m = fmaxf(m, fabsf(y[i])); CHECK(m < 1e-6f, "EP: silence in, silence out (%.2g)", m); }
+    { const float g = epgain(1000, 0.0005f, 100, 0, 0, 0); CHECK(g > 0.0f && g < 4.0f, "EP EARLY, GAIN 100: slightly above unity at 1 kHz (%.2f dB)", g); }
+    { const float lo = epgain(300, 0.0005f, 100, 0, 0, 0), hi = epgain(8000, 0.0005f, 100, 0, 0, 0); CHECK(hi - lo > 6.0f, "EARLY is the bright voicing: 8 kHz %.1f dB above 300 Hz (%.1f / %.1f)", hi - lo, hi, lo); }
+    { const float e = epgain(300, 0.0005f, 100, 0, 0, 0), f = epgain(300, 0.0005f, 100, 100, 0, 0); CHECK(f - e > 5.0f, "FAT thickens: 300 Hz %.1f dB louder than EARLY (%.1f / %.1f)", f - e, f, e); }
+    { float h2s, h2l, h3l; epgain(440, 0.005f, 100, 0, &h2s, 0); const float gl = epgain(440, 0.5f, 100, 0, &h2l, &h3l), gs = epgain(440, 0.005f, 100, 0, 0, 0);
+      CHECK(h2l > h2s + 12.0f, "the distortion grows with the playing level: H2 %.1f dB at 0.005, %.1f dB at 0.5", h2s, h2l);
+      CHECK(h2l > h3l + 5.0f, "even order dominates (square law): H2 %.1f, H3 %.1f dB at 0.5", h2l, h3l);
+      CHECK(gs - gl > -0.3f, "no expansion when hard driven: gain %.2f dB small, %.2f dB at 0.5 (the 18 V stage stays nearly linear: degeneration leaves about a fifth of the swing at the gate)", gs, gl); }
+    { const float a = epgain(1000, 0.14f, 100, 0, 0, 0), c = epgain(1000, 0.14f, 50, 0, 0, 0); CHECK(a - c > 14.0f && a - c < 26.0f, "GAIN 50 is about -21 dB on a 500k log pot (%.1f dB)", a - c); }
+    sine(x, N, 440.0f, 0.5f); epreset(&p, 1, 100, 0); render(&p, x, y, N);
+    { double s2 = 0; float pk = 0, nk = 0; for (int i = 44100; i < N; i++) { s2 += y[i]; pk = fmaxf(pk, y[i]); nk = fminf(nk, y[i]); } s2 /= 44100.0;
+      CHECK(fabs(s2) < 0.003, "EP: no DC (%.5f)", s2); CHECK(fabsf(pk + nk) > 0.01f * (pk - nk), "EP: asymmetric clipping (peaks %+.3f / %+.3f)", pk, nk); CHECK(pk < 1.0f, "EP: usable level when hard driven (peak %.3f)", pk); }
+    for (int i = 0; i < N; i++) x[i] = ((i / 200) & 1) ? 1.0f : -1.0f; epreset(&p, 1, 100, 100); render(&p, x, y, N);
+    { int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 2.5f, "EP: a full-scale square is finite and bounded (peak %.3f)", pk); }
+    { unsigned r = 3u; for (int i = 0; i < N; i++) { r = r * 1664525u + 1013904223u; x[i] = ((float)(r >> 9) / 4194304.0f - 1.0f) * 0.5f; } render(&p, x, y, N);
+      int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 2.5f, "EP: loud noise is finite and bounded (peak %.3f)", pk); }
+    sine(x, N, 220.0f, 0.1f);
+    {
+        px_preset_t pa, pb; epreset(&pa, 1, 80, 20); epreset(&pb, 0, 80, 20); render(&pa, x, ya, N); render(&pb, x, yb, N);
+        float sa = 0, sb = 0; for (int i = 44100; i < N; i++) { sa = fmaxf(sa, fabsf(ya[i] - ya[i - 1])); sb = fmaxf(sb, fabsf(yb[i] - yb[i - 1])); }
+        px_engine e; px_engine_init(&e, FS); px_engine_set(&e, &pa);
+        for (int at = 0; at + 64 <= N; at += 64) { if (at == 44100 + 64 * 7) px_engine_set(&e, &pb); if (at == 44100 + 64 * 400) px_engine_set(&e, &pa); px_engine_process(&e, x + at, yc + at, 64); }
+        float worst = 0; for (int i = 44100; i < N; i++) worst = fmaxf(worst, fabsf(yc[i] - yc[i - 1]));
+        CHECK(worst < 1.5f * fmaxf(sa, sb), "EP: switching off and on mid-note: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
+        epreset(&pa, 1, 30, 0); epreset(&pb, 1, 100, 100); render(&pa, x, ya, N); render(&pb, x, yb, N);
+        sa = sb = 0; for (int i = 44100; i < N; i++) { sa = fmaxf(sa, fabsf(ya[i] - ya[i - 1])); sb = fmaxf(sb, fabsf(yb[i] - yb[i - 1])); }
+        px_engine_init(&e, FS); px_engine_set(&e, &pa);
+        for (int at = 0; at + 64 <= N; at += 64) { if (at == 44100) px_engine_set(&e, &pb); px_engine_process(&e, x + at, yc + at, 64); }
+        worst = 0; for (int i = 44100; i < N; i++) worst = fmaxf(worst, fabsf(yc[i] - yc[i - 1]));
+        CHECK(worst < 1.5f * fmaxf(sa, sb), "EP: a knob jump mid-note (GAIN 30 -> 100, VOICE 0 -> 100) glides: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
+    }
+    return bad - before;
+}
+
+/* ---- MAXIMIZER: the BBE process. Expected numbers are the REAL unit's measured magnitude response (the BBE 882i captures, offline: tools/research/pedals/bbe_measure.py) at settings
+ * LO CONTOUR = PROCESS = 3, 5, 7, 10. The model is fitted to these (0.76 dB RMS), so this checks that the engine realises the fit; the knob split is an assumption. ---- */
+static void bpreset(px_preset_t *p, int on, int lo, int proc)
+{
+    px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
+    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_MAXIMIZER; p->p[PX_B_SFX][0] = (uint8_t)lo; p->p[PX_B_SFX][1] = (uint8_t)proc;
+}
+static float bgain(float hz, float amp, int lo, int proc, float *h2)
+{
+    px_preset_t p; sine(x, N, hz, amp); bpreset(&p, 1, lo, proc); render(&p, x, y, N);
+    const float a1 = mag(y + 44100, 44100, hz); if (h2) *h2 = 20.0f * log10f(mag(y + 44100, 44100, 2 * hz) / a1 + 1e-9f);
+    return 20.0f * log10f(a1 / amp);
+}
+static int bbe_tests(void)
+{
+    px_preset_t p; int before = bad;
+    CHECK(px_type_retired(PX_B_SFX, PX_SFX_MAXIMIZER) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_MAXIMIZER), "MAXIMIZER") && px_nparams(PX_B_SFX, PX_SFX_MAXIMIZER) == 2 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_MAXIMIZER, 0), "LO CONTOUR") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_MAXIMIZER, 1), "PROCESS"), "MAXIMIZER: LO CONTOUR and PROCESS");
+    { static const float hz[7] = {102.0f, 399.0f, 709.0f, 1015.0f, 2585.0f, 7071.0f, 11694.0f};
+      static const float ref[4][7] = {{-0.5f, -1.4f, -1.6f, -1.5f, -0.2f, 1.1f, 1.2f}, {-0.4f, -2.6f, -3.0f, -2.7f, -0.6f, 1.6f, 1.8f}, {-0.2f, -4.5f, -5.6f, -4.9f, -1.0f, 1.8f, 2.2f}, {1.8f, -6.8f, -12.2f, -9.6f, -1.2f, 2.9f, 3.4f}};
+      static const int set[4] = {30, 50, 70, 100};
+      for (int s = 0; s < 4; s++) for (int k = 0; k < 7; k++) { const float g = bgain(hz[k], 0.05f, set[s], set[s], 0), tol = ((k == 2 || k == 3) && s == 3) ? 3.0f : (k == 4 ? 2.6f : 2.0f);      /* the fit's worst points: the dip at 10/10 and a small notch at the 1.8 kHz crossover */
+        CHECK(fabsf(g - ref[s][k]) < tol, "MAXIMIZER %d/%d at %.0f Hz: %.1f dB against the real unit's %.1f dB", set[s] / 10, set[s] / 10, hz[k], g, ref[s][k]); } }
+    { float h2; bgain(709.0f, 0.3f, 100, 100, &h2); CHECK(h2 < -80.0f, "linear: no harmonics at any level (H2 %.0f dB)", h2); }
+    bpreset(&p, 1, 0, 0); sine(x, N, 440.0f, 0.2f); render(&p, x, y, N); { px_preset_t q = p; q.on[PX_B_SFX] = 0; render(&q, x, z, N); }
+    { float m = 0; for (int i = 0; i < N; i++) m = fmaxf(m, fabsf(y[i] - z[i])); CHECK(m < 1e-6f, "0 / 0 is exactly bypass (%.2g)", m); }
+    { const float lo = bgain(60.0f, 0.05f, 100, 0, 0), flat = bgain(60.0f, 0.05f, 0, 0, 0); CHECK(lo - flat > 1.0f, "LO CONTOUR alone lifts the lows (%+.1f dB at 60 Hz)", lo - flat); }
+    for (int i = 0; i < N; i++) x[i] = ((i / 200) & 1) ? 1.0f : -1.0f; bpreset(&p, 1, 100, 100); render(&p, x, y, N);
+    { int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 3.0f, "MAXIMIZER: a full-scale square is finite and bounded (peak %.2f)", pk); }
+    sine(x, N, 220.0f, 0.1f);
+    {
+        px_preset_t pa, pb; bpreset(&pa, 1, 80, 80); bpreset(&pb, 0, 80, 80); render(&pa, x, ya, N); render(&pb, x, yb, N);
+        float sa = 0, sb = 0; for (int i = 44100; i < N; i++) { sa = fmaxf(sa, fabsf(ya[i] - ya[i - 1])); sb = fmaxf(sb, fabsf(yb[i] - yb[i - 1])); }
+        px_engine e; px_engine_init(&e, FS); px_engine_set(&e, &pa);
+        for (int at = 0; at + 64 <= N; at += 64) { if (at == 44100 + 64 * 7) px_engine_set(&e, &pb); if (at == 44100 + 64 * 400) px_engine_set(&e, &pa); px_engine_process(&e, x + at, yc + at, 64); }
+        float worst = 0; for (int i = 44100; i < N; i++) worst = fmaxf(worst, fabsf(yc[i] - yc[i - 1]));
+        CHECK(worst < 1.5f * fmaxf(sa, sb), "MAXIMIZER: switching off and on mid-note: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
+        bpreset(&pa, 1, 10, 10); bpreset(&pb, 1, 100, 100); render(&pa, x, ya, N); render(&pb, x, yb, N);
+        sa = sb = 0; for (int i = 44100; i < N; i++) { sa = fmaxf(sa, fabsf(ya[i] - ya[i - 1])); sb = fmaxf(sb, fabsf(yb[i] - yb[i - 1])); }
+        px_engine_init(&e, FS); px_engine_set(&e, &pa);
+        for (int at = 0; at + 64 <= N; at += 64) { if (at == 44100) px_engine_set(&e, &pb); px_engine_process(&e, x + at, yc + at, 64); }
+        worst = 0; for (int i = 44100; i < N; i++) worst = fmaxf(worst, fabsf(yc[i] - yc[i - 1]));
+        CHECK(worst < 1.5f * fmaxf(sa, sb), "MAXIMIZER: a knob jump mid-note glides: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
+    }
+    return bad - before;
 }
 int main(void)
 {
@@ -97,6 +198,8 @@ int main(void)
         worst = 0; for (int i = 44100; i < N; i++) worst = fmaxf(worst, fabsf(yc[i] - yc[i - 1]));
         CHECK(worst < 1.5f * fmaxf(sa, sb), "a knob jump mid-note (VOLUME 30 -> 100, PICKUP 0 -> 100) glides: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
     }
+    ep_tests();
+    bbe_tests();
     if (bad) { printf("%d problems\n", bad); return 1; }
     printf("PEDALS ok: 0 problems\n"); return 0;
 }
