@@ -49,7 +49,7 @@ if [ -n "$CHAN" ]; then
 fi
 # AC791N hardware FPU (same options as the JieLi SDK for the WL82) + DSP engine at 44.1 kHz
 FP="-mcpu=r3 -mfprev1"
-DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
+DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4 $OP_DSP_EXTRA"   # OP_DSP_EXTRA: extra engine defines for a test build, e.g. -DPXE_DIAG (ENHANCE: SENS and VOICE controls)
 # OpenPocket Synth (v70): one engine recipe. The v66 poly-test flags are part of the engine source now (engine/).
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPX_RUNS=0"   # the test image: no RAM-resident runs (v40.4: px_dsp.c PX_RUNS); PX_LEAN went with the acoustic voices (Synth2)
 INC="-I$HERE/inc -I$HERE/../engine -I$HERE/../third_party/felucca-engines"

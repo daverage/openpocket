@@ -491,11 +491,19 @@ static const char *const PN_CRUSH[] = {"BITS", "SR DIV", "MIX"};
 static const char *const PN_SLICE[] = {"RATE", "DEPTH", "PATTERN"};
 static const char *const PN_LOFI[] = {"TONE", "DRIVE", "MIX"};
 static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
-static const char *const PN_ENH[] = {"BETTER", "LOUDER"};
+/* ENHANCE: BETTER, LOUDER. A diagnostic build (-DPXE_DIAG, firmware/build.sh OP_DSP_EXTRA) adds two internal controls so the sensitivity and the input voicing can be compared on the pedal: SENS (0-19 LOW 2x, 20-59 NORMAL 3.5x, 60-79 HIGH 5x, 80-100 EXTRA 7x) and VOICE (0-24 A reference, 25-74 B smooth overload, 75-100 C shaped input); 50 / 50 = NORMAL, B */
+static const char *const PN_ENH[] = {"BETTER", "LOUDER", "SENS", "VOICE"};
+#ifdef PXE_DIAG
+#define PXE_NPARAMS 4
+static inline int pxe_sens_of(int v) { return v < 20 ? 0 : v < 60 ? 1 : v < 80 ? 2 : 3; }
+static inline int pxe_voice_of(int v) { return v < 25 ? 0 : v < 75 ? 1 : 2; }
+#else
+#define PXE_NPARAMS 2
+#endif
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", PXE_NPARAMS, PN_ENH}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -728,6 +736,8 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
         if (t == PX_SFX_ENHANCE && k == 1) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LOUDER in dB */
+        if (t == PX_SFX_ENHANCE && k == 2) { static const char *const SN[4] = {"LOW", "NORMAL", "HIGH", "EXTRA"}; const int v = (int)(x * 100.0f + 0.5f); put_str(buf, SN[v < 20 ? 0 : v < 60 ? 1 : v < 80 ? 2 : 3]); return 1; }
+        if (t == PX_SFX_ENHANCE && k == 3) { static const char *const VN[3] = {"A REF", "B SOFT", "C SHAPE"}; const int v = (int)(x * 100.0f + 0.5f); put_str(buf, VN[v < 25 ? 0 : v < 75 ? 1 : 2]); return 1; }
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
         break;
     case PX_B_EQ:
@@ -1034,7 +1044,12 @@ static void rc_sfx(px_engine *e)
         e->sfx_mix = f01(q[2]);
         break;
     case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
-    case PX_SFX_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER 0..100 (parallel harmonics), LOUDER 0..100 = 0..+12 dB; the filter state is kept on a knob move */
+    case PX_SFX_ENHANCE:                               /* BETTER 0..100 (parallel harmonics), LOUDER 0..100 = 0..+12 dB; the filter state is kept on a knob move */
+        pxe_set(&e->enh, (float)q[0], (float)q[1]);
+#ifdef PXE_DIAG
+        pxe_set_input(&e->enh, pxe_sens_of(q[2]), pxe_voice_of(q[3]));
+#endif
+        break;
     default:                                           /* square synth: square + sub through a swept low-pass */
         if (t == PX_SFX_SYNTH_HQ) {
             if (!e->sfx_track_active) {
@@ -1414,6 +1429,7 @@ void px_engine_init(px_engine *e, float sr)
     px_engine_set(e, &p);
 }
 static void wl_clear(px_engine *e);
+void px_enhance_diag(const px_engine *e, float *peak_dbfs, float *rms_dbfs, float *over_fraction) { pxe_diag(&e->enh, peak_dbfs, rms_dbfs, over_fraction); }
 void px_engine_set(px_engine *e, const px_preset_t *p)
 {
     if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) pxe_init(&e->enh, e->sr);   /* ENHANCE: entering or leaving the effect starts it from unity with clean filters (no stale state, no click: the mix and level glide) */

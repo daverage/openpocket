@@ -177,7 +177,7 @@ typedef struct {
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
-    px_enhance enh;                                    /* SFX ENHANCE (72 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
+    px_enhance enh;                                    /* SFX ENHANCE (132 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
     px_hb syn_fuzz_os[4];
     px_drive_state syn_fuzz;
     float syn_fuzz_tone;
@@ -250,6 +250,8 @@ int  px_engine_change(const px_engine *e, const px_preset_t *p);
 void px_engine_knobs(px_engine *e, const px_preset_t *p);
 void px_engine_prepare(const px_engine *e, const px_preset_t *p);
 void px_engine_process(px_engine *e, const float *in, float *out, int n);
+/* ENHANCE's input diagnostics: the guitar's peak and RMS (dBFS, as it arrives at the effect) and the fraction of the time the gain cell's input exceeded its calibrated 0 dBm (0.5): which sensitivity this guitar needs */
+void px_enhance_diag(const px_engine *e, float *peak_dbfs, float *rms_dbfs, float *over_fraction);
 enum { PX_PART_ALL };                  /* px_engine_part: the whole chain (the NAM stages are gone) */
 void px_engine_part(px_engine *e, const float *in, float *out, int n, int part);
 extern uint32_t (*px_clock)(void);      /* v38: set by the firmware: px_engine.pf counts each block's time */
