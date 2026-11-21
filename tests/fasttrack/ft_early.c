@@ -32,7 +32,7 @@ int main(int argc, char **argv)
             printf("P %.2f %.2f %d %.2f %.2f %.3f %.1f %.3f %.3f\n", t, ptk.onset, ptk.weak_pick, ptk.flux_avg, fe / (mn + 1e-5f), ptk.conf, mono, dm, fe / (pk + 1e-9f));
         }
         int gi = -1; for (int k = 0; k < g_n && g_on[k] <= t + 10.0; k++) gi = k;
-        if (gi < 0 || t - g_on[gi] > 60.0) continue;
+        if (gi < 0 || t - g_on[gi] > (getenv("FT_WIN") ? atof(getenv("FT_WIN")) : 60.0)) continue;
         const double tr = t - g_on[gi];
         /* the group's lowest pitch is "the" true fundamental for the probe (a chord's bass); single-note groups are the clean case */
         const float ft = g_hz[gi][0];
