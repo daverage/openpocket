@@ -2,7 +2,7 @@
 """Poly synth response on single-note playing (v66): how fast a voice reaches the played note, and how often a
 voice starts on a pitch nobody played. Host only.
 
-  PYTHONPATH=tools/sim python3 tools/sim/poly_latency.py build/pulse_poly_bench [--set dev|held] [--takes N]
+  PYTHONPATH=tools/research python3 tools/legacy-synth/poly_latency.py build/pulse_poly_bench [--set dev|held] [--takes N]
 
 GuitarSet solo takes (dev 0..23, held 24..47). Per note of at least 80 ms: the time from its onset to the first report
 with a sounding voice (gain > 0.065) within 50 cents (None if not within 150 ms). False starts: voices that rise

@@ -1,9 +1,9 @@
 /* OpenPocket, SPDX-License-Identifier: GPL-3.0-or-later.
- * MONO SYNTH as the pedal plays it, for tools/sim/track_eval.py and tools/sim/mono_eval.py (v60).
+ * MONO SYNTH as the pedal plays it, for tools/research/track_eval.py and tools/research/mono_eval.py (v60).
  * Usage: mono_bench IN.wav OUT.csv   (44.1 kHz mono PCM16; the SYN block alone, MONO SYNTH, knobs at noon)
  * One row per 64 samples: t, voice (the pitch it plays while its gain is above 0.1, else 0), gain.
- *   cc -O2 -Iengine -Ifirmware tools/sim/mono_bench.c firmware/px_math.c -lm -o build/mono_old
- *   cc -O2 -DPX_MONO_LAYER=1 -Iengine -Ifirmware tools/sim/mono_bench.c firmware/px_math.c -lm -o build/mono_layer
+ *   cc -O2 -Iengine -Ifirmware tools/legacy-synth/mono_bench.c firmware/px_math.c -lm -o build/mono_old
+ *   cc -O2 -DPX_MONO_LAYER=1 -Iengine -Ifirmware tools/legacy-synth/mono_bench.c firmware/px_math.c -lm -o build/mono_layer
  */
 #include "../../engine/px_dsp.c"
 #include <stdio.h>

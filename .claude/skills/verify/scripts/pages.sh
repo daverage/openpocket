@@ -14,7 +14,7 @@ mkdir -p build
 cc -O1 -Wall -Wno-unused-function -o build/devsim tests/devsim.c
 cc -O1 -Wall -Wno-unused-function -o build/edsim tests/edsim.c engine/px_dsp.c firmware/px_math.c -lm
 export NODE_PATH="$PW_DIR/node_modules"
-node tests/test_page.mjs build/page
-node tests/test_editor_page.mjs build/editor
-node tests/test_pedal_page.mjs build/pedal
-node tests/test_audio_page.mjs build/audio
+node tests/browser/test_page.mjs build/page
+node tests/browser/test_editor_page.mjs build/editor
+node tests/browser/test_pedal_page.mjs build/pedal
+node tests/browser/test_audio_page.mjs build/audio

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Score the two-voice poly synth allocator (engine/px_pulse_poly.h) through tools/sim/pulse_poly_bench.c.
+"""Score the two-voice poly synth allocator (engine/px_pulse_poly.h) through tools/legacy-synth/pulse_poly_bench.c.
 
-  cc -O2 -Iengine -Ifirmware tools/sim/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
-  PYTHONPATH=tools/sim python3 tools/sim/poly_score.py build/pulse_poly_bench --guitar   # GuitarSet takes 24..47
-  PYTHONPATH=tools/sim python3 tools/sim/poly_score.py build/pulse_poly_bench            # synthetic + bass DI fixtures
+  cc -O2 -Iengine -Ifirmware tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+  PYTHONPATH=tools/research python3 tools/legacy-synth/poly_score.py build/pulse_poly_bench --guitar   # GuitarSet takes 24..47
+  PYTHONPATH=tools/research python3 tools/legacy-synth/poly_score.py build/pulse_poly_bench            # synthetic + bass DI fixtures
 
 GuitarSet lives in build/guitarset (mono/*_comp_mix.wav, annotation/*.jams). Bass DI notes: --bass-di DIR.
-A voice counts as sounding when its gain is above 0.065 (docs/POLY-SYNTH-DESIGN.md).
+A voice counts as sounding when its gain is above 0.065 (docs/research/POLY-SYNTH-DESIGN.md).
 """
 import argparse
 import csv

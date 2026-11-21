@@ -187,7 +187,7 @@ Run `node tools/op.mjs test` (see [BUILDING.md](BUILDING.md)):
 - `tests/test_store.c`: the settings survive a power cycle, a preset save and a power cut at every step.
 - `tests/uisim.c`: the MIDI page is drawn completely, the channel wraps, leaving saves only if changed.
 - `tests/test_installer.mjs`: an update still succeeds after a foreign SysEx.
-- `tests/test_op.mjs`, `tests/test_page.mjs`: the test package command and the installer's test channel.
+- `tests/test_op.mjs`, `tests/browser/test_page.mjs`: the test package command and the installer's test channel.
 
 **Not checked, because it needs the pedal:** the USB enumeration and the port name on each OS, a real DAW or app sending, the
 timing of replies, the DSP load and any dropout with MIDI flowing, the real screen, the update path on the new build, power

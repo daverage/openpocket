@@ -1,8 +1,8 @@
-/* Host benchmark of the note trackers (v49, engine/px_track.h; docs/NOTE-TRACKING.md). Not firmware.
- *   cc -O2 -Iengine -Ifirmware tools/sim/track_bench.c firmware/px_math.c -lm -o build/track_bench
+/* Host benchmark of the note trackers (v49, engine/px_track.h; docs/archive/NOTE-TRACKING.md). Not firmware.
+ *   cc -O2 -Iengine -Ifirmware tools/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
  *   build/track_bench IN.wav OUT.csv
  * One row per tracker frame (1.45 ms): time, the new tracker's mono f0 / confidence / onset / level / notes, and for
- * comparison synth_hq_track as BASS HQ feeds it (old_layer: 0 since v49 removed the v48 note layer). tools/sim/track_eval.py scores the CSV against annotations. */
+ * comparison synth_hq_track as BASS HQ feeds it (old_layer: 0 since v49 removed the v48 note layer). tools/research/track_eval.py scores the CSV against annotations. */
 #include "../../engine/px_dsp.c"
 #include <stdio.h>
 #include "pulse_poly.h"
@@ -46,7 +46,7 @@ int main(int argc, char **argv)
 #endif
     pxt_layer L; pxt_layer_init(&L, 44100.0f);
     /* for comparison: BASS HQ's tracker alone (the v48 acoustic voices' note layer is gone: its scores are in
-     * docs/NOTE-TRACKING.md) */
+     * docs/archive/NOTE-TRACKING.md) */
     px_synth_tracking hq; memset(&hq, 0, sizeof hq); px_bq f1, f2; synth_hq_filters(&f1, &f2, 44100.0f); bq_reset(&f1); bq_reset(&f2);
     float env = 0;
     FILE *o = fopen(argv[2], "w");

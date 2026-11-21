@@ -6,14 +6,14 @@
   python3 tools/research/mono_compare.py report --set dev|test|owner
 
 Candidates (each writes t, f0 rows to build/stage5/<set>/<cand>/<take>.csv; f0 0 = no note):
-  engine   v70 MONO SYNTH as the pedal runs it (tools/sim/mono_bench.c, build/mono_v70): causal
-  q        Cycfi Q bitstream autocorrelation with its own conditioning (tools/sim/q_bench.cpp): causal
+  engine   v70 MONO SYNTH as the pedal runs it (tools/legacy-synth/mono_bench.c, build/mono_v70): causal
+  q        Cycfi Q bitstream autocorrelation with its own conditioning (tools/research/q_bench.cpp): causal
   yin      librosa YIN, 46 ms frames, stamped at the frame's end: causal
   pyin     librosa pYIN with its Viterbi over the whole take: an offline reference, not a pedal candidate
   swiftf0  SwiftF0 0.3 (ONNX, 135 KB) run as published; stamped late by its measured look-ahead
   pesto    PESTO 2.0 (mir-1k_g7) run as published; stamped late by its measured look-ahead
 
-Data sets (docs/phase2b.md "Evaluation standard"): dev = GuitarSet solo takes of players 00-01; test = players 02-05,
+Data sets (docs/archive/phase2b.md "Evaluation standard"): dev = GuitarSet solo takes of players 00-01; test = players 02-05,
 frozen, scored once per finished candidate; gtechs = Guitar-TECHS electric DI (scales, single notes, techniques,
 music); bass = IDMT bass lines; bassnotes = IDMT single bass notes (tools/research/prep_sets.py). YIN, pYIN and
 SwiftF0 get a 35 Hz floor on the bass sets (60 Hz otherwise); the engine keeps its own.
@@ -24,12 +24,12 @@ median and 90th-percentile time to the first right frame (ms after the annotated
 accuracy, raw chroma accuracy, voicing recall and voicing false alarm on a 10 ms grid (the reference: the latest
 sounding note). Rates carry a bootstrap 95 % interval over takes.
 """
-import argparse, csv, glob, json, os, subprocess, sys
+import argparse, csv, glob, json, os, subprocess
 import numpy as np
 
+from track_eval import jams_notes, mono_score
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-sys.path.insert(0, os.path.join(ROOT, 'tools', 'sim'))
-from track_eval import jams_notes, mono_score  # noqa: E402
 
 OUT = os.path.join(ROOT, 'build', 'stage5')
 FMIN = 60.0                                            # (the bass sets: 35 Hz, set in run())

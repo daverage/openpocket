@@ -3,10 +3,10 @@
 non-vibrato, mf and ff; "may be downloaded and used for any projects, without restrictions",
 https://theremin.music.uiowa.edu/MIS.html). Not firmware.
 
-  python3 -I tools/sim/iowa_prep.py [RAWDIR] [OUTDIR] [MIDI ...]
+  python3 -I tools/legacy-synth/iowa_prep.py [RAWDIR] [OUTDIR] [MIDI ...]
       RAWDIR  the downloaded scale files (default build/iowa/raw: Trumpet.novib.{mf,ff}.{E3B3,C4B4,C5B5}.aiff)
       OUTDIR  default build/iowa: notes/*.wav (every note, as cut), samples/*.wav + bank.json (the chosen ones, in
-              tools/sim/acoustic_prep.py's format, for tools/mk_acoustic_bank.py)
+              tools/legacy-synth/acoustic_prep.py's format, for tools/mk_acoustic_bank.py)
       MIDI    the sounding notes to keep (default 52 60 72: E3, C4, C5)
 
 Each scale file is cut at its silences into single notes; each note's sounding pitch is measured (the file names give

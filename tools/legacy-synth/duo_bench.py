@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """OpenPocket Synth, stage 5: what a tracked synth plays, scored as notes (what a player hears), not frames.
 
-  python3 tools/research/duo_bench.py --set gtchords|dev|gtechs [--max N] --cand NAME[=exe:mode] ...
+  python3 tools/legacy-synth/duo_bench.py --set gtchords|dev|gtechs [--max N] --cand NAME[=exe:mode] ...
 
-Candidates: poly_<exe> (build/<exe>, tools/sim/pulse_poly_bench.c as STRING DUO: its two voices while their gain is
-above 0.065) and mono_<exe> (build/<exe>, tools/sim/mono_bench.c: the one voice). Each voice's output is cut into
+Candidates: poly_<exe> (build/<exe>, tools/legacy-synth/pulse_poly_bench.c as STRING DUO: its two voices while their gain is
+above 0.065) and mono_<exe> (build/<exe>, tools/legacy-synth/mono_bench.c: the one voice). Each voice's output is cut into
 played notes (a new note at a jump over 80 cents or a gap); notes shorter than 30 ms are dropped. A played note is
   right   within 50 cents of a note sounding at its start (+-40 ms),
   octave  12 or 24 semitones from one (an octave jump),
@@ -14,7 +14,7 @@ notes sounding where two voices play two different right notes; bottom = frames 
 voice plays the lowest one."""
 import argparse, csv, glob, os, subprocess, sys, tempfile
 import numpy as np
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'research'))
 import poly_compare as pc
 
 def takes(s):

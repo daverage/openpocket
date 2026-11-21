@@ -1,0 +1,20 @@
+--- FINAL all: 35 takes
+mono only                          F1 0.44 P 0.66 R 0.33 | R by n: 1:0.92 2:0.18 3:0.16 4:0.14 | P by n: 1:0.94 2:0.43 3:0.48 4:0.55 | 2nd-voice delay 2000/2000 ms | bad-voice 167.8/min 15.74s/min lead-lat 23ms retrig 255
+pt only                            F1 0.84 P 0.80 R 0.88 | R by n: 1:0.97 2:0.87 3:0.89 4:0.80 | P by n: 1:0.89 2:0.84 3:0.87 4:0.92 | 2nd-voice delay 17/81 ms | bad-voice 78.3/min 12.54s/min lead-lat 34ms retrig 27
+classifier switch                  F1 0.85 P 0.87 R 0.83 | R by n: 1:0.93 2:0.78 3:0.83 4:0.76 | P by n: 1:0.93 2:0.85 3:0.88 4:0.96 | 2nd-voice delay 104/2000 ms | bad-voice 67.0/min 9.80s/min lead-lat 25ms retrig 93
+two-level (frozen)                 F1 0.86 P 0.85 R 0.86 | R by n: 1:0.94 2:0.82 3:0.88 4:0.79 | P by n: 1:0.92 2:0.84 3:0.87 4:0.93 | 2nd-voice delay 52/1010 ms | bad-voice 76.9/min 10.61s/min lead-lat 26ms retrig 68
+--- FINAL chord takes: 17 takes
+mono only                          F1 0.23 P 0.48 R 0.15 | R by n: 1:0.36 2:0.17 3:0.16 4:0.14 | P by n: 1:0.47 2:0.42 3:0.48 4:0.55 | 2nd-voice delay 2000/2000 ms | bad-voice 286.7/min 25.19s/min lead-lat 31ms retrig 252
+pt only                            F1 0.85 P 0.84 R 0.86 | R by n: 1:0.81 2:0.88 3:0.89 4:0.80 | P by n: 1:0.45 2:0.84 3:0.87 4:0.92 | 2nd-voice delay 17/52 ms | bad-voice 38.7/min 14.74s/min lead-lat 44ms retrig 25
+classifier switch                  F1 0.84 P 0.88 R 0.79 | R by n: 1:0.58 2:0.78 3:0.83 4:0.76 | P by n: 1:0.47 2:0.85 3:0.88 4:0.96 | 2nd-voice delay 84/1639 ms | bad-voice 77.2/min 12.92s/min lead-lat 50ms retrig 90
+two-level (frozen)                 F1 0.85 P 0.86 R 0.84 | R by n: 1:0.66 2:0.82 3:0.88 4:0.79 | P by n: 1:0.46 2:0.84 3:0.87 4:0.93 | 2nd-voice delay 52/151 ms | bad-voice 79.9/min 14.12s/min lead-lat 57ms retrig 59
+--- FINAL scales: 12 takes
+mono only                          F1 0.93 P 0.90 R 0.96 | R by n: 1:0.97 2:0.50 3:0.00 4:0.00 | P by n: 1:0.97 2:1.00 3:0.00 4:0.00 | 2nd-voice delay 2000/2000 ms | bad-voice 72.0/min 4.59s/min lead-lat 22ms retrig 0
+pt only                            F1 0.85 P 0.75 R 0.98 | R by n: 1:0.99 2:0.50 3:0.00 4:0.00 | P by n: 1:0.97 2:1.00 3:0.00 4:0.00 | 2nd-voice delay 6/2000 ms | bad-voice 156.4/min 8.72s/min lead-lat 18ms retrig 0
+classifier switch                  F1 0.93 P 0.90 R 0.96 | R by n: 1:0.97 2:0.50 3:0.00 4:0.00 | P by n: 1:0.97 2:1.00 3:0.00 4:0.00 | 2nd-voice delay 2000/2000 ms | bad-voice 74.0/min 4.69s/min lead-lat 22ms retrig 0
+two-level (frozen)                 F1 0.92 P 0.88 R 0.97 | R by n: 1:0.97 2:0.50 3:0.00 4:0.00 | P by n: 1:0.97 2:1.00 3:0.00 4:0.00 | 2nd-voice delay 1556/2000 ms | bad-voice 97.0/min 5.29s/min lead-lat 21ms retrig 1
+--- FINAL single+tech: 6 takes
+mono only                          F1 0.80 P 0.72 R 0.90 | R by n: 1:0.90 2:0.00 3:0.00 4:0.00 | P by n: 1:0.92 2:0.00 3:0.00 4:0.00 | 2nd-voice delay nan/nan ms | bad-voice 22.7/min 11.23s/min lead-lat 22ms retrig 3
+pt only                            F1 0.71 P 0.56 R 0.98 | R by n: 1:0.98 2:0.00 3:0.00 4:0.00 | P by n: 1:0.81 2:0.00 3:0.00 4:0.00 | 2nd-voice delay nan/nan ms | bad-voice 34.4/min 13.94s/min lead-lat 15ms retrig 2
+classifier switch                  F1 0.79 P 0.71 R 0.90 | R by n: 1:0.90 2:0.00 3:0.00 4:0.00 | P by n: 1:0.92 2:0.00 3:0.00 4:0.00 | 2nd-voice delay nan/nan ms | bad-voice 24.4/min 11.18s/min lead-lat 22ms retrig 3
+two-level (frozen)                 F1 0.79 P 0.68 R 0.93 | R by n: 1:0.93 2:0.00 3:0.00 4:0.00 | P by n: 1:0.92 2:0.00 3:0.00 4:0.00 | 2nd-voice delay nan/nan ms | bad-voice 28.4/min 11.33s/min lead-lat 23ms retrig 8

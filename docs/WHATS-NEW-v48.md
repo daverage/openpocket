@@ -21,8 +21,8 @@ A short CAB press still opens the CAB page, now at its release (as PUSH, HOME an
 Four new SYN types play an instrument from your guitar instead of reshaping the guitar's sound. The pedal follows the
 note you play (one note at a time), with its bends, slides and slurs, and turns your pick strength and the string's
 level into the instrument's dynamics. The research, the host prototype and its measurements are in
-[REALISTIC-INSTRUMENT-SYNTHESIS.md](REALISTIC-INSTRUMENT-SYNTHESIS.md) and
-[REALISTIC-INSTRUMENT-PROTOTYPE.md](REALISTIC-INSTRUMENT-PROTOTYPE.md).
+[REALISTIC-INSTRUMENT-SYNTHESIS.md](research/REALISTIC-INSTRUMENT-SYNTHESIS.md) and
+[REALISTIC-INSTRUMENT-PROTOTYPE.md](research/REALISTIC-INSTRUMENT-PROTOTYPE.md).
 
 | Type | What it is | Register at OCTAVE 0 |
 | --- | --- | --- |

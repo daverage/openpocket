@@ -1,0 +1,64 @@
+
+===== INSPECTED (P2/P3 excerpt 20-50 s, seen earlier)
+--- all: 31 takes
+new classifier                     FA/min= 1.82 (0.28s/min) falseframes= 2.8% chordrecall=77.3% entry=   90/ 2000ms exit=  110ms F1=0.87 evP=0.31 evR=0.27 retrig=127
+persistence slow                   FA/min= 1.17 (0.33s/min) falseframes= 2.6% chordrecall=71.0% entry=  569/ 2000ms exit=  102ms F1=0.83 evP=0.30 evR=0.23 retrig=108
+persistence fast                   FA/min=22.99 (5.08s/min) falseframes=15.0% chordrecall=83.1% entry=  267/  357ms exit=  104ms F1=0.85 evP=0.23 evR=0.20 retrig=71
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.54 evP=0.23 evR=0.24 retrig=234
+pt only                            FA/min= 1.17 (35.11s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.82 evP=0.15 evR=0.15 retrig=31
+--- chord takes: 9 takes
+new classifier                     FA/min= 0.22 (0.01s/min) falseframes=26.0% chordrecall=88.6% entry=   70/  127ms exit=  125ms F1=0.89 evP=0.25 evR=0.42 retrig=90
+persistence slow                   FA/min= 0.00 (0.00s/min) falseframes=28.2% chordrecall=81.8% entry=  557/  613ms exit=  110ms F1=0.84 evP=0.17 evR=0.23 retrig=82
+persistence fast                   FA/min= 0.00 (0.00s/min) falseframes=28.2% chordrecall=90.9% entry=  267/  283ms exit=  110ms F1=0.89 evP=0.29 evR=0.35 retrig=53
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.28 evP=0.09 evR=0.25 retrig=200
+pt only                            FA/min= 0.00 (0.00s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.91 evP=0.25 evR=0.30 retrig=20
+--- scales: 12 takes
+new classifier                     FA/min= 3.17 (0.21s/min) falseframes= 0.4% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.93 evP=0.45 evR=0.25 retrig=0
+persistence slow                   FA/min= 1.50 (0.38s/min) falseframes= 0.6% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.93 evP=0.48 evR=0.26 retrig=0
+persistence fast                   FA/min=56.43 (11.97s/min) falseframes=20.1% chordrecall=20.6% entry=  511/  776ms exit=   41ms F1=0.83 evP=0.20 evR=0.14 retrig=0
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.93 evP=0.48 evR=0.26 retrig=0
+pt only                            FA/min= 2.00 (60.01s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.67 evP=0.11 evR=0.11 retrig=1
+--- music: 4 takes
+new classifier                     FA/min= 0.00 (0.00s/min) falseframes= 9.8% chordrecall=44.9% entry=  340/ 2000ms exit=   64ms F1=0.68 evP=0.29 evR=0.18 retrig=36
+persistence slow                   FA/min= 0.53 (0.18s/min) falseframes= 4.0% chordrecall=39.9% entry=  917/ 2000ms exit=   75ms F1=0.64 evP=0.25 evR=0.15 retrig=25
+persistence fast                   FA/min= 1.60 (0.54s/min) falseframes=12.2% chordrecall=60.9% entry=  258/  484ms exit=   81ms F1=0.73 evP=0.26 evR=0.15 retrig=17
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.41 evP=0.25 evR=0.15 retrig=33
+pt only                            FA/min= 0.00 (0.00s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.81 evP=0.24 evR=0.13 retrig=9
+--- single notes + techniques: 6 takes
+new classifier                     FA/min= 2.67 (1.00s/min) falseframes= 1.7% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.88 evP=0.17 evR=0.33 retrig=1
+persistence slow                   FA/min= 2.67 (0.80s/min) falseframes= 1.3% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.88 evP=0.20 evR=0.35 retrig=1
+persistence fast                   FA/min= 4.01 (1.79s/min) falseframes= 3.0% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.87 evP=0.20 evR=0.35 retrig=1
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.89 evP=0.20 evR=0.35 retrig=1
+pt only                            FA/min= 2.00 (60.01s/min) falseframes=100.0% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.81 evP=0.08 evR=0.22 retrig=1
+  classifier CHORD recall with 2 true notes: 46.3% (12530 frames)
+  classifier CHORD recall with 3 true notes: 84.4% (28532 frames)
+  classifier CHORD recall with 4+ true notes: 91.5% (13050 frames)
+
+===== FINAL (new excerpts 80-110 s of P2/P3, new chord takes)
+--- all: 35 takes
+new classifier                     FA/min= 1.72 (0.20s/min) falseframes= 2.4% chordrecall=84.8% entry=   87/ 1965ms exit=   70ms F1=0.85 evP=0.34 evR=0.36 retrig=93
+persistence slow                   FA/min= 0.97 (0.70s/min) falseframes= 3.9% chordrecall=80.3% entry=  563/  627ms exit=   75ms F1=0.82 evP=0.30 evR=0.28 retrig=177
+persistence fast                   FA/min= 1.49 (1.08s/min) falseframes= 4.9% chordrecall=89.5% entry=  270/  337ms exit=   75ms F1=0.85 evP=0.35 evR=0.32 retrig=138
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.44 evP=0.20 evR=0.28 retrig=255
+pt only                            FA/min= 1.03 (30.86s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.84 evP=0.20 evR=0.26 retrig=27
+--- chord takes: 17 takes
+new classifier                     FA/min= 0.47 (0.07s/min) falseframes=11.7% chordrecall=85.3% entry=   87/ 1519ms exit=   75ms F1=0.84 evP=0.30 evR=0.48 retrig=90
+persistence slow                   FA/min= 0.12 (0.30s/min) falseframes=14.5% chordrecall=80.7% entry=  563/  627ms exit=   75ms F1=0.79 evP=0.19 evR=0.25 retrig=174
+persistence fast                   FA/min= 0.12 (0.34s/min) falseframes=14.8% chordrecall=90.0% entry=  267/  337ms exit=   75ms F1=0.84 evP=0.29 evR=0.37 retrig=135
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.23 evP=0.10 evR=0.26 retrig=252
+pt only                            FA/min= 0.00 (0.00s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.85 evP=0.27 evR=0.41 retrig=25
+--- scales: 12 takes
+new classifier                     FA/min= 2.50 (0.19s/min) falseframes= 0.4% chordrecall= 3.3% entry= 2000/ 2000ms exit=   46ms F1=0.93 evP=0.53 evR=0.28 retrig=0
+persistence slow                   FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.93 evP=0.56 evR=0.28 retrig=0
+persistence fast                   FA/min= 0.17 (0.05s/min) falseframes= 0.1% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.93 evP=0.56 evR=0.28 retrig=0
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry= 2000/ 2000ms exit=  nanms F1=0.93 evP=0.56 evR=0.28 retrig=0
+pt only                            FA/min= 2.00 (60.01s/min) falseframes=100.0% chordrecall=100.0% entry=    0/    0ms exit= 2003ms F1=0.85 evP=0.18 evR=0.16 retrig=0
+--- single notes + techniques: 6 takes
+new classifier                     FA/min= 3.67 (0.61s/min) falseframes= 1.0% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.79 evP=0.14 evR=0.43 retrig=3
+persistence slow                   FA/min= 5.34 (3.23s/min) falseframes= 5.4% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.76 evP=0.14 evR=0.43 retrig=3
+persistence fast                   FA/min= 8.01 (5.23s/min) falseframes= 8.7% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.74 evP=0.13 evR=0.41 retrig=3
+mono only                          FA/min= 0.00 (0.00s/min) falseframes= 0.0% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.80 evP=0.16 evR=0.46 retrig=3
+pt only                            FA/min= 2.00 (60.01s/min) falseframes=100.0% chordrecall= 0.0% entry=  nan/  nanms exit=  nanms F1=0.71 evP=0.06 evR=0.28 retrig=2
+  classifier CHORD recall with 2 true notes: 67.4% (8083 frames)
+  classifier CHORD recall with 3 true notes: 87.7% (39197 frames)
+  classifier CHORD recall with 4+ true notes: 86.1% (22659 frames)

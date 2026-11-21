@@ -1,0 +1,238 @@
+# Low-cost guitar note tracking
+
+## Phase 2b evidence and next benchmark
+
+The v49 notes below are an earlier design snapshot. In v66 the poly synths use
+a quarter-rate resonator bank, harmonic candidate ranking and a two-voice
+allocator. The mono layer still uses ERB partials, Klapuri-style salience and a
+normalised waveform-period check. These are established DSP methods. The note
+allocator's rules for choosing and releasing voices are OpenPocket's own.
+[Poly tracker](../../engine/px_poly_track.h) · [Mono tracker](../../engine/px_track.h) ·
+[Klapuri 2006](https://archives.ismir.net/ismir2006/paper/000125.pdf) ·
+[YIN](https://doi.org/10.1121/1.1458024)
+
+| Problem | What we have tested | Decision |
+|---|---|---|
+| Polyphonic candidate detection | The pinned GPLv3 Rust guitar detector, built directly from upstream for the host, beat the older ERB tracker on both-note recall (42.1% vs 20.1%) on the same 128-sample scoring grid. It can miss adjacent semitones and true octave pairs. These were raw candidate scores against the older tracker. | Keep the current C resonator front end and rerun the upstream detector as a reference on identical present-day fixtures. Compare raw candidates and sounding voices separately. [Resonator benchmark](POLY-TRACKER-RESONATOR-BENCH.md) |
+| Shared harmonics | A bounded joint fit and past-only Essentia MultiPitchKlapuri both lost to the older ERB baseline. The v67 static even/odd partial check restores synthetic octaves and can also admit sustained false octaves. | Try time-varying harmonic evidence on the current front end. Consider a new joint fit only when it can use new evidence, such as learned pickup templates or distinct attacks. [Joint and Essentia benchmark](POLY-TRACKER-JOINT-BENCH.md) · [Phase 2b results](../archive/phase2b.md#stage-1-progress) |
+| Mono guitar and bass | Cycfi Q BACF is an MIT-licensed mono detector tuned using separate guitar-string signals. OpenPocket's v49 host bench used Q's own conditioning and measured 68.5% notes right on GuitarSet and 57–60% on the owner's low-string riffs. The v49 tracker measured 74.6% and 84.4% respectively. | Keep Q as a host reference. A bass A/B needs native-pitch single notes, low-B coverage and full played bass DI when available. Whole-chord periodicity can suggest an unplayed low note, especially with a fifth. [Q pitch documentation](https://cycfi.github.io/q/q/v1.5/reference/pitch.html) · [v49 test results](../archive/NOTE-TRACKING.md#the-hq-synths-a-lighter-tracker-and-the-2-stop) · [Recorded bass bench](BASS-DI-BENCH.md) |
+| Other polyphonic guitar implementations | Schramm et al. trained spectral dictionaries for each guitar and measured roughly 45 ms input-to-synth delay on Raspberry Pi 3 at a 512-sample hop. Guitarists still heard octave errors and low-note harmonics triggering extra voices. Basic Pitch and FretNet provide working host references with pitch contours. | Use a reference to examine labels and ambiguous failures. The paper and host implementations leave AC791N timing and RAM to be measured. [Schramm et al., NIME 2018, §§3.1–3.3](https://nime.org/proceedings/2018/nime2018_paper0027.pdf) · [Basic Pitch code](https://github.com/spotify/basic-pitch) · [FretNet code](https://github.com/cwitkowitz/guitar-transcription-continuous) |
+
+Zhou et al. evaluated resonator-based pitch estimation on mixtures of recorded
+instruments, including guitar. Their static harmonic checks still left octave
+errors. In §5 and Figure 8 they show that the even partials of a lower pitch
+can follow a different time course from its odd partials when a second note an
+octave above enters. Their example is a piano and violin mixture. Its transfer
+to a single guitar pickup is a hypothesis to measure. It directly addresses
+the false octave that returns when the allocator sees high even partials.
+[Zhou et al., 2009 full paper](https://www.research-collection.ethz.ch/bitstreams/32aa5768-22e5-47f4-9d8a-60343651d0d3/download)
+
+### Stage 1 comparison protocol
+
+1. Freeze the v66 reference and current v67 candidate. Collect causal
+   per-report even and odd harmonic envelopes from the existing resonator
+   trace. Test whether the even group has an independent attack, changes
+   amplitude independently, or persists when the lower note is muted. Compare
+   against synthetic and recorded cases where simultaneous notes and single
+   string overtones resemble each other. Read the published time-envelope
+   comparison before picking a compact statistic.
+2. Measure the separation on development audio first. Use annotations to tell
+   genuine octave pairs from overtones and separately log attacks, sustained
+   frames and independent mutes. Port a small comparison to the allocator only
+   if it produces better decisions at the report cadence without extra lookahead.
+3. Rerun both owner DIs, the original GuitarSet holdout and a separate audit
+   range. Report voice entry counts, median and tail arrival, false starts and
+   time spent on a ghost. Use electric Guitar-TECHS DI on a separate player or
+   recording session when expanding the audit. Measure audible latency and peak
+   block load on the pedal before promotion. [Guitar-TECHS dataset](https://zenodo.org/records/14963133) ·
+   [Phase 2b gates](../archive/phase2b.md#stage-1-v67-remove-overtone-ghosts-from-both-trackers)
+
+### Octave evidence results
+
+`tools/legacy-synth/octave_evidence.py` feeds the original audio to the host Poly
+resonator dump. It compares the Stage 1 candidate's static check with several
+causal features, including an average of the last four reports (11.6 ms).
+It calibrates the thresholds to the static check's single-note admission rate
+on GuitarSet takes 0–23. It reads the same fixed owner DI note ranges as
+`poly_diag.py`.
+
+```sh
+cc -O2 -Iengine -Ifirmware tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+python3 tools/legacy-synth/octave_evidence.py build/pulse_poly_bench --offset 24 --owner-di 'My Audio'
+python3 tools/legacy-synth/octave_evidence.py build/pulse_poly_bench --offset 144
+```
+
+The four-report average measures the balance between odd and even groups.
+The separate rise feature compares that average with the preceding twelve
+reports. The rise feature alone admitted 13.13% of the upper-entry frames
+and 3.57% of the simultaneous frames on the original holdout. Averaging
+therefore helped more than detecting a recent rise in this test. The
+classifier assumes an annotated root and a measurable second harmonic.
+See the voice-level results and remaining regressions in the plan.
+[Phase 2b results](../archive/phase2b.md#stage-1-progress)
+
+### Cycfi Q on isolated bass notes
+
+The host comparison used Q revision `efe2611` and the existing
+`tools/research/q_bench.cpp` conditioning. For bass, the bench's lower bound was
+27 Hz (stock 60 Hz), which also changes its input high-pass. Use the native
+Baby Blue forte and Dark Black mezzo-forte takes `rr1`–`rr4` at each pitch
+in the bass bench. Trim and peak-normalise with `bass_di_eval.load_note`,
+place each note at 100 ms at 0.24 peak with a 6 ms release ending at 900 ms,
+and feed both benches identical 44.1 kHz mono PCM16. Count matches within
+50 cents during the note and time the first matching report from placement.
+[Bass sources and filenames](BASS-DI-BENCH.md)
+
+| Played note | v66 MONO SYNTH correct frames and first hits | Q correct frames and first hits | First-hit median, v66 / Q |
+|---|---:|---:|---:|
+| B0 | 0%, 0/8 | 82.8%, 8/8 | — / 126.4 ms |
+| E1 | 0%, 0/8 | 86.5%, 8/8 | — / 109.0 ms |
+| A1 | 0%, 0/8 | 84.2%, 8/8 | — / 126.4 ms |
+| E2 | 92.9%, 8/8 | 85.8%, 8/8 | 55.3 / 126.4 ms |
+
+The experimental 900 Hz mono period-check ceiling matched v66 on these bass
+fixtures. With the standard 60 Hz Q bench on the owner DIs and the same
+50-cent tolerance, v66 / 900 Hz / Q correct frames were 85.6% / 86.2% / 67.1%
+on the scale and 62.9% / 62.9% / 71.0% across the low-E sustains. Q provides
+a working reference for isolated bass pitches below guitar E2. The timing
+includes the bench's conditioning and cold start. Played bass lines,
+legato, bends, string mutes and pedal CPU still need separate measurements
+before considering a bass mode.
+
+The other research notes cover different parts of the audio path. The
+ERB-PS2 octave shifter transforms the mixed guitar waveform and can work
+without individual note events. Smart Gate detects signal versus noise and is
+worth testing on soft picks and bass tails. The STK and Plaits references
+address how a voice sounds after a note has been identified. Keep the HQ
+sound-matching work on the isolated voices and matched-level listening A/Bs.
+[Octave DSP](POLYPHONIC-PITCH-RESEARCH.md) · [Smart Gate](SMART-GATE-RESEARCH.md) ·
+[Synthesis engines](SYNTH-ENGINES-RESEARCH.md) · [Voicing and listening](SYNTH-VOICING-RESEARCH.md)
+
+CC0 is unnecessary for firmware code. OpenPocket's engine is GPL-3.0-only.
+MIT and Apache-2.0 code and compatible GPLv3 code can be reused under their
+applicable terms. Record source revisions, retain notices and check files,
+model weights and samples separately. An unlicensed repository or a paper
+alone does not grant permission to copy implementation code. Keep AGPL
+Essentia as a standalone comparison unless its combined-distribution terms
+are deliberately adopted. [OpenPocket licence](../../README.md#licence) ·
+[GNU licence compatibility](https://www.gnu.org/licenses/license-compatibility.html) ·
+[Apache compatibility](https://www.apache.org/licenses/GPL-compatibility.html)
+
+Try a **C port of Cycfi Q's bitstream autocorrelation (BACF) detector** as the cheap mono tracker for synth and instrument voices. Run it at a decimated rate, and use its edge-based period prediction for attacks. Keep the **v49 harmonic-salience tracker** for chords, but feed it from a **multirate ERB bank** that does less work per sample. For octave down, track only the bass note with the cheap mono tracker on a low-passed copy of the input, and let the salience notes veto it. For picks, keep the **log-band spectral flux** that v49 already computes, add SuperFlux's maximum filter across bands, and add a 128-sample-hop band-energy flux for modes that do not run the ERB bank.
+
+None of the published trackers gets a low E (82.4 Hz, 12.1 ms period) right in much less than one to two periods, and none of them is cheap and polyphonic at the same time. Neural transcribers such as Basic Pitch and CREPE are far too heavy for the pedal. They are still useful on the host for labelling test recordings.
+
+Labels used below. **Published** means stated in the cited paper, manual, or source code. **Measured (OpenPocket)** means a project measurement. **Estimate** means arithmetic in this note, which still needs a timing run on the pedal with NAM active.
+
+## What OpenPocket has today
+
+- **MONO SYNTH's tracker** (`syn_track` in [`engine/px_dsp.c`](../../engine/px_dsp.c)) applies a steep fixed low-pass and detects upward zero crossings with hysteresis, then takes the median of three periods. It accepts periods between 1/1500 and 1/55 s.
+- **The v49 tracker** ([`engine/px_track.h`](../../engine/px_track.h), still in progress and not yet called from the engine) runs 43 complex ERB band-pass filters at 22.05 kHz. For each band, it measures the instantaneous frequency over 32-sample half-rate frames (1.45 ms). It picks fundamentals by Klapuri harmonic salience with iterative removal, detects picks with log-power spectral flux, and checks low-note octaves with a normalised difference on a 2.76 kHz copy (`pxt_period`).
+- **Measured (OpenPocket, host).** On GuitarSet solo single notes, 85% of notes are right, with a median time to the correct pitch of 7.8 ms (90th percentile 41 ms). On the owner's low-string riffs, about 69% are right, with a median of 38 ms. Polyphonic chord frames reach F ≈ 43%.
+- **Measured (OpenPocket, pedal).** The ERB bank alone takes roughly 40–50% of a core. That is too much to run beside NAM, so it cannot be the always-on tracker front end.
+- **Why the bank costs this much (estimate).** `pxt_run` performs about 22 multiplies and 20 adds per band per half-rate sample for the complex biquad, phase advance, centre rotation, and power. It also loads and stores 9 floats of state. That is 43 × 22,050 ≈ 0.95 M band updates per second. At roughly 100 cycles per band update, the bank needs 95 M cycles per second, which is about 40% of 240 MHz and consistent with the measurement.
+- **OpenPocket is GPL-3.0-only** ([NOTICE.md](../../NOTICE.md)). MIT, BSD, and Apache-2.0 code can be combined with it. GPL-3.0-or-later and GPL-2.0-or-later code can be used under GPL-3.0. GPL-3.0-only code is compatible. AGPL-3.0 code can be combined under GPL-3.0 §13, but that part keeps its AGPL terms. Code with no licence cannot be copied.
+
+## Comparison
+
+Latency means the time until a first usable pitch for a low note. Cost is for 44.1 kHz input. "Poly" means the method reports several simultaneous notes from one mixed guitar signal.
+
+| Candidate | Algorithm | Poly | Latency (low E / drop D) | Cost per input sample | Memory | Licence (SPDX) | Source |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **Cycfi Q `pitch_detector`** | Zero crossings → 1-bit stream → XOR/popcount autocorrelation at edge-pair lags; harmonic reconciliation; median and octave bias | No (mono; tuned for one string per channel) | Window = 2 × lowest period. The first result arrives ½–1 window after onset, then one arrives every ½ window. With a 73 Hz floor, that is 13.8–27.6 ms, then every 13.8 ms (from code). The edge prediction is faster. | Published: ~50 ns/sample on a 2016 laptop. Estimate: 50–200 ops; less after decimation. | 1-bit window (152 B at 73 Hz) plus an edge ring of window/2 × 24 B (14.6 KB at 44.1 kHz; must be capped) | MIT | [cycfi/q](https://github.com/cycfi/q) |
+| **YIN** | Difference function → cumulative-mean normalisation → first dip below absolute threshold → parabolic interpolation | No | Published minimum: Tmax + T (13.6 + 12.1 ms for low E with a 73 Hz floor) | Estimate: ~136 ops at a decimated 5.5 kHz rate, one frame per block; ~8,500 ops at full rate | Estimate: 2 × Tmax decimated samples (≈ 0.6 KB) | Paper; implement from paper | [de Cheveigné & Kawahara 2002](https://doi.org/10.1121/1.1458024) |
+| **MPM (McLeod)** | Normalised square difference function, first "key maximum" above k × highest | No | Like YIN (window ≥ 2 periods in TarsosDSP defaults) | Same order as YIN; TarsosDSP version is O(N²) per frame | ~N floats | TarsosDSP: GPL-3.0 | [TarsosDSP `McLeodPitchMethod.java`](https://github.com/JorenSix/TarsosDSP/blob/master/core/src/main/java/be/tarsos/dsp/pitch/McLeodPitchMethod.java) |
+| **aubio `yinfast` / `yinfft` / others** | YIN via FFT; spectral YIN with perceptual weighting; comb/Schmitt/spectral ACF variants | No | Buffer length (e.g. 2,048 = 46 ms) | Estimate: ~440 ops (2,048-point FFT pair every 256) | Several buffer-length vectors (~16–40 KB, estimate) | GPL-3.0-or-later | [aubio/aubio](https://github.com/aubio/aubio) |
+| **pYIN** | YIN over a threshold prior → candidates with probabilities → HMM/Viterbi | No | Vamp plugin: 2,048 block, 256 step, fixed-lag smoothing of 100 frames ≈ 0.58 s | High (690-state HMM per frame) | Large | GPL-2.0-or-later | [c4dm/pyin](https://github.com/c4dm/pyin) |
+| **SWIPE′** | Spectral template matching with sawtooth-like kernels and prime harmonics over ERB-spaced loudness | No | Largest window ≈ 8 periods of fmin (4,096 samples ≈ 93 ms at 73 Hz) | Several FFT sizes per frame; high | Large | MIT (Gorman C code) | [kylebgorman/swipe](https://github.com/kylebgorman/swipe) |
+| **Klapuri 2006 salience** | Sum of weighted harmonic amplitudes; iterative estimation and cancellation, or joint estimation | Yes | Evaluated with 46 and 93 ms frames | FFT plus salience; v49 uses ERB bands instead | Small apart from spectrum | Paper; Essentia `MultiPitchKlapuri` is AGPL-3.0-or-later | [ISMIR 2006](https://archives.ismir.net/ismir2006/paper/000125.pdf) |
+| **Roland semitone bank** (patent) | 49 band-pass filters on semitones E2–E6; zero-crossing pitch and level per band; one oscillator per band | Yes (per band) | Not stated | Estimate: 49 real biquads ≈ 250 MACs | Small | US 9,542,923 B1 (Roland, active, anticipated expiry 2035-09-29) | [Google Patents](https://patents.google.com/patent/US9542923B1/en) |
+| **Spotify Basic Pitch** | HCQT (3 bins/semitone, 8 harmonic shifts) → small CNN → onset, note, pitch posteriorgrams | Yes | 11.6 ms hop, symmetric time kernels ("same" padding), 2 s windows in reference code; non-causal | Estimate: ≥ 2 M MACs per frame for one 3 × 39 layer alone (≈ 170 M MAC/s) | 16,782 params, large feature maps | Apache-2.0 | [spotify/basic-pitch](https://github.com/spotify/basic-pitch) |
+| **CREPE** | 6-layer CNN on 1,024 samples at 16 kHz (64 ms) | No | ≥ 64 ms window | Estimate: tiny ≈ 37 M MACs/frame; full > 1.2 G MACs/frame | Estimate: tiny ≈ 0.49 M params, full ≈ 22 M | MIT | [marl/crepe](https://github.com/marl/crepe) |
+| **Spectral-flux onsets (log, filtered)** | Positive change of log band magnitudes | n/a | One hop plus peak picking | Already inside v49; a standalone 8–12-band IIR version is roughly 60–80 ops (estimate) | < 1 KB | Method (paper) | [Böck et al. ISMIR 2012](https://ismir2012.ismir.net/event/papers/049_ISMIR_2012.pdf) |
+| **SuperFlux** | Spectral flux with a maximum filter across frequency on the reference frame | n/a | Published setup: 2,048 frame, 200 fps | Adds a 3-band max per band per frame | Tiny | BSD-2-Clause (reference Python) | [DAFx 2013](https://www.dafx.de/paper-archive/2013/papers/09.dafx2013_submission_12.pdf) · [CPJKU/SuperFlux](https://github.com/CPJKU/SuperFlux) |
+| **Pd `bonk~`** | 11 filters of 6 semitones on a 256-point window, 128 hop; growth test | n/a | 128-sample hop (2.9 ms) | Small | Small | BSD-3-Clause | [pure-data `bonk~.c`](https://github.com/pure-data/pure-data/blob/master/extra/bonk~/bonk~.c) |
+
+## Cycfi Q (BACF)
+
+**What the code does.** The code was read at `cycfi/q` master `efe2611` (2026-10-09). `zero_crossing_collector` records each crossing with hysteresis, along with its peak, its width, and the samples on each side for sub-sample interpolation. Its window is twice the lowest period, rounded up to whole machine words. `is_ready()` fires when the frame counter passes the window and the signal is below zero, and the window then shifts by half. The counter resets when half a window passes with no edges. `bacf_period_detector` sets bits for pulses whose peak is at least `pulse_threshold = 0.6` of the window's peak. The overview page says 80%, but the code uses 0.6. The detector then evaluates the XOR/popcount correlation only at lags between pairs of significant edges. It returns early on a perfect match. [bacf_period_detector.hpp](https://github.com/cycfi/q/blob/master/q_lib/include/q/pitch/bacf_period_detector.hpp) · [zero_crossing_collector.hpp](https://github.com/cycfi/q/blob/master/q_lib/include/q/utility/zero_crossing_collector.hpp) · [bitstream_acf.hpp](https://github.com/cycfi/q/blob/master/q_lib/include/q/utility/bitstream_acf.hpp)
+
+**Octave handling (from code).** The `sub_collector` treats a candidate period that is close to an integer multiple of the first candidate period as a harmonic. When the longer period correlates better, within `harmonic_periodicity_factor`, it keeps the longer period's edges and divides by the multiple. `pitch_detector::bias` keeps the current note when a new estimate lies within ~1/32 of it, or of an integer multiple or sub-multiple of it. The multiple and sub-multiple test applies only once more than two frames have passed since a shift. A new note is accepted only if periodicity is above 0.8. A median of three then smooths the shifts, and the first note needs periodicity of at least 0.9. The project docs say the composite waveform still repeats at the fundamental period when the fundamental is weak, so the deepest notch lands there. [pitch_detector.hpp](https://github.com/cycfi/q/blob/master/q_lib/include/q/pitch/pitch_detector.hpp) · [BACF reference](https://github.com/cycfi/q/blob/master/docs/modules/ROOT/pages/reference/pitch/bacf_period_detector.adoc)
+
+**Published accuracy and latency.** Q's docs say BACF is "heavily tuned for multichannel guitar", with a test suite covering two octaves on every string of 6- and 8-string guitars. They claim sub-cent accuracy on sustained notes and about 50 ns per sample on a 2016 MacBook Pro. They state that "two cycles of the low E string is about 24 ms". `predict_period()` returns an earlier period from two similar edges, and the docs show a predicted low onset that is wrong and then corrected. No accuracy table on a public dataset was found. [Pitch overview](https://github.com/cycfi/q/blob/master/docs/modules/ROOT/pages/reference/pitch.adoc)
+
+**Porting notes.** The library is header-only C++17 with `std::vector` storage, so it needs a C rewrite of `zero_crossing_collector`, `bitstream_acf`, `bacf_period_detector`, and `pitch_detector`, about 1,000 lines including comments. `count_bits` uses `__builtin_popcount`. If the AC791N core has no population-count instruction, the compiler emits a software routine (estimate: 12–20 ops per 32-bit word). The edge ring holds window/2 entries of 24 bytes. That is 14.6 KB at 44.1 kHz with a 73 Hz floor, so the port should run on a decimated copy (11.025 kHz: 320-bit window, 3.8 KB ring) or cap the ring at 64–128 edges. The collector resets on overflow, so the cap needs a test. Q is monophonic. On a mixed chord it returns at best one period. Licence: MIT, so keep the copyright and permission notice in the source and add a row to `NOTICE.md`.
+
+## YIN, MPM, and the aubio family
+
+**YIN.** Published: the paper's error-reduction steps take gross error from 10.0% for the plain autocorrelation to 0.50% on the paper's speech subset. The threshold was 0.1, with a 25 ms window and a 40–800 Hz search. Step 4, the absolute threshold, picks the smallest lag whose normalised dip falls below the threshold. This targets "too low" (subharmonic) errors. The paper says latency can be reduced to Tmax + T, and that going lower requires a shorter integration time. It also notes a running-sum recursion that adds one term and removes one per step. [de Cheveigné & Kawahara 2002, author copy](https://cagnazzo.wp.imt.fr/files/2013/05/2002_JASA_YIN.pdf)
+
+*Estimate.* At 5.5125 kHz (÷8), lags run from 4 to 76 for 73–1,400 Hz. With W = 76 and one frame per 128-sample block, the cost is about 17 k operations per frame, or about 6 M operations per second, which is under 3% of a core. Memory is about 160 floats. Low notes keep about 5 samples per period at that rate, so parabolic interpolation matters. For notes above ~700 Hz, use the half-rate copy.
+
+**MPM.** TarsosDSP implements the normalised square difference directly in O(N²) with a default buffer of 1,024 samples. It picks the first peak at or above `DEFAULT_CUTOFF = 0.97` of the highest peak. A code comment notes that the Tartini UI uses 0.93. The code also discards any pitch below `LOWER_PITCH_CUTOFF = 80 Hz`, which would reject drop-D 73 Hz without a change. The original ICMC 2005 paper was not retrievable from the authors' server during this check, so the facts here come from the implementation. [TarsosDSP source](https://github.com/JorenSix/TarsosDSP/blob/master/core/src/main/java/be/tarsos/dsp/pitch/McLeodPitchMethod.java) · [Tartini papers page](https://www.cs.otago.ac.nz/graphics/Geoff/tartini/papers.html)
+
+**aubio.** The default pitch method is `yinfft`, with tolerance 0.85 and a perceptual spectral weighting. It also checks octave errors below a period of `samplerate/1300`. `yin` and `yinfast` use tolerance 0.15. All of them process a whole buffer per hop. Onset defaults are a threshold of 0.3, a reported delay of 4.3 hops, and a 50 ms minimum inter-onset interval. Per method, `hfc` uses threshold 0.058; `complex` adds whitening; `specflux` uses threshold 0.18 with whitening and log compression λ = 10. The peak picker takes a median over a window of 5 frames on the causal side and 1 frame on the anti-causal side, so each pick waits at least one hop. Every file is GPL-3.0-or-later. [pitch.c](https://github.com/aubio/aubio/blob/master/src/pitch/pitch.c) · [pitchyinfft.c](https://github.com/aubio/aubio/blob/master/src/pitch/pitchyinfft.c) · [onset.c](https://github.com/aubio/aubio/blob/master/src/onset/onset.c) · [peakpicker.c](https://github.com/aubio/aubio/blob/master/src/onset/peakpicker.c)
+
+**pYIN.** The Vamp plugin prefers 2,048-sample blocks with a 256 step. Its pitch HMM has 69 semitones × 5 bins from 61.7 Hz, with voiced and unvoiced states (690). Its default "fixed-lag smoothing" holds 100 frames (≈ 0.58 s at 44.1 kHz). It is an offline-quality reference, not a pedal tracker. [PYinVamp.cpp](https://github.com/c4dm/pyin/blob/default/PYinVamp.cpp) · [MonoPitchHMM.cpp](https://github.com/c4dm/pyin/blob/default/MonoPitchHMM.cpp) · [Mauch & Dixon 2014](https://doi.org/10.1109/ICASSP.2014.6853678)
+
+**SWIPE′.** Gorman's C code sizes its largest window as `2^round(log2(8·fs/fmin))`, about 8 periods of the lowest pitch. That is far too long here. [swipe.c](https://github.com/kylebgorman/swipe/blob/master/swipe.c) · [Camacho & Harris 2008](https://doi.org/10.1121/1.2951592)
+
+**A comparable desktop result.** `morf` is a new desktop guitar-to-MIDI project, built on YIN with a sub-harmonic check and an octave-jump hold. On its synthetic physical-string test set at 48 kHz with 128-sample buffers, it reports a median latency of 28.8 ms for E2–E3, 16.7 ms for F3–G#4, and 11.2 ms for A4 and above, with 6 octave errors in 1,040 notes and about 5% of one desktop core. The audio is synthetic, and the repository has no licence, so its code cannot be reused. [morf results](https://github.com/chenmarc/morf/blob/main/docs/results.md)
+
+## Polyphonic approaches
+
+**Klapuri 2006.** Published: the salience of a period candidate is a weighted sum of spectral maxima near its harmonics, with g(τ, m) learned from mixtures. The paper gives three estimators: direct, iterative estimation and cancellation, and joint. The iterative and joint estimators performed as well as a considerably more complex reference method. The polyphony is estimated by stopping when S(j) = Σ ŝ / j^0.70 stops rising. Evaluation used 46 and 93 ms frames, and error rates appear only in a figure. v49 already uses the published weight form (f0 + 27)/(h·f0 + 320). [Klapuri, ISMIR 2006](https://archives.ismir.net/ismir2006/paper/000125.pdf) · [Essentia MultiPitchKlapuri (AGPL-3.0-or-later)](https://github.com/MTG/essentia/blob/master/src/algorithms/tonal/multipitchklapuri.cpp)
+
+**Roland/BOSS without a hex pickup.** Roland's US 9,542,923 B1 (inventor Yukio Shigeno, filed 2015-09-29) splits the input with 49 band-pass filters centred on the semitones from E2 to E6. It detects pitch in each band "by measuring an interval between zero crossings". Each band drives an oscillator at the detected period and level, and the outputs are mixed. The text says that this realises "a polyphonic guitar synthesizer … without installing a pickup corresponding to each string". It does not discuss latency or octave errors. The Google Patents record lists it as active, with anticipated expiry on 2035-09-29. Treat a semitone-bank, per-band zero-crossing oscillator voice as a patent question before shipping one. This note is not legal advice. BOSS describes the SY-300 as designed for normal guitar pickups. No primary source ties it to this patent. [US 9,542,923 B1](https://patents.google.com/patent/US9542923B1/en) · [BOSS SY-300 release](https://www.boss.info/us/whats_new/press_releases/2015/30146/)
+
+**Hex pickups.** The background of the Roland patent describes the earlier approach: polyphonic guitar synthesizers that need a pickup for each string. The current GK-5 is a "divided pickup" mounted between the bridge and the bridge pickup and connected by a dedicated serial GK cable. With one signal per string, each channel is a monophonic problem, which is where Q's BACF is tuned. Cycfi's 8-input pitch-to-MIDI project (GPL-3.0) currently contains only a README. [GK-5 manual](https://static.roland.com/assets/media/pdf/GK-5_eng01_W.pdf) · [cycfi/hz_audio_to_midi](https://github.com/cycfi/hz_audio_to_midi)
+
+**EHX SYNTH9 and MEL9.** The manuals describe the voices and give playing advice. They suggest the bridge pickup, no drive in front, and a compressor or boost for weak pickups. They state a tracking range up to about the 23rd fret on high E and down to the open A string on bass. They do not describe the tracking method. [SYNTH9 manual](https://www.ehx.com/wp-content/uploads/2021/01/synth9-manual.pdf) · [MEL9 manual](https://www.ehx.com/wp-content/uploads/2021/01/mel9-manual.pdf)
+
+**Neural transcribers.** Basic Pitch has 16,782 parameters. It uses a CQT at 3 bins per semitone with a hop of about 11 ms, 7 harmonics plus one sub-harmonic, and three posteriorgrams. On GuitarSet, it reports Acc 0.70, Fno 0.79, and F 0.56. The reference code feeds 2 s windows at 22.05 kHz, and its time kernels (3–7 frames) are centred, so they look ahead. *Estimate:* the 3 × 39 contour layer alone is about 2 M MACs per frame, or 170 M MAC/s, which does not fit beside NAM. CREPE takes 1,024 samples at 16 kHz. Computed from its `core.py` layer table, the tiny model has about 0.49 M parameters and 37 M MACs per frame, and the full model has about 22 M parameters. Both are useful on the host to label the owner's riffs and widen the test set. Basic Pitch is Apache-2.0 and CREPE is MIT. [Basic Pitch paper](https://arxiv.org/abs/2203.09893) · [models.py](https://github.com/spotify/basic-pitch/blob/main/basic_pitch/models.py) · [constants.py](https://github.com/spotify/basic-pitch/blob/main/basic_pitch/constants.py) · [CREPE paper](https://arxiv.org/abs/1802.06182) · [crepe/core.py](https://github.com/marl/crepe/blob/master/crepe/core.py)
+
+## Onset detection
+
+- **Online comparison.** Böck, Krebs, and Schedl tested 23 ms frames with 10 ms hops and online peak picking, which looks only backwards. Log-filtered spectral flux reached F = 80.3%, with precision 88.3%. Plain spectral flux reached 74.5%, complex domain with whitening 75.8%, and weighted phase deviation 69.7%. Their neural OnsetDetector.LL reached 81.7%. HFC, phase deviation, and rectified complex domain were left out after inferior results in their tests. [ISMIR 2012](https://ismir2012.ismir.net/event/papers/049_ISMIR_2012.pdf)
+- **SuperFlux.** This method compares each frame with a reference frame µ frames back, after a maximum filter across neighbouring quarter-tone bands (138 bands from 27.5 Hz to 16 kHz, 200 fps). Online, it reached F = 0.820, against 0.801 for log-filtered flux. On string recordings, it cut false positives from 185 to 118 (36%). The tracking is causal. [Böck & Widmer, DAFx 2013](https://www.dafx.de/paper-archive/2013/papers/09.dafx2013_submission_12.pdf)
+- **Bello et al. tutorial.** Time-domain methods suit very percussive signals, and phase and spectral-difference methods do well on strongly pitched transients. "The complex-domain spectral difference seems to be a good choice in general", at slightly higher cost. [IEEE TSAP 2005, course copy](https://www.cs.bu.edu/fac/snyder/cs583/Literature%20and%20Resources/bello_onset_tutorial.pdf) · [DOI](https://doi.org/10.1109/TSA.2005.851998)
+- **Cheap detectors.** Q's `onset_gate` opens on either an absolute envelope level or an envelope rise over `attack_width`. It costs a few operations per sample. Pd's `bonk~` uses 11 filters, 6 semitones wide, on a 256-point window with a 128-sample hop, which equals one OpenPocket block. [onset_gate.hpp](https://github.com/cycfi/q/blob/master/q_lib/include/q/fx/onset_gate.hpp) · [bonk~.c](https://github.com/pure-data/pure-data/blob/master/extra/bonk~/bonk~.c)
+
+## Cutting low-note latency and octave errors
+
+- **The window is set by the lowest note allowed.** BACF's window and YIN's Tmax are both set by the floor frequency, so high notes wait as long as low ones. *Estimate:* run two instances, one with a 73 Hz floor and one with a ~250 Hz floor, and take the high one when it is confident. Alternatively, use YIN's early termination at the first dip below the threshold.
+- **Predict, then confirm.** Q's `predict_period` reads a period from the first two similar edges, about one period after the attack. The docs accept an occasional wrong low guess that is then corrected. A synth voice can start on the prediction and glide or snap to the BACF result.
+- **Weak fundamentals.** A time-domain difference or BACF repeats at T0 even without a fundamental (Q docs). The common failure is a dip at T0/2 that is nearly as deep when H2 dominates. Check τ against 2τ (and 3τ) and prefer the longer period when it is clearly better. That is the job of v49's `PXT_PD1/PD2/PDR` check, Q's `sub_collector`, and morf's sub-harmonic check. YIN's absolute threshold targets the opposite, subharmonic error. Note-level hysteresis such as Q's `bias()` and v49's `PXT_SLUR_OCT` then rejects single-frame octave jumps.
+- **Use the instrument's range.** The open low string (E2 82.4 Hz, or D2 73.4 Hz in drop D) is the lowest note the input can contain. With a "drop D" setting, every other preset can keep the 82 Hz floor and its shorter window.
+
+## Ranked recommendations
+
+### (a) Cheap, low-latency mono tracker
+
+1. **Port Q's BACF to C** as `engine/px_bacf.h`. Feed it 11.025 kHz from a ÷4 decimator with v49's existing 1 kHz biquad pair, or a slightly higher cutoff. Use `predict_period` for the first period and Q's `bias()` with a median of three for octave hysteresis. *Estimate:* 2–6% of a core and under 4 KB. Licence: MIT. Copy the notice into the file header and `NOTICE.md`. Score it on the GuitarSet and low-riff harness against v49 and `syn_track`.
+2. **Decimated YIN** at 5.5125 kHz, written from the paper. Reuse v49's `dec[]` buffer and `pxt_period` loop shape. Add the cumulative-mean normalisation, absolute threshold, parabolic interpolation, and a 2τ check. *Estimate:* under 3% of a core and under 1 KB. There are no licence obligations. Use it as the A/B and as a cross-check when BACF periodicity is low.
+3. **Keep `syn_track`** as the zero-latency fallback while either of the above is not yet confident.
+
+### (b) Chords, and bass-note-only octave down
+
+1. **Keep the v49 salience and note layer**, and make its front end cheaper as described in (d). The salience and cancellation are already the published Klapuri method. The front end is what does not fit.
+2. **Bass note for octave down.** Run the (a) tracker on a low-passed copy of the input (*estimate:* cutoff around 250–300 Hz so the low strings dominate). Accept its note only when it agrees with the lowest v49 salience note within a semitone, or with that note's octave below. Without v49, trust it only when its periodicity is high. *Estimate:* the cost is the cost of (a). Test with power chords, open chords, and drop-D riffs from the existing benches.
+3. **Label more data on the host** with Basic Pitch (Apache-2.0, Python, host only) to score the owner's own chord recordings. Do not attempt on-device neural inference.
+4. **Avoid a semitone-bank zero-crossing oscillator design** that mirrors US 9,542,923 without a patent review.
+
+### (c) Onset detection
+
+1. **Keep v49's log-band positive flux** and add SuperFlux's maximum filter. Before differencing, replace each previous-frame band value by the maximum of itself and its two neighbours. *Estimate:* about 3 compares per band per frame. This is expected to cut false picks on bends and vibrato, as in the string results. The method comes from the paper, and the reference code is BSD-2-Clause.
+2. **For modes without the ERB bank**, use an 8–12-band IIR filterbank with log energy, one positive-flux value per 128-sample block, and v49's adaptive average and refractory. This is like `bonk~` in shape (BSD-3-Clause), or written fresh. *Estimate:* about 1–2% of a core.
+3. **For a mono voice's gate**, use Q's `onset_gate` with the level OR slope rule (MIT). It costs almost nothing.
+4. **Complex-domain flux.** v49 already has each band's complex output and phase advance, so a complex-domain term could be added cheaply (*estimate*). It should be kept only if it beats item 1 on the harness.
+
+### (d) Reducing the ERB bank's cost
+
+1. **Multirate bands.** With v49's spacing, about 15 bands lie below 500 Hz and 8 between 500 Hz and 1 kHz. Run them at 2.76 kHz and 5.5 kHz respectively, from the decimation chain that `pxt_run` already has. *Estimate:* 15/8 + 8/4 + 20 ≈ 24 band updates instead of 43, about 45% fewer. Low-band group delay is unchanged, plus the decimator's delay. Check the anti-alias skirts against the 1.5× ERB widths.
+2. **Measure phase advance once per frame.** Move the conj-product and rotation (8 multiplies and 4 state floats) out of the per-sample loop. Take the phase advance from the last two samples of each frame, or every 4th sample, and sum power every 2nd sample. *Estimate:* about 35% fewer multiplies per band update. Frequency accuracy for weak partials may drop, so compare the cents error.
+3. **Share one bank.** `px_track` keeps its own `z1/z2` state apart from `erb_octaves`. When an HQ voice and the tracker run together, read one bank's band outputs, and do not run two banks.
+4. **Trim the top bands for tracking only.** The 7 bands above about 2.5 kHz matter little for fundamentals up to 1.4 kHz (*estimate*). Test salience accuracy with and without them.
+5. **Run it only when needed.** Use (a) for mono voices and (c)-2 for picks, and run the bank only for presets that need chords.
+
+Before choosing, time each candidate with NAM running on both devices. Report the worst block, `LATE`, and the RAM high-water mark, as the [benchmark plan](POLYPHONIC-PITCH-RESEARCH.md#benchmark-before-choosing) requires.

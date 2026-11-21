@@ -69,6 +69,6 @@ loop changes, change them too. The proof is the firmware's real code on a PC, no
 ## Tests
 
 `node tests/test_sim.mjs` (also in `node tools/op.mjs test`) covers the API, the flash file and the shim.
-`node tests/test_pedal_input.mjs` covers the skin's input mapping, and `node tests/test_pedal_page.mjs OUTDIR` drives the skin
+`node tests/test_pedal_input.mjs` covers the skin's input mapping, and `node tests/browser/test_pedal_page.mjs OUTDIR` drives the skin
 in Chromium and saves screenshots (needs Playwright). `node tests/test_audio.mjs` covers the engine and the loops, and
-`node tests/test_audio_page.mjs OUTDIR` the Sound section in Chromium with a fake audio input (needs Playwright).
+`node tests/browser/test_audio_page.mjs OUTDIR` the Sound section in Chromium with a fake audio input (needs Playwright).

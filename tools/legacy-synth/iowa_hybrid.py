@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""v49: the TRUMPET bank as recorded attack + synthesised sustain, from the Iowa samples tools/sim/iowa_prep.py made.
+"""v49: the TRUMPET bank as recorded attack + synthesised sustain, from the Iowa samples tools/legacy-synth/iowa_prep.py made.
 
-  python3 -I tools/sim/iowa_hybrid.py [build/iowa] [build/iowa_hybrid] [NH]
+  python3 -I tools/legacy-synth/iowa_hybrid.py [build/iowa] [build/iowa_hybrid] [NH]
 
 Each sample keeps the recording up to its attack end + 20 ms (the splice). The sustain is synthesised: NH (default 64)
 harmonics below 10.5 kHz, their levels and phases fitted (least squares) to the recording in the 20 ms before the
@@ -76,6 +76,6 @@ for s in bank["samples"]:
     print(f"{s['name']:18s} splice {1000 * splice / sr:4.0f} ms, loop {L} samples = {c} cycles ({err:+.2f} cents), "
           f"{nh} harmonics, fit residual {resid:.1f} dB at {1200*np.log2(fr/f0):+.0f} cents, {len(pcm)} frames (was {s['frames']})")
 b2 = dict(bank); b2["samples"] = out
-b2["note"] = "recorded attack + synthesised sustain loop (tools/sim/iowa_hybrid.py)"
+b2["note"] = "recorded attack + synthesised sustain loop (tools/legacy-synth/iowa_hybrid.py)"
 json.dump(b2, open(os.path.join(dst, "bank.json"), "w"), indent=1)
 print("frames:", sum(e["frames"] for e in out), "(looped:", sum(e["frames"] for e in bank["samples"]), ")")

@@ -1,0 +1,52 @@
+--- FINAL chord takes: 17 takes
+  mono only          hold 3 defer 0 fr  voices  3158  false 2129 (216.7s of 432s)  short<80ms 2449  missed 212/450  voices/note 4.20  onset 33/1043 ms  release -1184 ms
+  mono only          hold 3 defer 4 fr  voices  1349  false  764 (191.6s of 391s)  short<80ms  772  missed 230/450  voices/note 2.70  onset 55/661 ms  release -1585 ms
+  mono only          hold 3 defer 8 fr  voices   963  false  522 (177.5s of 365s)  short<80ms  485  missed 243/450  voices/note 2.17  onset 85/740 ms  release -1547 ms
+  mono only          hold 8 defer 8 fr  voices   874  false  526 (216.5s of 429s)  short<80ms  364  missed 242/450  voices/note 1.68  onset 98/1138 ms  release -1366 ms
+  pt only            hold 3 defer 0 fr  voices  1777  false 1301 (180.5s of 1331s)  short<80ms 1100  missed 44/450  voices/note 1.10  onset 37/69 ms  release +19 ms
+  pt only            hold 3 defer 4 fr  voices  1187  false  743 (158.4s of 1298s)  short<80ms  582  missed 48/450  voices/note 1.06  onset 60/94 ms  release +19 ms
+  pt only            hold 3 defer 8 fr  voices   872  false  446 (145.5s of 1275s)  short<80ms  308  missed 50/450  voices/note 1.05  onset 84/118 ms  release +19 ms
+  pt only            hold 8 defer 8 fr  voices   856  false  445 (147.2s of 1280s)  short<80ms  294  missed 51/450  voices/note 1.01  onset 83/118 ms  release +19 ms
+  classifier switch  hold 3 defer 0 fr  voices  1597  false  943 (115.2s of 1176s)  short<80ms  952  missed 58/450  voices/note 1.63  onset 46/193 ms  release +19 ms
+  classifier switch  hold 3 defer 4 fr  voices   981  false  425 (101.8s of 1148s)  short<80ms  417  missed 62/450  voices/note 1.41  onset 71/216 ms  release +19 ms
+  classifier switch  hold 3 defer 8 fr  voices   777  false  268 (94.4s of 1129s)  short<80ms  261  missed 64/450  voices/note 1.32  onset 106/240 ms  release +19 ms
+  classifier switch  hold 8 defer 8 fr  voices   731  false  280 (101.2s of 1145s)  short<80ms  207  missed 63/450  voices/note 1.16  onset 100/240 ms  release +19 ms
+  two-level          hold 3 defer 0 fr  voices  1846  false 1201 (149.2s of 1266s)  short<80ms 1133  missed 44/450  voices/note 1.54  onset 46/128 ms  release +19 ms
+  two-level          hold 3 defer 4 fr  voices  1102  false  545 (132.0s of 1235s)  short<80ms  471  missed 51/450  voices/note 1.37  onset 69/158 ms  release +19 ms
+  two-level          hold 3 defer 8 fr  voices   874  false  353 (122.2s of 1213s)  short<80ms  293  missed 52/450  voices/note 1.30  onset 104/188 ms  release +19 ms
+  two-level          hold 8 defer 8 fr  voices   810  false  346 (132.2s of 1232s)  short<80ms  228  missed 52/450  voices/note 1.16  onset 104/183 ms  release +19 ms
+--- FINAL scales: 12 takes
+  mono only          hold 3 defer 0 fr  voices   932  false  260 (18.8s of 348s)  short<80ms  221  missed 14/683  voices/note 1.00  onset 21/30 ms  release +41 ms
+  mono only          hold 3 defer 4 fr  voices   832  false  178 (13.9s of 327s)  short<80ms  165  missed 19/683  voices/note 1.00  onset 44/53 ms  release +41 ms
+  mono only          hold 3 defer 8 fr  voices   765  false  122 (10.6s of 309s)  short<80ms  131  missed 37/683  voices/note 1.00  onset 68/76 ms  release +41 ms
+  mono only          hold 8 defer 8 fr  voices   758  false  125 (11.3s of 311s)  short<80ms  122  missed 37/683  voices/note 1.00  onset 68/76 ms  release +41 ms
+  pt only            hold 3 defer 0 fr  voices  2808  false 2087 (58.8s of 414s)  short<80ms 2070  missed 24/683  voices/note 1.02  onset 11/35 ms  release +62 ms
+  pt only            hold 3 defer 4 fr  voices  1617  false  958 (27.0s of 367s)  short<80ms  978  missed 45/683  voices/note 1.02  onset 34/59 ms  release +63 ms
+  pt only            hold 3 defer 8 fr  voices   962  false  324 (14.0s of 339s)  short<80ms  335  missed 48/683  voices/note 1.01  onset 57/83 ms  release +63 ms
+  pt only            hold 8 defer 8 fr  voices  1004  false  376 (15.8s of 345s)  short<80ms  377  missed 48/683  voices/note 1.00  onset 56/80 ms  release +67 ms
+  classifier switch  hold 3 defer 0 fr  voices   989  false  309 (19.9s of 349s)  short<80ms  278  missed 14/683  voices/note 1.01  onset 21/30 ms  release +41 ms
+  classifier switch  hold 3 defer 4 fr  voices   856  false  199 (14.3s of 328s)  short<80ms  188  missed 19/683  voices/note 1.00  onset 44/53 ms  release +41 ms
+  classifier switch  hold 3 defer 8 fr  voices   771  false  126 (10.7s of 309s)  short<80ms  137  missed 37/683  voices/note 1.00  onset 67/76 ms  release +41 ms
+  classifier switch  hold 8 defer 8 fr  voices   763  false  129 (11.4s of 311s)  short<80ms  127  missed 37/683  voices/note 1.00  onset 67/76 ms  release +42 ms
+  two-level          hold 3 defer 0 fr  voices  1299  false  474 (22.3s of 361s)  short<80ms  577  missed 14/683  voices/note 1.08  onset 19/29 ms  release +52 ms
+  two-level          hold 3 defer 4 fr  voices   960  false  228 (15.0s of 336s)  short<80ms  287  missed 19/683  voices/note 1.01  onset 43/52 ms  release +50 ms
+  two-level          hold 3 defer 8 fr  voices   812  false  128 (11.1s of 316s)  short<80ms  177  missed 37/683  voices/note 1.00  onset 66/76 ms  release +50 ms
+  two-level          hold 8 defer 8 fr  voices   773  false  135 (11.8s of 324s)  short<80ms  136  missed 37/683  voices/note 1.00  onset 66/75 ms  release +55 ms
+--- FINAL single+tech: 6 takes
+  mono only          hold 3 defer 0 fr  voices   478  false  422 (26.4s of 125s)  short<80ms  331  missed 4/54  voices/note 1.00  onset 18/50 ms  release +44 ms
+  mono only          hold 3 defer 4 fr  voices   280  false  229 (19.6s of 117s)  short<80ms  164  missed 5/54  voices/note 1.00  onset 41/73 ms  release +44 ms
+  mono only          hold 3 defer 8 fr  voices   199  false  149 (15.5s of 111s)  short<80ms  100  missed 5/54  voices/note 1.00  onset 64/96 ms  release +44 ms
+  mono only          hold 8 defer 8 fr  voices   211  false  161 (21.2s of 117s)  short<80ms   79  missed 5/54  voices/note 1.00  onset 64/96 ms  release +44 ms
+  pt only            hold 3 defer 0 fr  voices   713  false  658 (66.4s of 170s)  short<80ms  550  missed 3/54  voices/note 1.07  onset 17/88 ms  release +49 ms
+  pt only            hold 3 defer 4 fr  voices   418  false  365 (55.2s of 158s)  short<80ms  269  missed 4/54  voices/note 1.03  onset 45/111 ms  release +51 ms
+  pt only            hold 3 defer 8 fr  voices   261  false  211 (49.0s of 150s)  short<80ms  128  missed 5/54  voices/note 1.00  onset 68/135 ms  release +51 ms
+  pt only            hold 8 defer 8 fr  voices   259  false  209 (50.3s of 152s)  short<80ms  125  missed 5/54  voices/note 1.00  onset 64/135 ms  release +55 ms
+  classifier switch  hold 3 defer 0 fr  voices   519  false  463 (29.2s of 127s)  short<80ms  363  missed 4/54  voices/note 1.00  onset 18/50 ms  release +44 ms
+  classifier switch  hold 3 defer 4 fr  voices   294  false  243 (21.8s of 119s)  short<80ms  169  missed 5/54  voices/note 1.00  onset 41/73 ms  release +44 ms
+  classifier switch  hold 3 defer 8 fr  voices   216  false  166 (17.3s of 113s)  short<80ms  112  missed 5/54  voices/note 1.00  onset 64/96 ms  release +44 ms
+  classifier switch  hold 8 defer 8 fr  voices   228  false  178 (23.1s of 119s)  short<80ms   92  missed 5/54  voices/note 1.00  onset 64/96 ms  release +44 ms
+  two-level          hold 3 defer 0 fr  voices   668  false  582 (34.5s of 136s)  short<80ms  491  missed 2/54  voices/note 1.48  onset 18/50 ms  release -9 ms
+  two-level          hold 3 defer 4 fr  voices   337  false  278 (25.8s of 125s)  short<80ms  196  missed 3/54  voices/note 1.10  onset 41/73 ms  release -33 ms
+  two-level          hold 3 defer 8 fr  voices   244  false  190 (20.6s of 119s)  short<80ms  126  missed 3/54  voices/note 1.02  onset 64/96 ms  release -39 ms
+  two-level          hold 8 defer 8 fr  voices   256  false  202 (27.1s of 127s)  short<80ms  105  missed 3/54  voices/note 1.04  onset 64/96 ms  release -0 ms
+rendered to /Users/andrzejmarczewski/Documents/GitHub/openpocket/build/polytrack/voices ['P1_chords_Drop3_Maj7_TRUTH.wav', 'P1_chords_Drop3_Maj7_classifier_switch.wav', 'P1_chords_Drop3_Maj7_mono_only.wav', 'P1_chords_Drop3_Maj7_two-level.wav', 'P1_chords_Set1_7_TRUTH.wav', 'P1_chords_Set1_7_classifier_switch.wav', 'P1_chords_Set1_7_mono_only.wav', 'P1_chords_Set1_7_two-level.wav', 'P1_chords_Set1_dim_TRUTH.wav', 'P1_chords_Set1_dim_classifier_switch.wav', 'P1_chords_Set1_dim_mono_only.wav', 'P1_chords_Set1_dim_two-level.wav']

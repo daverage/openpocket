@@ -4,10 +4,10 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {createRequire} from "node:module";
-import {C, Editor, encodePreset} from "../docs/pxedit.js";
-import {nodeMidiAccess} from "./midi-node.mjs";
-import {parsePing} from "./dsp.mjs";
-const requireFromTools = createRequire(new URL("./package.json", import.meta.url));
+import {C, Editor, encodePreset} from "../../docs/pxedit.js";
+import {nodeMidiAccess} from "../midi-node.mjs";
+import {parsePing} from "../dsp.mjs";
+const requireFromTools = createRequire(new URL("../package.json", import.meta.url));
 const access = nodeMidiAccess(requireFromTools("@julusian/midi"));
 const editor = new Editor(access);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
