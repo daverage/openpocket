@@ -82,7 +82,7 @@ static inline void pxp_newton(const px_rm *r, float ab, float rbb, float rbc, fl
         const float J11 = 1.0f + rbb * dib_be + rbc * dic_be, J12 = rbb * dib_bc + rbc * dic_bc, J21 = rcb * dib_be + rcc * dic_be, J22 = 1.0f + rcb * dib_bc + rcc * dic_bc;
         const float det = 1.0f / (J11 * J22 - J12 * J21);
         float d1 = (-F1 * J22 + F2 * J12) * det, d2 = (-F2 * J11 + F1 * J21) * det;
-        const float dj = fmaxf(fabsf(d1), fabsf(d2)); if (dj > 0.1f) { const float k = 0.1f / dj; d1 *= k; d2 *= k; }
+        const float a1 = fabsf(d1), a2 = fabsf(d2), dj = a1 > a2 ? a1 : a2; if (dj > 0.1f) { const float k = 0.1f / dj; d1 *= k; d2 *= k; }
         vbe += d1; vbc += d2; ib += dib_be * d1 + dib_bc * d2; ic += dic_be * d1 + dic_bc * d2;
         last = dj; if (dj < 2e-5f) break;
     }
