@@ -16,3 +16,9 @@ fm1-300.bin
 *.fcp
 openpocket.bundle
 node_modules/
+
+# local recordings, Reaper projects, macOS litter (never commit the owner's audio)
+My Audio/
+*.RPP
+*.RPP-bak
+.DS_Store
