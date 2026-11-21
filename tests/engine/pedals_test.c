@@ -1,6 +1,6 @@
 /* SFX RANGEMASTER, EP BOOST and MAXIMIZER (engine/px_pedals.h) through the whole engine. The expected numbers come from the FULL nodal simulator of the same circuit (tools/research/pedals/rm_circuit.py,
  * checked against ElectroSmash's analysis: 38 dB at full volume, input corner about 2.6 kHz, bias Vbe 0.30 V / 0.2 mA / collector 7.1 V), not from this implementation.
- * Level: one engine unit = 2 V of pickup EMF, engine out = 0.048 per collector volt (so engine gain = circuit gain - 20.35 dB).
+ * Level: one engine unit = 2 V of pickup EMF, engine out = 0.076 per collector volt (so engine gain = circuit gain - 16.36 dB).
  *  - catalogue, silence, no DC, polarity (not inverted)
  *  - small-signal response of a single coil into the stage (the loading by the 10-12 kOhm input is part of the circuit)
  *  - level behaviour: clean when small, second harmonic grows, the gain falls (the stage compresses), asymmetric
@@ -65,15 +65,18 @@ static int ep_tests(void)
     CHECK(px_param_text(PX_B_SFX, PX_SFX_EPBOOST, 1, 0, b) == 1 && !strcmp(b, "EARLY") && px_param_text(PX_B_SFX, PX_SFX_EPBOOST, 1, 100, b) == 1 && !strcmp(b, "FAT"), "VOICE reads EARLY .. FAT: '%s'", b);
     epreset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
     { float m = 0; for (int i = N / 2; i < N; i++) m = fmaxf(m, fabsf(y[i])); CHECK(m < 1e-6f, "EP: silence in, silence out (%.2g)", m); }
-    { const float g = epgain(1000, 0.0005f, 100, 0, 0, 0); CHECK(g > 0.0f && g < 4.0f, "EP EARLY, GAIN 100: slightly above unity at 1 kHz (%.2f dB)", g); }
+    { const float g0 = epgain(1000, 0.0005f, 0, 0, 0, 0), g100 = epgain(1000, 0.0005f, 100, 0, 0, 0), g50 = epgain(1000, 0.0005f, 50, 0, 0, 0);
+      CHECK(fabsf(g0) < 3.0f, "EP EARLY, GAIN 0 is unity at 1 kHz: a boost never cuts (%.2f dB)", g0);
+      CHECK(g100 > 8.0f && g100 < 13.0f, "EP EARLY, GAIN 100 is about +10 dB at 1 kHz (%.2f dB)", g100);
+      CHECK(g100 - g50 > 3.0f && g50 - g0 > 3.0f, "GAIN rises steadily: %.1f, %.1f, %.1f dB at 0, 50, 100", g0, g50, g100); }
     { const float lo = epgain(300, 0.0005f, 100, 0, 0, 0), hi = epgain(8000, 0.0005f, 100, 0, 0, 0); CHECK(hi - lo > 6.0f, "EARLY is the bright voicing: 8 kHz %.1f dB above 300 Hz (%.1f / %.1f)", hi - lo, hi, lo); }
-    { const float e = epgain(300, 0.0005f, 100, 0, 0, 0), f = epgain(300, 0.0005f, 100, 100, 0, 0); CHECK(f - e > 5.0f, "FAT thickens: 300 Hz %.1f dB louder than EARLY (%.1f / %.1f)", f - e, f, e); }
-    { float h2s, h2l, h3l; epgain(440, 0.005f, 100, 0, &h2s, 0); const float gl = epgain(440, 0.5f, 100, 0, &h2l, &h3l), gs = epgain(440, 0.005f, 100, 0, 0, 0);
+    { const float e = epgain(300, 0.0005f, 100, 0, 0, 0) - epgain(8000, 0.0005f, 100, 0, 0, 0), f = epgain(300, 0.0005f, 100, 100, 0, 0) - epgain(8000, 0.0005f, 100, 100, 0, 0);
+      CHECK(f - e > 3.0f, "FAT thickens: 300 Hz against 8 kHz is %.1f dB more than in EARLY (%.1f / %.1f)", f - e, f, e); }
+    { float h2s, h2l, h3l; epgain(440, 0.005f, 0, 0, &h2s, 0); const float gl = epgain(440, 0.5f, 0, 0, &h2l, &h3l), gs = epgain(440, 0.005f, 0, 0, 0, 0);
       CHECK(h2l > h2s + 12.0f, "the distortion grows with the playing level: H2 %.1f dB at 0.005, %.1f dB at 0.5", h2s, h2l);
       CHECK(h2l > h3l + 5.0f, "even order dominates (square law): H2 %.1f, H3 %.1f dB at 0.5", h2l, h3l);
       CHECK(gs - gl > -0.3f, "no expansion when hard driven: gain %.2f dB small, %.2f dB at 0.5 (the 18 V stage stays nearly linear: degeneration leaves about a fifth of the swing at the gate)", gs, gl); }
-    { const float a = epgain(1000, 0.14f, 100, 0, 0, 0), c = epgain(1000, 0.14f, 50, 0, 0, 0); CHECK(a - c > 14.0f && a - c < 26.0f, "GAIN 50 is about -21 dB on a 500k log pot (%.1f dB)", a - c); }
-    sine(x, N, 440.0f, 0.5f); epreset(&p, 1, 100, 0); render(&p, x, y, N);
+    sine(x, N, 440.0f, 0.5f); epreset(&p, 1, 0, 0); render(&p, x, y, N);
     { double s2 = 0; float pk = 0, nk = 0; for (int i = 44100; i < N; i++) { s2 += y[i]; pk = fmaxf(pk, y[i]); nk = fminf(nk, y[i]); } s2 /= 44100.0;
       CHECK(fabs(s2) < 0.003, "EP: no DC (%.5f)", s2); CHECK(fabsf(pk + nk) > 0.01f * (pk - nk), "EP: asymmetric clipping (peaks %+.3f / %+.3f)", pk, nk); CHECK(pk < 1.0f, "EP: usable level when hard driven (peak %.3f)", pk); }
     for (int i = 0; i < N; i++) x[i] = ((i / 200) & 1) ? 1.0f : -1.0f; epreset(&p, 1, 100, 100); render(&p, x, y, N);
@@ -118,12 +121,12 @@ static int bbe_tests(void)
     { static const float hz[7] = {102.0f, 399.0f, 709.0f, 1015.0f, 2585.0f, 7071.0f, 11694.0f};
       static const float ref[4][7] = {{-0.5f, -1.4f, -1.6f, -1.5f, -0.2f, 1.1f, 1.2f}, {-0.4f, -2.6f, -3.0f, -2.7f, -0.6f, 1.6f, 1.8f}, {-0.2f, -4.5f, -5.6f, -4.9f, -1.0f, 1.8f, 2.2f}, {1.8f, -6.8f, -12.2f, -9.6f, -1.2f, 2.9f, 3.4f}};
       static const int set[4] = {30, 50, 70, 100};
-      for (int s = 0; s < 4; s++) for (int k = 0; k < 7; k++) { const float g = bgain(hz[k], 0.05f, set[s], set[s], 0), tol = ((k == 2 || k == 3) && s == 3) ? 3.0f : (k == 4 ? 2.6f : 2.0f);      /* the fit's worst points: the dip at 10/10 and a small notch at the 1.8 kHz crossover */
-        CHECK(fabsf(g - ref[s][k]) < tol, "MAXIMIZER %d/%d at %.0f Hz: %.1f dB against the real unit's %.1f dB", set[s] / 10, set[s] / 10, hz[k], g, ref[s][k]); } }
+      for (int s = 0; s < 4; s++) for (int k = 0; k < 7; k++) { const float g = bgain(hz[k], 0.05f, set[s], set[s], 0) - pxp_bbe_makeup_db((float)set[s], (float)set[s]), tol = ((k == 2 || k == 3) && s == 3) ? 3.0f : (k == 4 ? 2.6f : 2.0f);      /* the fit's worst points: the dip at 10/10 and a small notch at the 1.8 kHz crossover */
+        CHECK(fabsf(g - ref[s][k]) < tol, "MAXIMIZER %d/%d at %.0f Hz: %.1f dB (makeup removed) against the real unit's %.1f dB", set[s] / 10, set[s] / 10, hz[k], g, ref[s][k]); } }
     { float h2; bgain(709.0f, 0.3f, 100, 100, &h2); CHECK(h2 < -80.0f, "linear: no harmonics at any level (H2 %.0f dB)", h2); }
     bpreset(&p, 1, 0, 0); sine(x, N, 440.0f, 0.2f); render(&p, x, y, N); { px_preset_t q = p; q.on[PX_B_SFX] = 0; render(&q, x, z, N); }
     { float m = 0; for (int i = 0; i < N; i++) m = fmaxf(m, fabsf(y[i] - z[i])); CHECK(m < 1e-6f, "0 / 0 is exactly bypass (%.2g)", m); }
-    { const float lo = bgain(60.0f, 0.05f, 100, 0, 0), flat = bgain(60.0f, 0.05f, 0, 0, 0); CHECK(lo - flat > 1.0f, "LO CONTOUR alone lifts the lows (%+.1f dB at 60 Hz)", lo - flat); }
+    { const float lo = bgain(60.0f, 0.05f, 100, 0, 0) - pxp_bbe_makeup_db(100, 0), flat = bgain(60.0f, 0.05f, 0, 0, 0); CHECK(lo - flat > 1.0f, "LO CONTOUR alone lifts the lows (%+.1f dB at 60 Hz)", lo - flat); }
     for (int i = 0; i < N; i++) x[i] = ((i / 200) & 1) ? 1.0f : -1.0f; bpreset(&p, 1, 100, 100); render(&p, x, y, N);
     { int fin = 1; float pk = 0; for (int i = 0; i < N; i++) { if (!isfinite(y[i])) fin = 0; pk = fmaxf(pk, fabsf(y[i])); } CHECK(fin && pk < 3.0f, "MAXIMIZER: a full-scale square is finite and bounded (peak %.2f)", pk); }
     sine(x, N, 220.0f, 0.1f);
@@ -143,6 +146,30 @@ static int bbe_tests(void)
     }
     return bad - before;
 }
+
+/* a guitar-like signal (196 Hz and 19 harmonics falling as 1/h, peak 0.14): the pedals must not be quieter than the dry signal (RMS over the last second) */
+/* BS.1770 K-weighting at 44.1 kHz (the same coefficients as tools/nam_level.py), then the RMS of the last second: loudness, not plain RMS (the BBE scoops the mids the K-weighting favours) */
+static float rms1(const float *s)
+{
+    const double f1 = 1681.974450955533, G = 3.999843853973347, Q1 = 0.7071752369554196, f2 = 38.13547087602444, Q2 = 0.5003270373238773;
+    double K = tan(3.141592653589793 * f1 / 44100.0), Vh = pow(10.0, G / 20.0), Vb = pow(Vh, 0.4996667741545416), a0 = 1 + K / Q1 + K * K;
+    const double b0 = (Vh + Vb * K / Q1 + K * K) / a0, b1 = 2 * (K * K - Vh) / a0, b2 = (Vh - Vb * K / Q1 + K * K) / a0, a1 = 2 * (K * K - 1) / a0, a2 = (1 - K / Q1 + K * K) / a0;
+    const double K2 = tan(3.141592653589793 * f2 / 44100.0), c0 = 1 + K2 / Q2 + K2 * K2, c1 = 2 * (K2 * K2 - 1) / c0, c2 = (1 - K2 / Q2 + K2 * K2) / c0;
+    double x1 = 0, x2 = 0, y1 = 0, y2 = 0, u1 = 0, u2 = 0, v1 = 0, v2 = 0, e = 0;
+    for (int i = 0; i < N; i++) { const double xi = s[i], y = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = xi; y2 = y1; y1 = y;
+        const double v = y, w = v - 2 * u1 + u2 - c1 * v1 - c2 * v2; u2 = u1; u1 = v; v2 = v1; v1 = w; if (i >= 44100) e += w * w; }
+    return (float)sqrt(e / 44100.0);
+}
+static void guitarish(float *o, int n) { for (int i = 0; i < n; i++) { float v = 0; for (int h = 1; h <= 20; h++) v += sinf(6.2831853f * 196.0f * (float)h * (float)i / FS) / (float)h; o[i] = v * 0.05f; } }
+static void nodrop_tests(void)
+{
+    px_preset_t p; guitarish(x, N); { px_preset_t q; epreset(&q, 0, 0, 0); render(&q, x, z, N); } const float dry = rms1(z);
+    preset(&p, 1, 100, 0); render(&p, x, y, N); CHECK(rms1(y) > dry * 0.95f, "RANGEMASTER VOLUME 100 is not quieter than the guitar (%.1f dB)", 20 * log10f(rms1(y) / dry));
+    epreset(&p, 1, 0, 0); render(&p, x, y, N); CHECK(rms1(y) > dry * 0.9f, "EP BOOST at GAIN 0 is about unity (%.1f dB)", 20 * log10f(rms1(y) / dry));
+    epreset(&p, 1, 0, 100); render(&p, x, y, N); CHECK(rms1(y) > dry * 0.9f, "EP BOOST at GAIN 0, FAT, is about unity (%.1f dB)", 20 * log10f(rms1(y) / dry));
+    for (int k = 0; k < 5; k++) { const int lo[5] = {50, 100, 0, 100, 70}, pr[5] = {50, 100, 100, 50, 70}; bpreset(&p, 1, lo[k], pr[k]); render(&p, x, y, N);
+        CHECK(rms1(y) > dry * 0.97f, "MAXIMIZER %d/%d is not quieter than the guitar (%.1f dB; there is no output control)", lo[k] / 10, pr[k] / 10, 20 * log10f(rms1(y) / dry)); }
+}
 int main(void)
 {
     px_preset_t p, off; char b[8];
@@ -160,7 +187,7 @@ int main(void)
       CHECK(fabs(ph - 45.0) < 25.0, "polarity restored: phase %.0f deg at 1 kHz after removing the half-band delay (reference +45)", ph); }
     /* small signal, single coil (6k, 2.5 H), volume max: MNA reference dB (circuit gain) - 20.35 */
     { const float f[] = {100, 300, 1000, 2600, 5000, 10000}, ref[] = {7.9f, 17.8f, 30.5f, 27.6f, 20.6f, 13.9f};
-      for (int k = 0; k < 6; k++) { const float g = gain_db(f[k], 1.0f, 100, 0, 0, 0) + 20.35f;
+      for (int k = 0; k < 6; k++) { const float g = gain_db(f[k], 1.0f, 100, 0, 0, 0) + 16.36f;
         CHECK(fabsf(g - ref[k]) < 1.6f, "single coil, %.0f Hz: circuit gain %.1f dB against the reference %.1f dB", f[k], g, ref[k]); } }
     /* level behaviour at 1 kHz */
     { float h2a, h2b, h2c, h3c; const float ga = gain_db(1000, 3.0f, 100, 0, &h2a, 0), gb = gain_db(1000, 30.0f, 100, 0, &h2b, 0), gc = gain_db(1000, 300.0f, 100, 0, &h2c, &h3c);
@@ -199,6 +226,7 @@ int main(void)
         CHECK(worst < 1.5f * fmaxf(sa, sb), "a knob jump mid-note (VOLUME 30 -> 100, PICKUP 0 -> 100) glides: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
     }
     ep_tests();
+    nodrop_tests();
     bbe_tests();
     if (bad) { printf("%d problems\n", bad); return 1; }
     printf("PEDALS ok: 0 problems\n"); return 0;

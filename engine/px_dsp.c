@@ -106,6 +106,9 @@ static float erb_ofc[ERB_O_BANDS];
 #ifndef PX_LOWEST_HQ_GAIN
 #define PX_LOWEST_HQ_GAIN 1.4f                         /* Synth2: LOWEST OCTAVE HQ's own octave-down gain, on top of LOW_MAKEUP (not shared with POLY OCTAVE HQ) */
 #endif
+#ifndef PX_POLY_RANGE_MAKEUP
+#define PX_POLY_RANGE_MAKEUP 0.196f                 /* POLY OCTAVE HQ: the -1's make-up exponent as RANGE cuts (0 = none): the measured drop is about 1.7 dB per ln step of RANGE */
+#endif
 #ifndef LOW_RANGE_BOOST
 #define LOW_RANGE_BOOST 0.7f                           /* Synth2: LOWEST OCTAVE HQ extra make-up at RANGE 1 (x1.7, +4.6 dB) */
 #endif
@@ -963,6 +966,8 @@ static void rc_pitch(px_engine *e)
             const float rboost = v == 0 ? 1.0f : 1.0f + LOW_RANGE_BOOST * (1.0f - (float)(v - 1) / 99.0f);
             e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN * rboost; e->erb_pitch.down2 *= LOW_MAKEUP;
         }
+        if (t == PX_PIT_POLYOCT_HQ && raw == t && q[3] >= 1 && q[3] < 100)
+            e->ps_lvl[0] *= powf(100.0f / (float)q[3], PX_POLY_RANGE_MAKEUP);   /* RANGE thins the octave-down out (a single low E: -7 dB at RANGE 1, -2.7 dB at 25; a chord -13 dB at 1): the -1 gets the make-up LOWEST OCTAVE HQ already has, (100 / RANGE)^0.196 = +7.8 dB at 1, nothing at 100 */
         break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);

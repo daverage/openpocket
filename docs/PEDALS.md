@@ -20,6 +20,27 @@ A boost pedal does different things for different pickups and playing levels. Th
 ## Cost (host, relative)
 Rangemaster about 0.9 x the POLY FUZZ preset's cost (which contains the 70%-of-a-core synth type on the pedal): treat it as expensive until measured with `node tools/op.mjs dsp`. EP BOOST (one unknown, no exp), MAXIMIZER (eight biquads, two short delays) and ENHANCE are cheap.
 
+## Levels (owner feedback: no volume control means at least unity)
+Measured with `node tests/pedal_levels.mjs OUT && python3 tests/pedal_levels_measure.py OUT` (BS.1770 loudness of five guitar loops through the engine, against the same loop with the block off):
+| | before | now |
+|---|---|---|
+| RANGEMASTER VOLUME 100 | +1.5 dB (worst loop -3.5) | +5.4 dB (worst +0.5); VOLUME 50 about -11 dB (was -19) on a gentler taper |
+| EP BOOST GAIN 0 / 50 / 85 / 100 | -34 / -19 / -5 / +1.5 dB (EARLY) | **0 / +5 / +8.5 / +10 dB in every voicing**: a boost never cuts, per-voicing normalised |
+| MAXIMIZER (no output control) | -1 to -4 dB, -8.7 dB on a low-mid loop | +0.6 to +1.4 dB on average at every setting (worst loop -4.7 dB at high PROCESS) |
+| ENHANCE BETTER 100 | -0.3 dB | -0.3 dB |
+The MAXIMIZER's makeup is `pxp_bbe_makeup_db` (a 3 x 3 grid over the knobs with a 1.2 dB margin); the tests use a K-weighted loudness measure so they follow the loops, not plain RMS (the BBE scoops the mids the weighting favours).
+
+## Rangemaster EQ curve (small signal, volume max; the stage's own gain in dB)
+| source | 100 Hz | 300 Hz | 1 kHz | 2.6 kHz | 5 kHz | 10 kHz |
+|---|---|---|---|---|---|---|
+| ideal (low impedance) | 7.8 | 17.4 | 27.4 | 33.6 | 35.8 | 36.7 |
+| single coil (PICKUP 0) | 7.9 | 17.8 | 30.5 | 27.6 | 20.6 | 13.9 |
+| humbucker (PICKUP 100) | 7.9 | 18.1 | 32.4 | 20.9 | 14.4 | 7.9 |
+The ideal-source column is the ElectroSmash circuit (first-order input corner 2.6 kHz, 37 dB at the top); a real Rangemaster capture (the NAM one, low-impedance source) rises 0 -> +9.3 dB (1 kHz) -> +19.5 dB (6 kHz), a corner near 3 kHz but with about 10 dB more low end than a first-order high-pass. With a pickup behind it the 12 kOhm input loads the coil's inductance and the highs fall away above 2-3 kHz: a mid-forward boost with little below 300 Hz and a smooth top, which is why the guitar's energy (80-800 Hz) gets far less gain than 1-3 kHz and the loudness dropped before the level fix.
+
+## POLY OCTAVE HQ: the -1 and RANGE
+RANGE thins the octave-down out (the bank follows fewer notes): on a single low E the -1 was 7 dB quieter at RANGE 1 than at 100 (a chord 13 dB). It now gets the make-up LOWEST OCTAVE HQ has, `(100 / RANGE)^0.196` (`PX_POLY_RANGE_MAKEUP`, +7.8 dB at RANGE 1, nothing at 0 and 100): -35.8 to -37.1 dB from RANGE 1 to 99 (`tests/engine/poly_range_test.c`).
+
 ## Not done / open
 * None of this has been **heard or measured on the pedal**. Level matching between the types and the factory presets is not done (their SFX trim is 0).
 * EP BOOST's circuit is a guess for the family; a real schematic, or a clean DI A/B of the Xotic, would replace it.

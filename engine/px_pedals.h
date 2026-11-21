@@ -17,7 +17,7 @@
 #define PXP_EMF_PER_UNIT 2.0f
 #endif
 #ifndef PXP_OUT_PER_VOLT
-#define PXP_OUT_PER_VOLT 0.048f
+#define PXP_OUT_PER_VOLT 0.076f      /* +4 dB over the first version: on guitar loops VOLUME 100 is about +5 dB (it was +1.5 dB, and -3.5 dB on a low-mid loop: the stage's gain is at 1-3 kHz, the guitar's energy below it) */
 #endif
 #ifndef PXP_OS
 #define PXP_OS 1                    /* circuit-rate factor: 1 (the circuit at the audio rate) or 2 (half-band in and out, twice the cost). Measured (tests/engine, hard-played 1.5 kHz at 300 mV): the energy off the harmonic bins is -48 dB at 1x, -57 dB at 2x; at normal levels -87 / -97 dB; the harmonics are the same. 1x is enough for a boost */
@@ -113,7 +113,7 @@ static inline void pxp_rm_init(px_rm *r, float sr)
 /* VOLUME 0..100 (a 10k log taper: the wiper's share of the resistance), PICKUP 0..100 (single coil .. humbucker) */
 static inline void pxp_rm_set(px_rm *r, float volume, float pickup)
 {
-    const float v = pxp_clamp(volume, 0.0f, 100.0f) * 0.01f; r->x_t = (powf(100.0f, v) - 1.0f) / 99.0f; if (r->x_t < 0.001f) r->x_t = 0.001f;
+    const float v = pxp_clamp(volume, 0.0f, 100.0f) * 0.01f; r->x_t = (powf(30.0f, v) - 1.0f) / 29.0f; if (r->x_t < 0.001f) r->x_t = 0.001f;      /* a gentler log taper than a true 10k log pot: about -10 dB at 50, unity near 70 on guitar loops */
     const float p = pxp_clamp(pickup, 0.0f, 100.0f) * 0.01f; r->pk_t = p;
     if (fabsf(r->pk_t - r->pk) > 1e-4f) { r->pk = r->pk_t; pxp_rm_coeffs(r, r->sr2, 6000.0f + 3000.0f * p, 2.5f + 3.0f * p); }
 }
@@ -150,7 +150,7 @@ static inline float pxp_rm_tick(px_rm *r, float in)
  * Square-law JFET (saturation and triode regions, lambda 0.02). The topology and values are NOT verified against the Xotic; the level is scaled so that GAIN 100 (EARLY) is slightly above unity,
  * as the Ares notes describe the EP-3; the Fat voicing boosts more. GAIN 0..100 (a 500k log pot); VOICE 0..100: Cs 22 nF (EARLY) .. 100 nF (LATE) .. 470 nF (FAT). */
 #ifndef PXP_EP_OUT
-#define PXP_EP_OUT 0.106f           /* drain volts -> engine units: GAIN 100 in the EARLY voicing is about +2 dB at 1 kHz (the Ares notes: the volume 'tops out just slightly above unity'); FAT adds boost */
+#define PXP_EP_OUT 0.106f           /* drain volts -> engine units (the stage's own level; pxp_ep_set normalises it so that GAIN 0 is unity and GAIN 100 is +10 dB) */
 #endif
 typedef struct {
     float Idss, Vp, lam, Rd, Rs, Vcc, Rg, beta;
@@ -193,13 +193,15 @@ static inline void pxp_ep_init(px_ep *r, float sr)
     pxp_ep_coeffs(r, sr, 6000.0f, 2.5f, 22e-9f); r->voice = 0.0f;
     float id = 0.0f; for (int k = 0; k < 40; k++) { const float vs = id * r->Rs; float dgs, dds; id = pxp_jfet(r, -vs, r->Vcc - r->Rd * id - vs, &dgs, &dds) * 0.5f + id * 0.5f; }
     r->id = id; r->vs = id * r->Rs; r->vd_dc = r->Vcc - r->Rd * id; r->vC = 0.0f;
-    r->kx = 1.0f - expf(-1.0f / (sr * 0.010f)); r->hp_k = 1.0f - expf(-6.2831853f * 3.0f / sr); r->x = r->x_t = 0.001f;
+    r->kx = 1.0f - expf(-1.0f / (sr * 0.010f)); r->hp_k = 1.0f - expf(-6.2831853f * 3.0f / sr); r->x = r->x_t = 0.84f;      /* (GAIN 0, EARLY: -1.5 dB) */
 }
 static inline void pxp_ep_set(px_ep *r, float gain, float voice, float sr)
 {
-    const float v = pxp_clamp(gain, 0.0f, 100.0f) * 0.01f; r->x_t = (powf(100.0f, v) - 1.0f) / 99.0f; if (r->x_t < 0.001f) r->x_t = 0.001f;
-    const float w = pxp_clamp(voice, 0.0f, 100.0f) * 0.01f;
+    const float g = pxp_clamp(gain, 0.0f, 100.0f), w = pxp_clamp(voice, 0.0f, 100.0f) * 0.01f;
     if (fabsf(w - r->voice) > 1e-4f) { r->voice = w; pxp_ep_coeffs(r, sr, 6000.0f, 2.5f, 22e-9f * powf(21.36f, w)); }     /* 22 nF .. 470 nF */
+    /* a boost never cuts: GAIN 0 is unity (loudness on guitar loops, per voicing: the stage's own level is +1.5 dB EARLY, +4.5 LATE, +10.7 FAT at x = 1), GAIN 100 is +10 dB */
+    const float dbv = w < 0.5f ? -1.5f + (-4.5f + 1.5f) * (w * 2.0f) : -4.5f + (-10.7f + 4.5f) * ((w - 0.5f) * 2.0f);
+    r->x_t = powf(10.0f, dbv * 0.05f + g * 0.005f);
 }
 static inline float pxp_ep_tick(px_ep *r, float in)
 {
@@ -231,7 +233,7 @@ static inline float pxp_bq_run(pxp_bq *q, float x) { const float y = q->b0 * x +
 typedef struct {
     pxp_bq lp1[2], hp1[2], lp2[2], hp2[2];             /* LR4 = two cascaded Butterworth sections: split at f1 (low | rest), then the rest at f2 (mid | high) */
     float dl[128], dm[64]; unsigned il, im; int nl, nm;       /* the delay lines of the low and mid bands, and their lengths in samples */
-    float gl, gm, gh, mix, gl_t, gm_t, gh_t, mix_t, kglide;
+    float gl, gm, gh, mix, gl_t, gm_t, gh_t, mix_t, kglide, mk, mk_t;      /* mk: the loudness makeup (see pxp_bbe_set) */
 } px_bbe;
 static inline float pxp_lerp_tab(const float *xs, const float *ys, int n, float x)      /* piecewise linear, clamped */
 {
@@ -244,7 +246,16 @@ static inline void pxp_bbe_init(px_bbe *b, float sr)
     { unsigned char *z = (unsigned char *)b; for (unsigned k = 0; k < sizeof *b; k++) z[k] = 0; }
     for (int k = 0; k < 2; k++) { pxp_bq_design(&b->lp1[k], 0, 258.0f, sr); pxp_bq_design(&b->hp1[k], 1, 258.0f, sr); pxp_bq_design(&b->lp2[k], 0, 1821.0f, sr); pxp_bq_design(&b->hp2[k], 1, 1821.0f, sr); }
     b->nl = (int)(0.001362f * sr + 0.5f); b->nm = (int)(0.000589f * sr + 0.5f); if (b->nl > 127) b->nl = 127; if (b->nm > 63) b->nm = 63;
-    b->gl = b->gl_t = b->gm = b->gm_t = b->gh = b->gh_t = 1.0f; b->mix = b->mix_t = 0.0f; b->kglide = 1.0f - expf(-1.0f / (sr * 0.010f));
+    b->gl = b->gl_t = b->gm = b->gm_t = b->gh = b->gh_t = 1.0f; b->mix = b->mix_t = 0.0f; b->mk = b->mk_t = 1.0f; b->kglide = 1.0f - expf(-1.0f / (sr * 0.010f));
+}
+/* no output control, so never quieter than the guitar: the loudness change (BS.1770, five guitar loops, tests/pedal_levels.mjs) on a 3 x 3 grid of the knobs, made up with a 1.2 dB margin, bilinear */
+static inline float pxp_bbe_makeup_db(float lo, float proc)
+{
+    static const float MK[3][3] = {{0.0f, 2.9f, 5.2f}, {1.8f, 3.1f, 5.6f}, {0.6f, 1.9f, 4.0f}};            /* [LO CONTOUR 0, 50, 100][PROCESS 0, 50, 100] dB */
+    const float lf = pxp_clamp(lo, 0.0f, 100.0f) * 0.02f, pf = pxp_clamp(proc, 0.0f, 100.0f) * 0.02f; const int li = lf >= 1.0f ? 1 : 0, pi = pf >= 1.0f ? 1 : 0;
+    const float lt = lf - (float)li, pt = pf - (float)pi;
+    const float a = MK[li][pi] + (MK[li][pi + 1] - MK[li][pi]) * pt, c = MK[li + 1][pi] + (MK[li + 1][pi + 1] - MK[li + 1][pi]) * pt;
+    return a + (c - a) * lt;
 }
 /* LO CONTOUR, PROCESS 0..100 (the knob's 0..10 is one tenth of that). Gain nodes: the measured fits at settings 1(2), 3, 5, 7, 10. */
 static inline void pxp_bbe_set(px_bbe *b, float lo, float proc)
@@ -253,16 +264,18 @@ static inline void pxp_bbe_set(px_bbe *b, float lo, float proc)
     static const float PX[5] = {1.0f, 3.0f, 5.0f, 7.0f, 10.0f}, PM[5] = {1.082f, 0.937f, 0.804f, 0.620f, 0.371f}, PH[5] = {1.155f, 1.169f, 1.193f, 1.208f, 1.268f};
     const float l = pxp_clamp(lo, 0.0f, 100.0f) * 0.1f, p = pxp_clamp(proc, 0.0f, 100.0f) * 0.1f;
     b->gl_t = pxp_lerp_tab(LX, LG, 5, l); b->gm_t = pxp_lerp_tab(PX, PM, 5, p); b->gh_t = pxp_lerp_tab(PX, PH, 5, p); { const float m = p > l ? p : l; b->mix_t = m < 1.0f ? m : 1.0f; }   /* processing engages as either knob leaves 0 */
+
+    b->mk_t = powf(10.0f, pxp_bbe_makeup_db(lo, proc) * 0.05f);
 }
 static inline float pxp_bbe_tick(px_bbe *b, float x)
 {
-    b->gl += b->kglide * (b->gl_t - b->gl); b->gm += b->kglide * (b->gm_t - b->gm); b->gh += b->kglide * (b->gh_t - b->gh); b->mix += b->kglide * (b->mix_t - b->mix);
-    if (b->mix < 1e-6f && b->mix_t < 1e-6f && b->gl_t == 1.0f) return x;
+    b->gl += b->kglide * (b->gl_t - b->gl); b->gm += b->kglide * (b->gm_t - b->gm); b->gh += b->kglide * (b->gh_t - b->gh); b->mix += b->kglide * (b->mix_t - b->mix); b->mk += b->kglide * (b->mk_t - b->mk);
+    if (b->mix < 1e-6f && b->mix_t < 1e-6f && b->gl_t == 1.0f) return x * b->mk;
     const float low = pxp_bq_run(&b->lp1[1], pxp_bq_run(&b->lp1[0], x)), rest = pxp_bq_run(&b->hp1[1], pxp_bq_run(&b->hp1[0], x));
     const float mid = pxp_bq_run(&b->lp2[1], pxp_bq_run(&b->lp2[0], rest)), high = pxp_bq_run(&b->hp2[1], pxp_bq_run(&b->hp2[0], rest));
     b->il++; b->dl[b->il & 127] = low; b->im++; b->dm[b->im & 63] = mid;
     const float dlow = b->dl[(b->il - (unsigned)b->nl) & 127], dmid = b->dm[(b->im - (unsigned)b->nm) & 63];
     const float proc = b->gl * dlow + b->gm * dmid + b->gh * high;
-    return x + b->mix * (proc - x);
+    return (x + b->mix * (proc - x)) * b->mk;
 }
 #endif
