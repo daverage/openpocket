@@ -56,6 +56,21 @@ static track_t trk[NPART];
 #ifndef PX_S2_GLIDE_MS
 #define PX_S2_GLIDE_MS 6.0f
 #endif
+/* A slow attack (a pad, strings, the choir) used to make a plucked note feel late: the level crept up from zero over 100 to 500 ms. A note that starts from silence now begins at a share of full level that grows
+ * with the patch's attack time (none below 30 ms, the whole PX_S2_ATK_HEAD from 90 ms, rising to half level for attacks of 600 ms and more), then ramps as before, so the pick is heard at once and the patch's swell follows. A voice already sounding keeps its level, as it
+ * did. PX_S2_ATK_HEAD 0 is the old behaviour. */
+#ifndef PX_S2_ATK_HEAD
+#define PX_S2_ATK_HEAD 0.35f
+#endif
+/* A long release (pads, strings, choir: up to several seconds) kept ringing long after the string had died away. The release's time constant (ms) is now bounded smoothly: unchanged up to PX_S2_REL_KNEE, then
+ * flattening toward KNEE + SPAN (50 + 70 = 120 ms: -20 dB in about 0.28 s, -40 dB in about 0.55 s). The RELEASE knob still lengthens and shortens it inside that bound. PX_S2_REL_SPAN 0 is the old behaviour. */
+#ifndef PX_S2_REL_KNEE
+#define PX_S2_REL_KNEE 50.0f
+#endif
+#ifndef PX_S2_REL_SPAN
+#define PX_S2_REL_SPAN 70.0f
+#endif
+static inline float px_s2_relcap(float ms) { return (PX_S2_REL_SPAN > 0.0f && ms > PX_S2_REL_KNEE) ? PX_S2_REL_KNEE + PX_S2_REL_SPAN * (1.0f - expf(-(ms - PX_S2_REL_KNEE) * (1.0f / PX_S2_REL_SPAN))) : ms; }
 #define PX_S2_DAMP_MS 40.0f                           /* release time constant after a hard mute: the patch's own would ring on for a second or more */
 #ifndef PX_S2_DRIFT_C
 #define PX_S2_DRIFT_C 8.0f                             /* ENSEMBLE: the rms of each voice's pitch wander, cents, at SPREAD noon (0 = off) */
@@ -156,12 +171,12 @@ static void px_s2_apply(px_s2 *s, int type, const uint8_t *q)
     const float attack_mul = cho ? 0.5f * tm : tm;                                          /* Choir speaks sooner on short notes */
 #if PX_S2_ENV_ORIG
     const float atk_ms = px_s2_tms(pa->env[0]), dec_ms = px_s2_tms(pa->env[1]) * (1.0f / 4.6f), rel_ms = px_s2_tms(pa->env[3]) * (1.0f / 4.6f);   /* (decay and release as time constants) */
-    s->att_k = px_s2_att_step(atk_ms * attack_mul); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+    s->att_k = px_s2_att_step(atk_ms * attack_mul); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(px_s2_relcap(rel_ms * (tmr > 0.0f ? tmr : tm)));
 #else
     const float atk_ms = 1.0f + (pa->env[0] / 127.0f) * (pa->env[0] / 127.0f) * 1500.0f;
     const float dec_ms = 5.0f + (pa->env[1] / 127.0f) * (pa->env[1] / 127.0f) * 3000.0f;
     const float rel_ms = 10.0f + (pa->env[3] / 127.0f) * (pa->env[3] / 127.0f) * 3000.0f;
-    s->att_k = px_s2_ms_k(atk_ms * attack_mul); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(rel_ms * (tmr > 0.0f ? tmr : tm));
+    s->att_k = px_s2_ms_k(atk_ms * attack_mul); s->dec_k = px_s2_ms_k(dec_ms * (arc ? tdec : 1.0f)); s->rel_k = px_s2_ms_k(px_s2_relcap(rel_ms * (tmr > 0.0f ? tmr : tm)));
 #endif
     s->dmp_k = px_s2_ms_k(PX_S2_DAMP_MS);
     s->dyn = pa->dyn ? (float)pa->dyn : arc ? 8.0f : (ens && pa->eng == 1) ? 6.0f : PX_S2_DYN_DB;   /* ARCADE's chips and the organs are nearly on / off; the rest follow the pick */
@@ -255,7 +270,12 @@ static void px_s2_noteon(px_s2 *s, int vi, float *env, int *stage, float semis_o
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
     int32_t sv[8]; memcpy(sv, v->s, sizeof sv);
     v->note = (uint8_t)((int)(s->pitch_cur + semis_off + 0.5f) & 127); v->vel = 100; v->gate = 1; v->active = 1; v->stage = 1; v->age++;
-    if (!sounding) *env = 0.0f;                                                       /* a voice still sounding keeps its level: the attack starts from it, no click */
+    if (!sounding) {                                                                  /* a voice still sounding keeps its level: the attack starts from it, no click */
+        const float ak = vi ? s->vc[vi].att_k : s->att_k, tms = ak > 0.0f ? ((float)CTL * 1000.0f / FS) / ak : 0.0f;    /* the linear attack's time (ms) */
+        float h = (tms - 30.0f) * (1.0f / 60.0f); h = h < 0.0f ? 0.0f : h > 1.0f ? 1.0f : h;
+        float hh = PX_S2_ATK_HEAD * h; if (PX_S2_ATK_HEAD > 0.0f && tms > 90.0f) { const float g = (tms - 90.0f) * (1.0f / 510.0f); hh += (0.5f - PX_S2_ATK_HEAD) * (g > 1.0f ? 1.0f : g); }   /* a very slow attack (600 ms and more) starts at half level */
+        *env = hh;
+    }
     *stage = 1;
     px_s2_pitch(s->pitch_cur + semis_off, &v->pitch16, &v->fine, s->arc); v->pitch_cur = v->pitch16;
     if (!sounding) v->env = v->env_out = 0;

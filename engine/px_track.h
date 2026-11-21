@@ -58,6 +58,14 @@
 #define PXT_CH_HOLD 15                 /* frames its note may be missing before it takes another (22 ms) */
 #endif
 #ifndef PXT_MINWAIT
+/* An opt-in shortcut (off by default, PX_MONO_FASTCONF 0): a note whose pitch is already stable AND whose frame confidence is at least PX_MONO_FASTCONF may speak after PX_MONO_FASTWAIT frames instead of the
+ * full wait (PXT_MINWAIT / minwait_lo): a clear pitch is rarely an upper partial of the pick transient. Experiment: tests/fasttrack (docs/FASTTRACK-FASTSTART.md). */
+#ifndef PX_MONO_FASTCONF
+#define PX_MONO_FASTCONF 0.0f
+#endif
+#ifndef PX_MONO_FASTWAIT
+#define PX_MONO_FASTWAIT 8
+#endif
 #define PXT_MINWAIT 5                  /* v49: frames a note above PXT_MW_F waits after its pick (7 ms; see the trigger) */
 #define PXT_MW_F    200.0f
 #endif
@@ -497,7 +505,8 @@ static __attribute__((noinline)) void pxt_layer_run(pxt_layer *L, const px_track
             if (m > 0.0f && pxt_near(m, L->stab_f, 30.0f)) L->stab_n++; else { L->stab_f = m; L->stab_n = m > 0.0f; }
             /* v49: a note above PXT_MW_F waits PXT_MINWAIT frames after the pick: a low note's fundamental is still on
              * its way through the low bands and its high partials would speak first */
-            const int early = (L->stab_f > (L->minwait_f > 0.0f ? L->minwait_f : PXT_MW_F) && L->wait_n < (L->minwait ? L->minwait : PXT_MINWAIT)) || L->wait_n < L->minwait_lo;
+            int early = (L->stab_f > (L->minwait_f > 0.0f ? L->minwait_f : PXT_MW_F) && L->wait_n < (L->minwait ? L->minwait : PXT_MINWAIT)) || L->wait_n < L->minwait_lo;
+            if (PX_MONO_FASTCONF > 0.0f && early && t->conf >= PX_MONO_FASTCONF && L->wait_n >= PX_MONO_FASTWAIT && L->stab_n >= (L->stabreq ? L->stabreq : 2)) early = 0;   /* (opt-in shortcut above) */
             if (L->weak_pick && L->wait_n > 28) L->state = 2;  /* expire the provisional repick after ~41 ms */
             else if (!early && (L->stab_n >= (L->stabreq ? L->stabreq : 2) || (L->wait_n > 55 && L->stab_n >= 1)) &&
                      (!L->weak_pick || pxt_confirm_pick(t, L->stab_f, L->wait_n))) {

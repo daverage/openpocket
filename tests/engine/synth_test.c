@@ -443,19 +443,23 @@ static void instrument_suite(void)
     }
     {   /* ATTACK and RELEASE: longer at 100 than at 0 (STRINGS, E3 for 1.2 s then silence) */
         static const float H[1] = {164.81f}; string(x, N_, H, ST, 1, 0.5f, 0.99990f, 0); memset(x + (int)(1.3f * FS_), 0, sizeof(float) * (N_ - (int)(1.3f * FS_)));
-        float t_att[2], t_rel[2];
+        float t_att[2], t_att90[2], t_rel[2];
         for (int j = 0; j < 2; j++) {
             const uint8_t qa[5] = {10, 50, (uint8_t)(j ? 100 : 0), 50, 50}, qr[5] = {10, 50, 50, (uint8_t)(j ? 100 : 0), 50};
             px_preset_t p; preset_of(&p, qa); render(&p, x, y, N_, 64);
             float pk = 0; for (int i = 0; i < (int)(1.2f * FS_); i++) if (fabsf(y[i]) > pk) pk = fabsf(y[i]);
             int i = 0; while (i < N_ && fabsf(y[i]) < 0.5f * pk) i++; t_att[j] = (float)i / FS_;
+            i = 0; while (i < N_ && fabsf(y[i]) < 0.9f * pk) i++; t_att90[j] = (float)i / FS_;
             preset_of(&p, qr); render(&p, x, y, N_, 64);
             pk = 0; for (int i2 = 0; i2 < (int)(1.2f * FS_); i2++) if (fabsf(y[i2]) > pk) pk = fabsf(y[i2]);
             int e0 = (int)(1.3f * FS_), r = e0; while (r < N_ - 512 && rms(y, r, 512) > 0.1f * pk * 0.7f) r += 256; t_rel[j] = (float)(r - e0) / FS_;
         }
-        printf("INSTRUMENT STRINGS: time to half level ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_att[0], t_att[1], t_rel[0], t_rel[1]);
-        CHECK(t_att[1] - 0.1f > 1.6f * (t_att[0] - 0.1f), "ATTACK 100 is slower than 0 (from the pick at 0.1 s)");
+        printf("INSTRUMENT STRINGS: time to half level ATTACK 0 %.3f s, 100 %.3f s; to 90 %% ATTACK 0 %.3f s, 100 %.3f s; release to -20 dB RELEASE 0 %.3f s, 100 %.3f s\n", t_att[0], t_att[1], t_att90[0], t_att90[1], t_rel[0], t_rel[1]);
+        /* a slow attack no longer makes the note late: it speaks within about 60 ms of the pick (PX_S2_ATK_HEAD), and the ATTACK knob sets the length of the swell to full level */
+        CHECK(t_att[0] - 0.1f < 0.06f && t_att[1] - 0.1f < 0.06f, "a slow attack speaks at once: half level within 60 ms of the pick (ATTACK 0 %.3f s, 100 %.3f s after 0.1 s)", t_att[0] - 0.1f, t_att[1] - 0.1f);
+        CHECK(t_att90[1] - 0.1f > 1.6f * (t_att90[0] - 0.1f), "ATTACK 100 swells more slowly than 0 (time to 90 %% of the level, from the pick at 0.1 s)");
         CHECK(t_rel[1] > 1.5f * t_rel[0], "RELEASE 100 is longer than 0");
+        CHECK(t_rel[1] < 0.2f, "a long release no longer hangs on: RELEASE 100 is -20 dB within 0.2 s (%.3f s; it was 0.447 s before PX_S2_REL_SPAN)", t_rel[1]);
     }
     {   /* a slide, a repicked note, a release (SOFTPAD, STRINGS, BRASS) */
         for (int b = 0; b < 3; b++) {
