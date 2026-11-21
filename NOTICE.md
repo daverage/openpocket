@@ -40,3 +40,6 @@ manuals). All trademarks belong to their owners; OpenPocket is not affiliated wi
 
 No part of the official Pocket X / BlackBox firmware is in this repository. The installer's way back to the official
 firmware uses the file you download from the maker; it is checked in your browser and never uploaded.
+
+## IDMT-SMT-Guitar V2 (research evaluation only, not distributed)
+Fraunhofer IDMT, Zenodo 10.5281/zenodo.7544110, CC BY-NC-ND 4.0. Used locally for FastTrack tracker evaluation (tests/fasttrack); audio is neither modified nor redistributed. C. Kehling, J. Abesser, C. Dittmar, G. Schuller, "Automatic tablature transcription of electric guitar recordings by estimation of score- and instrument-related parameters", DAFx 2014.

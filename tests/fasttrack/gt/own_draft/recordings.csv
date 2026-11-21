@@ -1,0 +1,3 @@
+recording,path,sample_rate,bits,channels,signal,guitar,pickup,player,exercise_id,intended_tempo_bpm,split,processing,complete_annotation,licence,notes
+bleep3_di,build/fasttrack/labelling/bleep3_di.mono24.wav,44100,24,1,DI,,,owner,own_bleep3,,dev,none,0,owner,DRAFT annotation (machine-assisted, not listened to, not complete): left channel of the original 24-bit stereo file; timing identical
+fast_play_di,build/fasttrack/labelling/fast_play_di.mono24.wav,44100,24,1,DI,,,owner,own_fastplay,,dev,none,0,owner,DRAFT annotation (machine-assisted, not listened to, not complete): left channel of the original 24-bit stereo file; timing identical

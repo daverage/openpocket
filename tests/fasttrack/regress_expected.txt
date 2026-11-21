@@ -1,0 +1,8 @@
+variant                    | pitch right   fast |  event   fast | attack   fast   med   p90* fast med   p90* | false attacks/min: wrong-init spurious
+legacy CLASSIC (FOLLOW on) |       91.0%  78.5% |  79.9%  52.4% |  59.7%  31.9%  20.6    inf     18.3    inf |             0.8      1.5
+legacy, FOLLOW off         |       91.0%  78.5% |  79.9%  52.4% |  77.9%  51.0%  20.5    inf     17.2    inf |             2.1      5.2
+controller A (rise1.3, min20) |       91.1%  79.9% |  82.7%  57.0% |  79.5%  51.2%  20.2    inf     17.3    inf |             2.8      8.7
+B oracle onset             |       92.0%  80.3% |  89.3%  77.0% |  87.1%  73.6%  28.3    inf     28.3    inf |             7.4      0.0
+C oracle pitch             |       92.2%  81.0% |  85.2%  58.0% |  81.6%  52.0%  20.4    inf     17.6    inf |             0.0     13.1
+D both oracle              |       96.6%  91.4% |  99.8%  99.9% |  99.8%  99.9%  28.3   28.9     28.3   28.9 |             0.0      0.0
+base                   groups= 9623 recall=0.887 miss=1083 oct=319 lat med/p90/p99= 20.2/ 33.4/166.5 | fast n= 777 rec=0.725 lat= 13.7/ 27.4 | wrong_init= 310 extra= 559 spur/min=  2.8 wrong_s/min= 6.87
