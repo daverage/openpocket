@@ -26,7 +26,6 @@ def parse(path):
 
 def attribute(ev, tr, trace=None):
     gs = S.groups(tr); res = []
-    t_ev = np.array([t for k, t, f in ev]); 
     for gi, g in enumerate(gs):
         ps = [S.hz(m) for _, _, m in g['notes']]
         nxt = gs[gi + 1]['on'] if gi + 1 < len(gs) else 1e12

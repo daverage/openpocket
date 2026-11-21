@@ -78,3 +78,11 @@ for tch in sorted({r['tech'] for r in rows}):
 print('\nper class: median level rise (fast level / its 8-frame min), median level 20 ms after (linear), median after/before RMS:')
 for k in sorted({r['cls'] for r in rows}):
     rs = [r for r in rows if r['cls'] == k]; print(f"  {k:22s} lr {np.median([r['lr'] for r in rs]):6.2f}  after {np.median([r['after'] for r in rs]):.4f}  trend {np.median([r['trend'] for r in rs]):6.2f}  weak {np.mean([r['weak'] for r in rs]):.0%}")
+
+# ---- is the level after a pick informative?  AUC of the RMS level 20 ms after the pick, genuine (aligned or offset annotation) vs the non-genuine classes (not a rule: a measurement) ----
+def _auc(pos, neg):
+    a = np.concatenate([pos, neg]); r = a.argsort().argsort() + 1.0; return (r[:len(pos)].sum() - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))
+_G = ('genuine_aligned', 'genuine_misaligned'); _gen = [r for r in rows if r['cls'] in _G]; _neg = [r for r in rows if r['cls'] not in _G + ('unannotated_rise',)]
+print('\nAUC genuine vs (precursor, below-gate, note-end, in-note fluctuation, silence, late):', {f: round(float(_auc(np.array([r[f] for r in _gen]), np.array([r[f] for r in _neg]))), 3) for f in ('after', 'lr', 'trend', 'flux')})
+for _t in (0.003, 0.006, 0.01):
+    print(f'post-pick level < {_t}: genuine {np.mean([r["after"] < _t for r in _gen]):.1%}  precursor {np.mean([r["after"] < _t for r in rows if r["cls"] == "precursor_before_pick"]):.1%}  below-gate {np.mean([r["after"] < _t for r in rows if r["cls"] == "below_gate_noise"]):.1%}')

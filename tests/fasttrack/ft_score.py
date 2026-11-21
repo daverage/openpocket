@@ -17,7 +17,7 @@ Definitions (all times are what a real-time synth would see: nothing is back-dat
             extra       at a right pitch of a group already found (fragmentation / false retrigger).
  wrong_ms   audible time (gate on) at a pitch that matches no sounding truth note (+-50 cents), per minute of truth span.
 """
-import sys, os, glob, json, math, argparse
+import os, glob, json, math, argparse
 import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 def hz(m): return 440.0 * 2 ** ((m - 69) / 12)
@@ -49,7 +49,6 @@ def score_take(trace, ev, tr):
     if not gs: return out
     out['dur_min'] = (tr[-1][1] - tr[0][0]) / 60000.0
     onset_t = np.array([g['on'] for g in gs]); used = set()
-    first_event_idx = {}
     for gi, g in enumerate(gs):
         pitches = [hz(m) for _, _, m in g['notes']]
         nxt = gs[gi + 1]['on'] if gi + 1 < len(gs) else 1e12
@@ -60,10 +59,10 @@ def score_take(trace, ev, tr):
         pre = np.searchsorted(T, g['on'] - 30)
         def right(i, ps): return G[i] and any(abs(cents(F[i], p)) < 50 for p in ps)
         already = pre < len(T) and right(pre, pitches)
-        tfound = None; evfound = None
+        tfound = None
         if already:
             for (t, f, _) in N:
-                if g['on'] - 30 <= t <= end and any(abs(cents(f, p)) < 50 for p in pitches): tfound = t; evfound = ('N', t); break
+                if g['on'] - 30 <= t <= end and any(abs(cents(f, p)) < 50 for p in pitches): tfound = t; break
         else:
             run = 0
             for i in range(lo, hi):

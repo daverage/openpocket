@@ -8,7 +8,7 @@ except this script and the text report it prints.
   python3 tests/fasttrack/idmt_inventory.py            -> build/fasttrack/idmt/{inventory.json,manifest.csv} + stdout report
 Signal path: datasets 1-4 are guitars plugged into the interface Line-In (direct); dataset 4 'acoustic_mic' is a condenser microphone: labelled mic, excluded from DI sets.
 Datasets 1-3 have per-note pitch/onset/offset/string/fret/excitation/expression; dataset 4 has onsets, chords and mono/poly texture only (no pitch)."""
-import os, glob, json, csv, sys
+import os, glob, json
 import xml.etree.ElementTree as ET
 import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -87,7 +87,6 @@ def main():
         on = [float(l.split(',')[0]) for l in open(cp) if l.strip() and l[0].isdigit()]
         wav = cp.replace('/annotation/onsets/', '/audio/')[:-4] + '.wav'
         if len(on) < 2 or not os.path.exists(wav): continue
-        tx = cp.replace('/onsets/', '/texture/')[:-4] + '.txt'
         s = stats(on); s.update(set='dataset4', name=f'{gtr}/{tempo}/{name}', kind='d4_' + tempo, wav=wav, guitar=gtr, path='mic' if gtr == 'acoustic_mic' else ('pickup' if gtr == 'acoustic_pickup' else 'direct'), pitched=False,
                                genre=genre, dur=on[-1])
         rows.append(s)

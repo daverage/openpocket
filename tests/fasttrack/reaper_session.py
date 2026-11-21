@@ -76,7 +76,6 @@ def imp(rpp, rec, out, accept_unchanged=False):
         else: c = float(conf) if conf and unchanged else 0.4
         rows.append(dict(recording=rec, t_ms=round(t * 1000, 1), action=act, pitch_midi=pitch, string='', fret='', expected_event=G.DEFAULT_EXPECTED[act], confidence=c, timing_basis='listening' if reviewed else 'spectrogram', end_pitch_midi='', duration_ms='', notes='reviewed in Reaper' if reviewed else 'unreviewed proposal (unchanged or still marked ?)'))
     rows.sort(key=lambda r: r['t_ms'])
-    new = not os.path.exists(out)
     with open(out, 'w', newline='') as f: w = csv.DictWriter(f, fieldnames=G.EV_COLS); w.writeheader(); w.writerows(rows)
     print(f'{len(rows)} events -> {out} ({skipped} markers ignored: CAND?/GAP/unknown); unreviewed: {sum(1 for r in rows if r["notes"].startswith("unreviewed"))}')
 if __name__ == '__main__':

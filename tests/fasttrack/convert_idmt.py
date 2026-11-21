@@ -6,8 +6,7 @@ Mapping (what the dataset's own labels support; nothing is inferred from a pitch
   expression DN    -> NOISE (dead note: a picked, muted string; no pitched note intended)  confidence 0.5
   expression SL    -> SLIDE (end pitch unknown in the labels: modulationFrequencyRange cents used when given)   BE -> BEND   VI -> VIBRATO (the note onset itself is also a PICK at the same time)
 There is NO hammer-on, pull-off or hard-mute class in IDMT: those cannot be evaluated from it.  Later notes of a chord strum (within 40 ms) are kept as separate PICKs."""
-import sys, os, csv, glob, json
-import xml.etree.ElementTree as ET
+import sys, os, csv, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gt_format as G, idmt_inventory as I
 OUT = os.path.join(I.ROOT, 'build', 'fasttrack', 'gt', 'idmt_licks'); os.makedirs(OUT, exist_ok=True)

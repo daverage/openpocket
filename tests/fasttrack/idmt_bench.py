@@ -5,7 +5,7 @@
   python3 tests/fasttrack/idmt_bench.py d4 VARIANT...         dataset 4 direct-guitar recordings, ONSET-ONLY scoring (no pitch annotations exist)
 Annotation caveat: hand-annotated onsets sit within roughly -22..+32 ms of the audio energy rise (median +20 ms, 999 notes of the licks):
 absolute latencies against IDMT truth are only good to about +-25 ms; compare variants against each other on the same truth."""
-import sys, os, glob, json, csv, subprocess
+import sys, os, glob, json, csv
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ft_score as S
@@ -52,15 +52,13 @@ def d4(variants):
             if not os.path.exists(evp): continue
             on = np.array([float(l.split(',')[0]) * 1000 for l in open(cp) if l.strip()]); ev = S.load_ev(evp)
             N = np.array([t for k, t, a in ev if k == 'N'] + [t for k, t, a in ev if k == 'L']); N.sort()
-            used = set(); g = S.groups([(t, t + 1, 0) for t in on / 1000 * 0 + on]) if False else None
             for i, o in enumerate(on):
                 nxt = on[i + 1] if i + 1 < len(on) else 1e12
                 c = N[(N >= o - 30) & (N < min(nxt - 10, o + 250))]
                 fastc = i > 0 and o - on[i - 1] < 150
                 tot_on += 1; fast_on += fastc
-                if len(c): found += 1; fast_found += fastc; lat.append(c[0] - o); used.add(float(c[0]))
+                if len(c): found += 1; fast_found += fastc; lat.append(c[0] - o)
             nN += len(N); dur += (on[-1] - on[0]) / 60000
-            d4.unm = getattr(d4, 'unm', 0)
         lat = np.array(lat)
         print(f"{v:14s} d4-direct onsets={tot_on} recall={found/max(1,tot_on):.3f} (fast<150ms: {fast_found}/{fast_on}={fast_found/max(1,fast_on):.3f}) latency med/p90/p99={np.median(lat):.1f}/{np.percentile(lat,90):.1f}/{np.percentile(lat,99):.1f} ms  note-ons={nN} ({nN/max(1,tot_on):.2f} per annotated onset)")
 

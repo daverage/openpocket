@@ -29,7 +29,7 @@ def run(rule, rs):
     for gap, hz, fr in rs:
         res = None
         for i in range(len(fr)):
-            t, mono, conf = fr[i, 0], fr[i, 1], fr[i, 2]
+            t, mono = fr[i, 0], fr[i, 1]
             if t < 0 or mono <= 0: continue
             if rule(fr, i): res = (t, mono); break
         if res is None: none += 1

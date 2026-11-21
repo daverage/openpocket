@@ -4,7 +4,7 @@ Each experiment is guarded by a macro so a variant is just -D flags:
   FT_LEAKY=n    A1  leaky stability vote\n  FT_MUTE_K=k   A2  mute-thump threshold (production 0.3)\n  FT_YIN        H1  a short-window YIN-style period (pxt_period over the post-pick samples, first minimum below FT_YIN_THR) replaces the ERB candidate
                     while a pick is pending when the ERB candidate is missing or is an upper partial (ratio 2..5) of it.  Published idea: de Cheveigne &
                     Kawahara 2002 (first dip under a threshold, not the global minimum); here on the tracker's existing 2.76 kHz history."""
-import shutil, os, sys
+import shutil, os
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')); dst = root + '/build/fasttrack/eng_root/engine'
 shutil.rmtree(root + '/build/fasttrack/eng_root', ignore_errors=True); os.makedirs(root + '/build/fasttrack/eng_root'); shutil.copytree(root + '/engine', dst)
 if not os.path.exists(root + '/build/fasttrack/eng_root/third_party'): os.symlink(root + '/third_party', root + '/build/fasttrack/eng_root/third_party')
@@ -46,7 +46,6 @@ hook = "            L->wait_n++;\n"
 assert hook in s
 s = s.replace(hook, hook + r'''#ifdef FT_YIN
             { const float ty = pxt_yin_pick(t, L->wait_n);
-              if (getenv("FT_DBG")) fprintf(stdout, "D wait %d ty %.1f m %.1f\n", L->wait_n, ty, m);
               if (ty > 0.0f) {
                   const float q = m > 0.0f ? m / ty : 0.0f;
                   const int partial = q > 1.9f && q < 5.15f && (q - (float)(int)(q + 0.5f) < 0.08f * q) && ((float)(int)(q + 0.5f) - q < 0.08f * q);
