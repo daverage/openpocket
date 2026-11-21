@@ -18,6 +18,7 @@ Host-only research on the Synth3 note tracker (branch `synth3-fasttrack`). **Not
 | `ablate.sh` | the single-knob ablations of `PX_MONO_*` |
 | `regress.sh`, `regress_expected.txt` | rebuild and compare against the recorded headline numbers |
 | `level_sweep.sh` | input-level sensitivity (-12..+12 dB) |
+| `patch_latency.py` | pluck-to-audible time per synth patch (synthetic pluck through the real chain) |
 
 ## Scoring and analysis (Python)
 `ft_score.py` (legacy scorer, recall/latency/false counts), `ft_attrib.py` (where each pick is lost; pitch / event / attack), `ft_compare.py` (side-by-side table), `early_analysis.py`, `early_rules.py`, `onset_study.py`, `flux_reclass.py` (pick classification), `idmt_inventory.py`, `idmt_bench.py`.
