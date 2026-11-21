@@ -41,9 +41,8 @@ $CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm 
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/syn_ids_test.c firmware/px_math.c -lm -o build/syn_ids && build/syn_ids
 # Synth2: Felucca ANALOG through the adapter (patches, pitch, retrigger, release, bounds, call-size independence)
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/synth_test.c firmware/px_math.c -lm -o build/synth_test && build/synth_test | tail -1
-# SFX ENHANCE: the NE570-inspired harmonic enhancer (unity, harmonics at the pedal's level, headroom, no clicks)
+# SFX ENHANCE v3: warmth (even harmonics of the low-mid band) and presence (an exciter-style high band), level independent; unity, bounds, no clicks
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/enhance_test.c firmware/px_math.c -lm -o build/enhance_test && build/enhance_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -DPXE_DIAG tests/engine/enhance_test.c firmware/px_math.c -lm -o build/enhance_test_diag && build/enhance_test_diag | tail -1   # the diagnostic build's SENS and VOICE controls
 # Felucca's own golden renders for the vendored engines
 CC="$CC" sh third_party/felucca-engines/tests/felucca_ref.sh
 # Synth2: the mono tracker's interface (engine/px_mono.h)

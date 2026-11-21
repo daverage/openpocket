@@ -42,7 +42,7 @@ enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLY
        PX_PIT_LOWEST_HQ,
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
-       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (NE570-inspired harmonic enhancer, engine/px_enhance.h) is appended after it */
+       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
@@ -177,7 +177,7 @@ typedef struct {
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
-    px_enhance enh;                                    /* SFX ENHANCE (132 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
+    px_enhance enh;                                    /* SFX ENHANCE v3 (about 200 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
     px_hb syn_fuzz_os[4];
     px_drive_state syn_fuzz;
     float syn_fuzz_tone;
@@ -250,8 +250,6 @@ int  px_engine_change(const px_engine *e, const px_preset_t *p);
 void px_engine_knobs(px_engine *e, const px_preset_t *p);
 void px_engine_prepare(const px_engine *e, const px_preset_t *p);
 void px_engine_process(px_engine *e, const float *in, float *out, int n);
-/* ENHANCE's input diagnostics: the guitar's peak and RMS (dBFS, as it arrives at the effect) and the fraction of the time the gain cell's input exceeded its calibrated 0 dBm (0.5): which sensitivity this guitar needs */
-void px_enhance_diag(const px_engine *e, float *peak_dbfs, float *rms_dbfs, float *over_fraction);
 enum { PX_PART_ALL };                  /* px_engine_part: the whole chain (the NAM stages are gone) */
 void px_engine_part(px_engine *e, const float *in, float *out, int n, int part);
 extern uint32_t (*px_clock)(void);      /* v38: set by the firmware: px_engine.pf counts each block's time */
