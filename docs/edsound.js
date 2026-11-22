@@ -38,15 +38,14 @@ function renderFs() {
   sw.querySelector("span").textContent = fs.stomp ? "Stomp" : "Patch";
   if (document.activeElement !== $("fsl")) fsOptions($("fsl"), fsValid(fs.left));
   if (document.activeElement !== $("fsr")) fsOptions($("fsr"), fsValid(fs.right));
-  $("fsgest").hidden = !fs.gestures;
+  document.querySelectorAll("#fsrow [data-gest]").forEach((el) => { el.hidden = !fs.gestures; });   // an older pedal has no gestures
   if (fs.gestures) GEST.forEach(([id], i) => { const s = $(id); if (document.activeElement !== s) gestOptions(s, fs.gestures[i]); });
   const st = $("fsstate");
   st.textContent = fs.bypass ? "BYPASSED: the dry guitar" : "";
   st.className = `fsstate${fs.bypass ? " byp" : ""}`;
   const help = $("fshelp");
-  help.hidden = false;
-  help.textContent = fs.stomp ? "STOMP mode: each footswitch switches the block it is assigned on and off (or the BYPASS). Both together open the tuner. The assignment is part of the preset: Save keeps it."
-    : "PATCH mode: the footswitches change the preset. The assignments below are kept and work in STOMP mode.";
+  help.textContent = fs.stomp ? "Each footswitch switches its block on and off. Both together open the tuner."
+    : "The footswitches change the preset. The assignments are kept for Stomp mode.";
   row.inert = cmp;
 }
 function setFs(set) {

@@ -102,6 +102,19 @@ RANGEMASTER, EP BOOST, MAXIMIZER, FIXED WAH (the Vox V847 tone curve with the pe
 ### Effects
 
 SMART GATE uses a filtered detector and learns the background while closed. Lower SENS to pick up quieter attacks. HOLD keeps it open through short gaps, RELEASE sets the closing fade, and REDUCTION sets how far the level dips. Start with a brief pause so the detector can hear the idle signal. A sudden noise jump can still open it.
+
+**The SMART GATE's controls, as the code reads them** (`smart_gate_sample` in `engine/px_dsp.c`):
+
+| Control | What it does |
+|---|---|
+| SENS | The quietest level that counts as playing, **a floor under the learned noise**: -62 dBFS at 0, -28 dBFS at 100. Lower it to catch quieter picking, raise it when noise or hum opens the gate. (The name is the other way round to a threshold: higher is harder to open.) The gate also learns the idle noise of each of its two bands (below and above about 1 kHz) while closed and opens only above three times that floor, so it follows a noisy or a quiet pickup by itself. |
+| RELEASE | How fast it closes once it decides the note is over: 5 ms at 0 to 500 ms at 100. |
+| PRESET LVL | Not a gate control: the whole preset's output level, 0.3 dB a step, 50 = 0 dB (it lives here because the gate is always the first block). |
+| HOLD | How long it stays open after the last attack or sustain: 25 ms at 0 to 150 ms at 100. Raise it for fast playing, staccato and the gaps between notes. |
+| REDUCTION | How far it closes: -20 dB at 0 to -80 dB at 100. Less is less obvious; more is dead silence between notes. |
+| HUSH (Global panel) | A low-pass that closes with the level, so the hiss of a dying note goes before the note does. |
+
+It opens on a pick attack (energy jumping over the slow level), stays open while sustained energy is above the learned floor, and does not cut a note's decay. A sidechain high-pass at 88 Hz keeps hum from holding it open. It cannot remove noise that sounds while a note rings: that is what the HUM FILTER and HUSH are for.
 | Block | Types |
 |---|---|
 | GT | NOISE GATE (THRESH, RELEASE), SMART GATE (SENS, RELEASE, HOLD, REDUCTION) |

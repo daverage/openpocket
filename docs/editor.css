@@ -264,9 +264,20 @@ body[data-view="sound"] #view-sound, body[data-view="models"] #view-models, body
 }
 @container (max-width: 420px) { .tile .tt { display: none; } .tile .tl { font-size: 0.8125rem; } .tile { grid-template-rows: 40px 30px; } }
 @media (pointer: coarse) { .tile { grid-template-rows: 44px 36px; } }
-.fsrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-block: 12px 0; }
-.fsel { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--dim); }
-.fsel select { min-block-size: 38px; }
+.fscard { margin-block: 12px 4px; padding: 12px 16px 10px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-card); display: grid; gap: 10px; }
+.fscard[hidden] { display: none; }
+.fshead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.fshead h3 { font-size: 0.8125rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.fshelp { flex: 1 1 18rem; margin: 0; font-size: 0.8125rem; color: var(--faint); }
+.fsgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+@media (max-width: 640px) { .fsgrid { grid-template-columns: minmax(0, 1fr); } }
+.fscol { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 6px 12px; }
+.fscol h4 { grid-column: 1 / -1; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); padding-block-end: 2px; border-block-end: 1px solid var(--line-soft); }
+.fsel { display: contents; font-size: 0.8125rem; color: var(--dim); }
+.fsel[hidden] { display: none; }
+.fsel select { min-block-size: 36px; inline-size: 100%; }
+.fsmore summary { cursor: pointer; font-size: 0.8125rem; color: var(--faint); }
+.fsmore p { margin-block: 6px 2px; font-size: 0.8125rem; color: var(--faint); max-inline-size: 70ch; }
 .fsstate { font-size: 0.8125rem; font-weight: 700; color: var(--faint); }
 .fsstate.byp { color: var(--ink); }
 .tile .fsb { position: absolute; inset-block-start: 3px; inset-inline-end: 4px; padding: 0 5px; border-radius: 999px; background: var(--c); color: oklch(0.16 0.02 150); font: 700 0.6875rem/1.4 inherit; pointer-events: none; font-style: normal; }
@@ -483,9 +494,6 @@ a.tone-u[href] { text-decoration: underline; }
 .prof-b { block-size: 6px; border-radius: 3px; background: var(--bg); overflow: clip; }
 .prof-b i { display: block; block-size: 100%; }
 .prof-r span:last-child { text-align: end; }
-.fsgest { margin-block: 4px 8px; }
-.fsgest summary { cursor: pointer; font-weight: 600; color: var(--dim); padding-block: 4px; }
-.fsgest-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; margin-block: 8px; }
 .pop.gl { inline-size: min(420px, calc(100vw - 24px)); max-block-size: calc(100dvh - 80px); overflow-y: auto; }
 .gl-row { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 4px 12px; align-items: center; }
 .gl-row small, .gl-row .dim { grid-column: 2; }

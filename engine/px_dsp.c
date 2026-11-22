@@ -875,7 +875,7 @@ static void base_preset(px_preset_t *p)
     blk(p, PX_B_MOD,    0, PX_MOD_CHORUS, 30, 40, 40, 30, 50);
     blk(p, PX_B_DELAY,  0, PX_DLY_DIGITAL, 28, 30, 25, 50, 30);
     blk(p, PX_B_REVERB, 0, PX_REV_HALL, 50, 50, 20, 40, 0);
-    blk(p, PX_B_SYN,    0, PX_SYN_OCT_FUZZ, 50, 70, 40, 30, 0);
+    blk(p, PX_B_SYN,    0, PX_SYN_OCT_FUZZ, 50, 70, 40, 30, 50);   /* (v76: LEVEL 50 = 0 dB; 0 was -12 dB, a quiet octave fuzz in every new preset) */
     blk(p, PX_B_BST,    0, PX_BST_RANGEMASTER, 50, 0, 0, 0, 0);
     px_order_default(p->order);
 }
@@ -1148,6 +1148,25 @@ static void synth_hq_filters(px_bq *first, px_bq *second, float rate)
     bq_lowpass(second, rate, 150.0f, 1.31f);
 }
 
+/* v76: the settings a type starts with when it is picked (the pedal's model knob, the editor, MIDI): every setting at the middle, so a mix and a level are never left at 0 from the
+ * type before it, except the types where the middle is not the neutral setting (the boosts' unity points, the fuzz, the acoustic pair, the hum filter). The gate block keeps its
+ * settings (its third one is the preset level). */
+void px_type_defaults(int blk, int type, uint8_t *p)
+{
+    if (blk == PX_B_GATE) return;
+    uint8_t d[PX_NPAR] = {50, 50, 50, 50, 50};
+    if (blk == PX_B_BST) switch (type) {
+    case PX_BST_RANGEMASTER: d[1] = 0; d[2] = 0; break;                        /* VOLUME 50 = unity, single coil, treble booster */
+    case PX_BST_EPBOOST: d[0] = 0; break;                                      /* GAIN 0 = unity */
+    case PX_BST_ENHANCE: d[1] = 0; break;                                      /* LOUDER 0 = unity */
+    case PX_BST_VOXWAH: d[2] = 0; break;                                       /* LEVEL 0 = the guitar's loudness */
+    case PX_BST_FUZZFACE: d[0] = 65; d[4] = 0; break;                          /* FUZZ, VOLUME 50, P90, BIAS 50, germanium */
+    case PX_BST_ACOUSTIC: d[0] = 55; d[1] = 40; d[3] = 0; break;               /* LOW CUT about 70 Hz, DEQUACK 40, BODY flat, NOTCH off, LEVEL 0 dB */
+    }
+    if (blk == PX_B_SFX && type == PX_SFX_ACOUSTIC) d[0] = 60;                 /* DRIVE: breaking up */
+    if (blk == PX_B_EQ && type == PX_EQ_HUM) { d[1] = 60; d[3] = 50; d[4] = 0; }
+    for (int k = 0; k < PX_NPAR; k++) p[k] = d[k];
+}
 /* ---- v76: ACOUSTIC PREAMP (BST) and ACOUSTIC DRIVE (SFX), for a piezo pickup into a PA or a recorder (docs/research/ACOUSTIC-BOOSTS-RESEARCH.md) ---- */
 static void bq_ident(px_bq *b) { bq_set(b, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f); }
 static void ap_set(px_ap *a, float sr, const uint8_t *q)
@@ -1196,7 +1215,7 @@ static void ad_set(px_ad *d, float sr, const uint8_t *q)
     bq_lp1(&d->lp, sr, 9000.0f - 5200.0f * pz);                                /* and its top (fizz) */
     bq_peak(&d->dip, sr, 2500.0f, 0.9f, -5.0f * pz);                           /* and a little of its quack */
     bq_lp1(&d->tone, sr, 2500.0f * powf(4.0f, tn));                            /* TONE after the clipper: 2.5 .. 10 kHz */
-    d->g = 1.0f + 14.0f * dr * dr; d->bias = 0.2f; d->off = px_tanh(d->bias);
+    d->g = 1.0f + 60.0f * dr * dr; d->bias = 0.2f; d->off = px_tanh(d->bias);
     d->wet_n = 1.3f / (1.0f + 0.6f * (d->g - 1.0f));
     d->blend = f01(q[1]);
     d->kdc = onepole_k(sr, 0.0057f); d->kl = onepole_k(sr, 0.01f);

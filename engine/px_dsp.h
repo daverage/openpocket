@@ -100,6 +100,7 @@ const char *px_block_label(int blk);
 const char *px_block_name(int blk);
 int         px_ntypes(int blk);
 int         px_type_canonical(int blk, int type);
+void px_type_defaults(int blk, int type, uint8_t *p);   /* v76: the settings a type starts with when it is picked: every one at 50 (a mix and a level at the middle), except the types listed in px_dsp.c; not the gate block */
 void px_block_canonical(int blk, uint8_t *type, uint8_t *p);   /* v64: px_type_canonical, and the retired type's controls */
 const char *px_type_name(int blk, int type);
 int         px_nparams(int blk, int type);

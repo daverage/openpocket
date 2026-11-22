@@ -188,7 +188,7 @@ ok(odd.warn.length === 2 && odd.preset.p[amp][0] === 1, "file: unknown type and 
 // v75 (protocol 9): GLOBAL (the settings outside the presets) and TUNER
 {
   const g0 = await ed.global();
-  ok(ed.hasGlobal && g0.tuner === 440 && g0.hpf === 0 && g0.eq.every((d) => d === 0) && g0.lim === 0 && g0.tails === true && g0.hush === 0 && g0.tunerLights === 0 && g0.lightsOff === false, "GLOBAL: the defaults (flat, no limiter, tails on, the tuner's HOME blink, lights on)");
+  ok(ed.hasGlobal && g0.tuner === 440 && g0.hpf === 0 && g0.eq.every((d) => d === 0) && g0.lim === 0 && g0.tails === true && g0.hush === 0 && g0.tunerLights === 1 && g0.lightsOff === false, "GLOBAL: the defaults (flat, no limiter, tails on, the tuner's needle (v76), lights on)");
   const g1 = await ed.global({ tuner: 432, hpf: 80, eq: [3, -1.5, 0, 6, -12], lim: -3, tails: false, hush: 40, tunerLights: 2, lightsOff: true });
   ok(g1.tuner === 432 && g1.hpf === 80 && g1.eq.join() === "3,-1.5,0,6,-12" && g1.lim === -3 && g1.tails === false && g1.hush === 40 && g1.tunerLights === 2 && g1.lightsOff === true, `GLOBAL set: read back as set (${JSON.stringify(g1)})`);
   const g2 = await ed.global({ tuner: 440, hpf: 0, eq: [50, -50, 0, 0, 0], lim: -99, tails: true, hush: 500 });

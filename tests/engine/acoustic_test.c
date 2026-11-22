@@ -78,6 +78,9 @@ int main(void)
         for (int k = 0; k < 2; k++) { drv(&p, k ? 90 : 10, 100, 50, 80, 50); for (int i = 0; i < N; i++) x[i] = 0.1f * sinf(6.2831853f * 440.0f * (float)i / FS); render(&p, x, y, N);
             h[k] = mag(y + 44100, 44100, 1320.0f) / mag(y + 44100, 44100, 440.0f); }
         CHECK(h[1] > h[0] * 3.0f, "DRIVE adds harmonics: 3rd/1st %.3f -> %.3f", h[0], h[1]);
+        drv(&p, 60, 100, 50, 50, 50); for (int i = 0; i < N; i++) x[i] = 0.1f * sinf(6.2831853f * 330.0f * (float)i / FS); render(&p, x, y, N);
+        { const float f1 = mag(y + 44100, 44100, 330.0f); float hh = 0; for (int k = 2; k <= 5; k++) { const float m = mag(y + 44100, 44100, 330.0f * (float)k); hh += m * m; }
+          const float thd = 10.0f * log10f(hh / (f1 * f1) + 1e-12f); printf("DRIVE 60, BLEND 100, a guitar's level: THD %.1f dB\n", thd); CHECK(thd > -18.0f, "DRIVE 60 is audibly an overdrive: THD %.1f dB", thd); }
         drv(&p, 60, 100, 100, 50, 50); const float z60 = gain_db(&p, 60, 0.02f), z1k = gain_db(&p, 1000, 0.02f); drv(&p, 60, 100, 0, 50, 50); const float y60 = gain_db(&p, 60, 0.02f);
         CHECK(z60 < y60 - 4.0f && z60 < z1k - 8.0f, "PIEZO takes the lows: 60 Hz %.1f (PIEZO 100) against %.1f (0), 1 kHz %.1f", z60, y60, z1k);
     }

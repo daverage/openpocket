@@ -59,6 +59,14 @@ int main(void)
     ff(&p, 20, 50, 0, 50, 0); const float f20 = harm_db(&p, 0.01f);
     ff(&p, 90, 50, 0, 50, 0); const float f90 = harm_db(&p, 0.01f);
     CHECK(f90 > f20 + 3.0f, "more FUZZ, more harmonics: %.1f -> %.1f dB", f20, f90);
+    {   /* v76: the FUZZ pot works across its travel at a guitar's level, and the guitar's volume cleans it up (softer at -12 dB, clean at -24 dB) */
+        float t[4]; const int fz[4] = {0, 25, 50, 75};
+        for (int k = 0; k < 4; k++) { ff(&p, fz[k], 50, 50, 50, 0); t[k] = harm_db(&p, 0.125f); }
+        printf("THD at a guitar's level: FUZZ 0 %.1f, 25 %.1f, 50 %.1f, 75 %.1f dB\n", t[0], t[1], t[2], t[3]);
+        CHECK(t[1] > t[0] + 2.0f && t[2] > t[1] + 0.5f && t[3] > t[2] - 0.2f && t[3] > t[0] + 5.0f, "FUZZ is not all at the top");
+        ff(&p, 60, 50, 50, 50, 0); const float loud = harm_db(&p, 0.125f), half = harm_db(&p, 0.031f), quiet = harm_db(&p, 0.008f);
+        CHECK(half < loud - 5.0f && quiet < loud - 30.0f, "the guitar volume cleans up: %.1f dB at full, %.1f dB at -12 dB, %.1f dB at -24 dB", loud, half, quiet);
+    }
     /* bounded, silent, no click */
     ff(&p, 100, 100, 100, 50, 1);
     for (int i = 0; i < N; i++) x[i] = 0.9f * sinf(6.2831853f * 110.0f * (float)i / FS);

@@ -94,23 +94,32 @@
         <div class="chain" id="tiles" role="group" aria-label="Signal chain, in the order the sound passes through"></div>
         <span class="cap-io" aria-hidden="true">OUT</span>
       </div>
-      <div class="fsrow" id="fsrow" hidden>
-        <button type="button" class="switch" id="stomp" role="switch" aria-checked="false" aria-describedby="fshelp"><i></i><span>Stomp</span></button>
-        <label class="fsel">Left footswitch <select id="fsl"></select></label>
-        <label class="fsel">Right footswitch <select id="fsr"></select></label>
-        <span class="fsstate" id="fsstate" role="status"></span>
-      </div>
-      <details class="fsgest" id="fsgest" hidden>
-        <summary>Gestures: double tap and hold</summary>
-        <div class="fsgest-grid">
-          <label class="fsel">Left: double tap <select id="ldbl"></select></label>
-          <label class="fsel">Left: hold <select id="lhold"></select></label>
-          <label class="fsel">Right: double tap <select id="rdbl"></select></label>
-          <label class="fsel">Right: hold <select id="rhold"></select></label>
+      <section class="fscard" id="fsrow" aria-label="Footswitches" hidden>
+        <header class="fshead">
+          <h3>Footswitches</h3>
+          <button type="button" class="switch" id="stomp" role="switch" aria-checked="false" aria-describedby="fshelp"><i></i><span>Stomp</span></button>
+          <span class="fsstate" id="fsstate" role="status"></span>
+          <p class="fshelp" id="fshelp"></p>
+        </header>
+        <div class="fsgrid">
+          <div class="fscol">
+            <h4>Left</h4>
+            <label class="fsel"><span>Press</span><select id="fsl"></select></label>
+            <label class="fsel" data-gest><span>Double tap</span><select id="ldbl"></select></label>
+            <label class="fsel" data-gest><span>Hold</span><select id="lhold"></select></label>
+          </div>
+          <div class="fscol">
+            <h4>Right</h4>
+            <label class="fsel"><span>Press</span><select id="fsr"></select></label>
+            <label class="fsel" data-gest><span>Double tap</span><select id="rdbl"></select></label>
+            <label class="fsel" data-gest><span>Hold</span><select id="rhold"></select></label>
+          </div>
         </div>
-        <p class="hint">A hold (0.7 s) takes the press's own step back, then does its action. A double tap (STOMP mode only: the two toggles cancel) does its action. Part of the preset: Save keeps them.</p>
-      </details>
-      <p class="hint" id="fshelp" hidden></p>
+        <details class="fsmore" id="fsgest">
+          <summary>How the footswitches work</summary>
+          <p>In Stomp mode a press switches the assigned block (or BYPASS) on and off; both switches together open the tuner. A hold (0.7 s) takes the press's own step back, then does its action. A double tap (Stomp mode only: the two toggles cancel) does its action. Patch mode keeps the assignments but the switches change the preset. Assignments and gestures are part of the preset: Save keeps them.</p>
+        </details>
+      </section>
       <p class="hint" id="hint">Drag a block to move it. Arrow keys choose a block, Space switches it, Alt + arrows move it.</p>
 
       <div class="block" id="block">

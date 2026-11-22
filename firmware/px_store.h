@@ -58,7 +58,7 @@ static uint8_t st_ui;                           /* v48: the pedal settings byte 
 typedef struct { px_global_t g; uint8_t tn, lights; } st_cfg_t;   /* lights: bits 0..1 the tuner's lights (0 blink, 1 needle, 2 strobe), bit 2 lights off (px_lights.h) */
 static st_cfg_t st_cfg;
 typedef char st_cfg_gap_check[(16u + ST_S0N * ST_SLOT == ST_CFG_OFF && ST_CFG_OFF + 16u <= 0xF00u) ? 1 : -1];
-static void st_cfg_defaults(void) { px_global_default(&st_cfg.g); st_cfg.g.tails = 1; st_cfg.tn = 0; st_cfg.lights = 0; }   /* (tails on unless the player turns them off) */
+static void st_cfg_defaults(void) { px_global_default(&st_cfg.g); st_cfg.g.tails = 1; st_cfg.tn = 0; st_cfg.lights = 1; }   /* (the tuner's lights: the needle, so they move: v76) */   /* (tails on unless the player turns them off) */
 static void st_cfg_pack(uint8_t *r)
 {
     memset(r, 0xFF, 16);
@@ -77,7 +77,7 @@ static void st_cfg_unpack(const uint8_t *r)     /* a block that is not ours, or 
     g.hpf = (uint8_t)(r[3] * 5u); for (uint32_t i = 0; i < 5u; i++) g.eq[i] = r[4 + i] > 48u ? 24u : r[4 + i];
     g.lim = r[9] > 24u ? 0u : r[9]; g.tails = r[10] ? 1u : 0u; g.hush = r[11] > 100u ? 0u : r[11];
     if (g.hpf > 140u) g.hpf = 0;
-    st_cfg.g = g; st_cfg.tn = r[2] > 52u ? 0u : r[2]; st_cfg.lights = (r[12] == 0xFFu || (r[12] & 3u) == 3u || r[12] > 7u) ? 0u : r[12];
+    st_cfg.g = g; st_cfg.tn = r[2] > 52u ? 0u : r[2]; st_cfg.lights = (r[12] == 0xFFu || (r[12] & 3u) == 3u || r[12] > 7u) ? 1u : r[12];
 }
 static float st_tn_hz(void) { return st_cfg.tn ? 414.0f + (float)st_cfg.tn : 440.0f; }
 

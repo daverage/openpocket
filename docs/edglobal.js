@@ -7,7 +7,7 @@ import { app, $, h, on, toast } from "./edcore.js";
 const HPF = [0, 20, 25, 30, 40, 55, 70, 80, 100, 120, 140];
 const LIM = [0, -0.5, -1, -2, -3, -4, -6, -9, -12];
 const BANDS = ["80 Hz", "250 Hz", "1 kHz", "3.5 kHz", "9 kHz"];
-const DEFAULTS = { tuner: 440, hpf: 0, eq: [0, 0, 0, 0, 0], lim: 0, tails: true, hush: 0, tunerLights: 0, lightsOff: false };
+const DEFAULTS = { tuner: 440, hpf: 0, eq: [0, 0, 0, 0, 0], lim: 0, tails: true, hush: 0, tunerLights: 1, lightsOff: false };
 const TLIGHTS = [0, 1, 2], TL_NAME = ["Blink", "Needle", "Strobe"];
 let v = null, sendTimer = 0, saveTimer = 0, saved = true, busy = false;
 

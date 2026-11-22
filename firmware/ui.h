@@ -519,6 +519,7 @@ static void ui_knob(int dd, int fast)
             int nt = px_ntypes((int)ui_blk);
             int type = PRESET.type[ui_blk];
             do { type = (type + nt + dd) % nt; } while (!px_type_name((int)ui_blk, type)[0]);
+            if (PRESET.type[ui_blk] != (uint8_t)type) px_type_defaults((int)ui_blk, type, PRESET.p[ui_blk]);   /* v76: a new type starts at its own settings */
             PRESET.type[ui_blk] = (uint8_t)type;
         } else if (ui_item >= 2u) {
             int k = (int)ui_item - 2, t = PRESET.type[ui_blk], ln = ui_list_n((int)ui_blk, t, k);
