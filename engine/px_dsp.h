@@ -4,8 +4,8 @@
  * px_dsp.h — v3: a preset = 11 blocks; each block has a TYPE, an ON/OFF state and 5 settings 0..100.
  * The UI and the engine share exactly this structure.
  *
- *   default order: IN -> GATE -> COMP -> OCTAVE (PITCH) -> SYNTH -> SFX -> EQ -> MOD -> DELAY -> REVERB -> OUT
- *   v29: each preset carries its own block order (order[]). v70: 9 blocks, no amp, cabinet, drive or NAM.
+ *   default order: IN -> GATE -> BST -> COMP -> OCTAVE (PITCH) -> SYNTH -> SFX -> EQ -> MOD -> DELAY -> REVERB -> OUT
+ *   v29: each preset carries its own block order (order[]). v70: no amp, cabinet, drive or NAM. v75: 10 blocks (BST, the pre / boost block, after the gate by default).
  *
  * Models are voiced from published circuit analyses (ElectroSmash, Electric Druid, Rob Robinette,
  * Duncan Amps, Celestion/Jensen datasheets, Boss/Roland/Ampeg manuals...) — see docs/SOUNDS-AND-CONTROLS.md.
@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include "px_enhance.h"
+#include "px_pv.h"                                      /* v75: POLY SHIFTER (the phase-vocoder pitch shifter) */
 #include "px_pedals.h"                                /* the analogue pedal circuit models (RANGEMASTER, ...) */                                /* SFX ENHANCE's state (the engine holds one) */
 
 #ifdef __cplusplus
@@ -32,15 +33,18 @@ extern "C" {
 #define PX_MAX_BLOCK 64
 
 /* --------------------------------------------------------------- blocks --- */
-/* v70 (OpenPocket Synth): 9 blocks in signal order. The pedal groups them: INPUT (GATE, COMP), OCTAVE (PITCH),
- * SYNTH (SYN), TONE (SFX, EQ), MOD, DELAY, REVERB. */
-enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD, PX_B_DELAY, PX_B_REVERB, PX_NBLK };
+/* v70 (OpenPocket Synth): the blocks, listed by id (the preset's order[] gives the signal order; v75 appended BST, so older presets keep their
+ * indices). The pedal groups them: INPUT (GATE, BST, COMP), OCTAVE (PITCH), SYNTH (SYN), TONE (SFX, EQ), MOD, DELAY, REVERB. */
+enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD, PX_B_DELAY, PX_B_REVERB,
+       PX_B_BST, PX_NBLK };   /* v75: BST (PRE / BOOST) is appended last, so older presets keep their indices; it is processed where the preset's order puts it (by default after the gate) */
+enum { PX_BST_RANGEMASTER, PX_BST_EPBOOST, PX_BST_MAXIMIZER, PX_BST_VOXWAH, PX_BST_ENHANCE, PX_BST_FUZZFACE, PX_BST_COUNT };   /* the PRE / BOOST types: the three pedals that were SFX types 10..12 and ENHANCE (SFX type 9) (px_preset_canonical moves a stored one here), and the fixed Vox wah */
 #define PX_NPAR 5
 
 enum { PX_GATE_NORMAL, PX_GATE_SMART, PX_GATE_COUNT };
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ,
        PX_PIT_LOWEST_HQ,
+       PX_PIT_POLYSHIFT,                                /* v75: POLY SHIFTER, a phase-vocoder shifter for chords (engine/px_pv.h) */
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
        PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_EPBOOST, PX_SFX_MAXIMIZER, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
@@ -69,7 +73,7 @@ int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI
 int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
 int         px_live_type(int blk, int i);              /* the i-th live type's id (0..px_nlive-1) */
 int         px_live_index(int blk, int type);          /* a live type's place among the live types; 0 for a tombstone */
-enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
+enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_HUM, PX_EQ_COUNT };   /* v75: HUM FILTER (mains notches: 50 Hz, 60 Hz or detected) */
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
        PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO, PX_MOD_COUNT };
 enum { PX_DLY_DIGITAL, PX_DLY_ANALOG, PX_DLY_MEMORY, PX_DLY_TAPE, PX_DLY_SPACE, PX_DLY_REVERSE, PX_DLY_LOFI,
@@ -86,6 +90,8 @@ typedef struct {
     uint8_t order[PX_NBLK];        /* processing (and display) order: a permutation of the block indices */
 } px_preset_t;
 
+void px_preset_base(px_preset_t *p);        /* v75: the blank sound every factory preset starts from (the gate on, the rest off, LEVEL 0 dB), for tests and tools that need a plain starting point */
+void px_preset_canonical(px_preset_t *p);   /* v75: the three pedals that were SFX types move to the BST block (an SFX type that is a tombstone now), then px_block_canonical for every block */
 void px_order_default(uint8_t *order);
 int  px_order_valid(const uint8_t *order);   /* 1 = a permutation of 0..PX_NBLK-1 */
 
@@ -145,7 +151,19 @@ typedef struct {
 #define PX_RV_M 16384                  /* reverb memory: one 16-bit ring (32 KB) at half rate, laid out per type */
 #define PX_GL_MAX 64                   /* v38: the most settings that glide (px_dsp.c: GL_F) */
 
-typedef struct {
+/* v75: the global settings (outside the presets; docs/SOUNDS-AND-CONTROLS.md, "Global settings"): what the player sets once for the pedal and the room.
+ *   hpf     input high-pass: 0 off, else 20 .. 140 Hz (a steady low rumble out of everything after it; 25 Hz and below for bass)
+ *   eq[5]   output EQ, the gain of each band in half-dB steps from -12 to +12 dB, 24 = flat (80 Hz shelf, 250 Hz, 1 kHz, 3.5 kHz, 9 kHz shelf)
+ *   lim     output limiter: 0 off, else its ceiling is -lim / 2 dB (so 1 .. 24: -0.5 .. -12 dB)
+ *   tails   1: a delay or reverb that is switched off, or left by a preset change, plays out instead of stopping (px_engine_set / px_engine_knobs)
+ *   hush    0 .. 100: the SMART GATE's dynamic hiss filter: a low-pass that closes as the note dies away, so the gate's tails lose their hiss and not the note's brightness
+ * All zero (eq 24) is the engine as it was: nothing runs. */
+struct px_engine_s;
+typedef struct { uint8_t hpf, eq[5], lim, tails, hush; } px_global_t;
+void px_global_default(px_global_t *g);
+void px_engine_globals(struct px_engine_s *e, const px_global_t *g);
+
+typedef struct px_engine_s {
     float sr;
     px_preset_t cur;
 
@@ -156,6 +174,7 @@ typedef struct {
     struct {
         float dc, split, band[2], floor[2], slow[2], gain;
         float dc_k, split_k, env_k, slow_k, learn_k, fast_k, attack, range, sensitivity;
+        float hush, lp;                                /* v75: the hiss filter's amount (0..1) and state */
         unsigned hold, remaining;
         int open, active;
     } smart_gate;
@@ -164,7 +183,8 @@ typedef struct {
     /* pitch: delay-line shifters (2 voices) + analog octaver */
     float ps_buf[PX_PS_N]; int ps_w, ps_nv;
     float ps_ph[2], ps_inc[2], ps_W[2], ps_lvl[2], ps_off[2][2], ps_dry, ps_r, ps_rt, ps_glide, ps_invW;
-    px_erb_octave erb_pitch, erb_syn;                 /* (v49: the bank's coefficients are shared statics, px_dsp.c) */
+    px_erb_octave erb_pitch, erb_syn;
+    px_pv pv;                                          /* v75: POLY SHIFTER's state (px_pv.h) */                 /* (v49: the bank's coefficients are shared statics, px_dsp.c) */
     float erb_pitch_range;
     int erb_pitch_active;
     px_bq oct_lp, oct_lp2, oct_sublp, oct_sublp2, oct_bp, oct_uphp;
@@ -180,6 +200,8 @@ typedef struct {
     /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
     px_bbe bbe;                                        /* SFX MAXIMIZER: three bands, two delay lines (about 1 KB) */
     px_ep ep;                                          /* SFX EP BOOST: the JFET stage (about 100 bytes) */
+    px_vw vw;                                          /* BST VOX FIXED WAH: one biquad (about 70 bytes) */
+    px_ff ff;                                          /* BST FUZZ FACE: the two-transistor circuit, solved per sample (engine/px_pedals.h) */
     px_rm rm;                                          /* SFX RANGEMASTER: the circuit (about 700 bytes), set up by pxp_rm_init like ENHANCE */
     px_enhance enh;                                    /* SFX ENHANCE v4 (about 40 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
     px_hb syn_fuzz_os[4];
@@ -189,6 +211,7 @@ typedef struct {
     float syn_lp, syn_lpk; int syn_type;               /* tone low-pass; the type last set up */
     /* eq */
     px_bq eq[5]; int eq_n;
+    float hum_s1[6], hum_s2[6], hum_c[6]; int hum_n, hum_hz, hum_vote;   /* v75 HUM FILTER: the mains detector (six resonators: the 1st..3rd harmonics of 50 and of 60 Hz, half-second windows), the mains it chose, its pending vote */
     /* modulation */
     float mod_buf[2048]; int mod_w;
     float mod_ph, mod_inc, mod_depth, mod_mix, mod_fb, mod_base, mod_sweep, mod_shape;
@@ -230,6 +253,8 @@ typedef struct {
     float bf[PX_NBLK], bfa[PX_NBLK]; int8_t bfd[PX_NBLK];
     px_preset_t run;
     uint32_t pf[PX_NBLK];                              /* v38: time spent per block (px_clock ticks) */
+    float pfs[PX_NBLK];                                /* v75: each block's time per call, smoothed (ticks): what px_engine_heaviest ranks */
+    uint16_t shed;                                     /* v75: blocks switched off by the load safeguard (px_engine_shed): bit b = block b */
     /* v39: the wet lanes (px_wet_mode below): lane 0 the delay, 1 the reverb, two buffers each (px_dsp.c: px_wl), used
      * in turn. wl_b: the buffer the chain uses this block (it reads its wet out and writes its sends in); wl_n: how many
      * samples a buffer holds, wl_w: 1 once they are wet; wl_rd: wet samples the chain may read this block, wl_p: where
@@ -238,6 +263,13 @@ typedef struct {
     uint16_t wl_n[2][2], wl_rd[2], wl_p[2];
     float wl_dlag;
     uint32_t wl_late, wl_pf[2];                        /* wet blocks cut short (out of time); wet time per lane (ticks) */
+    /* v75: the global settings (px_global_t) and what they run: the input high-pass, the output EQ and limiter, the tails of a delay or reverb */
+    px_global_t glob;
+    px_bq g_hp, g_eq[5];
+    int g_hp_on, g_eq_n;
+    float g_lim_c, g_lim_g;                            /* the ceiling (linear) and the limiter's gain now */
+    int16_t spill[2];                                  /* the delay (0) and reverb (1) tails still playing out: blocks of 64 frames left; 0: not spilling */
+    uint8_t sp_type[2];                                /* the type each had when it was switched off: its derived settings stay as they were while it plays out */
 } px_engine;
 
 void px_engine_init(px_engine *e, float sr);
@@ -252,6 +284,13 @@ void px_engine_set(px_engine *e, const px_preset_t *p);
 enum { PX_CH_NONE, PX_CH_KNOBS, PX_CH_FULL };
 int  px_engine_change(const px_engine *e, const px_preset_t *p);
 void px_engine_knobs(px_engine *e, const px_preset_t *p);
+/* v75: load shedding (the firmware's safeguard, firmware/px_audio.h). px_engine_heaviest: the block that costs the most of those playing (the gate
+ * and, with the wet lanes on, the delay and reverb excepted: they are not on the chain's deadline), or -1. px_engine_shed: switches it off with the
+ * usual fade, the preset (what the screen and the editor show) unchanged. It comes back when the block is switched or its type changed (px_engine_knobs),
+ * when another preset is set, or at px_engine_unshed. e->shed is the set of shed blocks. */
+int  px_engine_heaviest(const px_engine *e);
+void px_engine_shed(px_engine *e, int b);
+void px_engine_unshed(px_engine *e);
 void px_engine_prepare(const px_engine *e, const px_preset_t *p);
 void px_engine_process(px_engine *e, const float *in, float *out, int n);
 enum { PX_PART_ALL };                  /* px_engine_part: the whole chain (the NAM stages are gone) */

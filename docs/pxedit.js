@@ -7,9 +7,9 @@ import { PORT_RE } from "./pxota.js";
 const H = [0x7D, 0x4F, 0x50];
 export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 6, ORDER: 7, NAME: 8, PUT: 9, SELECT: 10,
   FOCUS: 11, LIST: 12, SLOT_GET: 13, SLOT_PUT: 14, COMMIT: 15, SAVE: 16, WATCH: 17, PING: 18,
-  DIAG: 23, USB_AUDIO: 28, FOOTSWITCH: 29 };   // (19..22 and 24..27, the NAM models and IRs, retired in v70)
-// px_preset_t: a 14-byte name, then on, type, 5 settings and the order for each block (v70: 9 blocks, 86 bytes)
-export const presetSize = (nblk = 9, npar = 5) => 14 + nblk * (3 + npar);
+  DIAG: 23, USB_AUDIO: 28, FOOTSWITCH: 29, SHED: 30, GLOBAL: 31, TUNER: 32 };   // (19..22 and 24..27, the NAM models and IRs, retired in v70)
+// px_preset_t: a 14-byte name, then on, type, 5 settings and the order for each block (v75: 10 blocks, 94 bytes; v70: 9, 86)
+export const presetSize = (nblk = 10, npar = 5) => 14 + nblk * (3 + npar);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function fail(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
@@ -22,7 +22,7 @@ class Reader {
 }
 
 // preset <-> the bytes of px_preset_t
-export function decodePreset(b, nblk = 9, npar = 5) {
+export function decodePreset(b, nblk = 10, npar = 5) {
   let i = 0;
   const name = String.fromCharCode(...b.slice(0, 14)).replace(/\0.*$/s, "");
   i = 14;
@@ -32,7 +32,7 @@ export function decodePreset(b, nblk = 9, npar = 5) {
   const order = [...b.slice(i, i + nblk)];
   return { name, on, type, p, order };
 }
-export function encodePreset(q, nblk = 9, npar = 5) {
+export function encodePreset(q, nblk = 10, npar = 5) {
   const out = [];
   const nm = cleanName(q.name);
   for (let i = 0; i < 14; i++) out.push(i < nm.length ? nm.charCodeAt(i) : 0);
@@ -209,14 +209,14 @@ export class Editor {
   async save(slot) { return (await this.request(C.SAVE, [slot], 4000))[1]; }
   async watch(on) { return (await this.request(C.WATCH, [on ? 1 : 0]))[0]; }
   async ping() {
-    const r = await this.request(C.PING), p = { load: r[0], bypass: !!(r[1] & 1), c1: !!(r[1] & 2) };
+    const r = await this.request(C.PING), p = { load: r[0], bypass: !!(r[1] & 1), c1: !!(r[1] & 2), shed: !!(r[1] & 4) };   // (bit 2, v75: a block is switched off for the load)
     if (r.length >= 8) Object.assign(p, { peak: r[2], peakAll: r[3], xrun: r[4] | r[5] << 7, clip: r[6] | r[7] << 7 });   // v40.1
     if (r.length >= 12) Object.assign(p, { stackFree: (r[8] | r[9] << 7) * 4, irqStackFree: (r[10] | r[11] << 7) * 4 });
     // v40.2: then a count and that many 2-byte figures (the DSP profile, tools/dsp.mjs): the stack figures end before it
     const base = [12, 16].find((b) => r.length > b && r.length === b + 1 + 2 * r[b]);
     if ((base ?? r.length) >= 16) Object.assign(p, { bleHeapFree: (r[12] | r[13] << 7) * 4, bleTaskStackFree: (r[14] | r[15] << 7) * 4 });
     if (base) {                   // each block's share of an audio block's time (%), in the block order
-      const f = [], n = this.info ? this.info.nblk : 9;
+      const f = [], n = this.info ? this.info.nblk : 10;
       for (let i = base + 1; i + 1 < r.length; i += 2) f.push(r[i] | r[i + 1] << 7);
       p.prof = f.slice(0, n);
     }
@@ -237,15 +237,43 @@ export class Editor {
       counts: Object.fromEntries(names.map((k, i) => [k, v[i] ?? 0])) };
   }
   // v48 (protocol 5): the current preset's footswitches in STOMP mode, and the mode. footswitch() reads; footswitch({ left,
-  // right, stomp }) sets what is given first. A footswitch: a block index 0..8, 12 BYPASS, 15 nothing. The assignment
+  // right, stomp }) sets what is given first. A footswitch: a block index 0..9 (v75: BST is 9), 12 BYPASS, 15 nothing. The assignment
   // is part of the preset (it marks it edited; SAVE keeps it); STOMP goes to the flash with the next save.
   // -> { left, right, stomp, bypass }
   get hasFootswitch() { return !!(this.info && this.info.proto >= 5); }
   async footswitch(set) {
     const v = (x) => (x === undefined ? 127 : x);
     const args = set ? [v(set.left), v(set.right), set.stomp === undefined ? 127 : set.stomp ? 1 : 0] : [];
+    if (set && set.gestures) args.push(...set.gestures.map(v));         // v75 (protocol 9): [left double tap, left hold, right double tap, right hold]; 15: nothing, undefined: leave it
     const r = await this.request(C.FOOTSWITCH, args);
-    return { left: r[0], right: r[1], stomp: !!r[2], bypass: !!r[3] };
+    const o = { left: r[0], right: r[1], stomp: !!r[2], bypass: !!r[3] };
+    if (r.length >= 8) o.gestures = [r[4], r[5], r[6], r[7]];             // each an action: 0..9 a block on/off, 12 BYPASS, 16 the tuner, 17 next preset, 18 previous preset, 19 STOMP/PATCH, 15 nothing
+    return o;
+  }
+  // v75 (protocol 8): the blocks the pedal's load safeguard switched off. shed() reads them; shed(true) brings them back (they fade in).
+  // -> { mask, blocks: [block indices], count (times since power-on) }
+  get hasShed() { return !!(this.info && this.info.proto >= 8); }
+  // v75 (protocol 9): the global settings, outside the presets. global() reads them; global(v) sets them (in the pedal's memory: commit() writes them with the store).
+  // { tuner: the reference A in Hz (415..466), hpf: input high-pass Hz (0 off, 20..140), eq: five bands in dB (-12..12, 0.5 steps), lim: the limiter's ceiling in dB
+  //   (0 off, else -0.5..-12), tails (a delay or reverb plays out when switched off), hush: the smart gate's hiss filter 0..100,
+//   tunerLights: how the button lights show the tuner (0 HOME blinks, 1 needle, 2 strobe), lightsOff: the lights are dark outside the tuner }
+  get hasGlobal() { return !!(this.info && this.info.proto >= 9); }
+  async global(v) {
+    const args = v ? [v.tuner === 440 ? 0 : Math.max(1, Math.min(52, Math.round(v.tuner) - 414)), Math.round(v.hpf / 5), ...v.eq.map((d) => Math.max(0, Math.min(48, Math.round(d * 2) + 24))),
+      Math.max(0, Math.min(24, Math.round(-v.lim * 2) || 0)), v.tails ? 1 : 0, Math.max(0, Math.min(100, Math.round(v.hush))), (Math.max(0, Math.min(2, v.tunerLights | 0))) | (v.lightsOff ? 4 : 0)] : [];
+    const r = await this.request(C.GLOBAL, args);
+    return { tuner: r[0] ? 414 + r[0] : 440, hpf: r[1] * 5, eq: Array.from(r.slice(2, 7), (c) => (c - 24) / 2), lim: r[7] ? -r[7] / 2 : 0, tails: !!r[8], hush: r[9], tunerLights: r[10] & 3, lightsOff: !!(r[10] & 4) };
+  }
+  // what the pedal's tuner hears now: { hz (0 none), open (its tuner page is open), ref (the reference A) }
+  // tuner(true) opens the pedal's tuner page (its output is muted, as when the player opens it), tuner(false) closes it
+  async tuner(open) {
+    const r = await this.request(C.TUNER, open === undefined ? [] : [open ? 1 : 0]);
+    return { hz: (r[0] | r[1] << 7 | r[2] << 14) / 100, open: !!r[3], ref: r[4] ? 414 + r[4] : 440 };
+  }
+  async shed(restore) {
+    const r = await this.request(C.SHED, restore ? [1] : []);
+    const mask = r[0] | r[1] << 7, n = this.info ? this.info.nblk : 10;
+    return { mask, blocks: Array.from({ length: n }, (_, b) => b).filter((b) => mask >> b & 1), count: r[2] | r[3] << 7 };
   }
 }
 
@@ -266,7 +294,9 @@ export function presetFromJSON(o, cat, base) {
   const q = clonePreset(base), warn = [];
   q.name = cleanName(o.name || q.name);
   const byLabel = new Map(cat.blocks.map((b, i) => [b.label, i]));
-  for (const ob of Array.isArray(o.blocks) ? o.blocks : []) {
+  const MOVED = ["RANGEMASTER", "EP BOOST", "MAXIMIZER", "ENHANCE"];     // v75: SFX types that live in the BST (PRE / BOOST) block now
+  for (let ob of Array.isArray(o.blocks) ? o.blocks : []) {
+    if (ob.block === "SFX" && MOVED.includes(ob.type) && byLabel.has("BST")) ob = { ...ob, block: "BST" };
     const i = byLabel.get(ob.block);
     if (i === undefined) { warn.push(`unknown block ${ob.block}`); continue; }
     q.on[i] = ob.on ? 1 : 0;
@@ -281,7 +311,11 @@ export function presetFromJSON(o, cat, base) {
   if (Array.isArray(o.order)) {
     const ord = o.order.map((l) => typeof l === "number" ? l : byLabel.get(l));
     if (ord.length === q.order.length && new Set(ord).size === ord.length && ord.every((x) => x !== undefined && x >= 0 && x < q.order.length)) q.order = ord;
-    else warn.push("block order not usable: default order kept");
+    else if (ord.length < q.order.length && new Set(ord).size === ord.length && ord.every((x) => x !== undefined && x >= 0 && x < q.order.length)) {
+      // a file from before a block existed (v75: BST): the new blocks come in after GT (BST's place in the default order), else at the end
+      for (let m = 0; m < q.order.length; m++) if (!ord.includes(m)) { const g = cat.blocks[m].label === "BST" ? ord.indexOf(byLabel.get("GT")) : -1; ord.splice(g >= 0 ? g + 1 : ord.length, 0, m); }
+      q.order = ord;
+    } else warn.push("block order not usable: default order kept");
   }
   return { preset: q, warn };
 }

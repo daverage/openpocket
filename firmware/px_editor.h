@@ -19,9 +19,9 @@
 #define ED_H0 0x7Du
 #define ED_H1 0x4Fu
 #define ED_H2 0x50u
-#define ED_PROTO 6u                             /* 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
+#define ED_PROTO 9u                             /* 9: v75, GLOBAL (the global settings, TUNER); 8: v75, SHED (the blocks switched off for the load); 7: v75, ten blocks (BST); 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
 #define ED_NAME_MAX 13u
-#define ED_P_SIZE 86u                           /* v70: 9 blocks (14 + 9 x 3 + 9 x 5) */
+#define ED_P_SIZE (14u + 8u * PX_NBLK)          /* the name, then per block on, type, 5 settings and its place in the order: v75: 10 blocks, 94 bytes; v70: 9, 86 */
 #if OP_UADEV
 #define ED_UA_STATS 40u                         /* (the measurement option's figures after the 20, px_uaudio.h) */
 #else
@@ -36,7 +36,9 @@ enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_OR
        ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,   /* 19..22: NAM retired (v70) */
        ED_IR_LIST, ED_IR_WRITE, ED_IR_COMMIT, ED_IR_ERASE,     /* v38: 24..27, retired (v70) */
        ED_USB_AUDIO,                                           /* v42: 28 */
-       ED_FOOTSWITCH };                                        /* v48: 29 */
+       ED_FOOTSWITCH,                                          /* v48: 29 */
+       ED_SHED,                                                /* v75: 30 */
+       ED_GLOBAL, ED_TUNER };                                  /* v75: 31, 32 */
 
 static uint8_t ed_out[1024];
 static uint32_t ed_n;
@@ -73,9 +75,10 @@ static int ed_take_preset(const uint8_t *a, px_preset_t *q)
     for (i = 0; i < PX_NBLK; i++) {
         if (q->on[i] > 1u || q->type[i] >= (uint8_t)px_ntypes((int)i)) return 0;
         for (k = 0; k < PX_NPAR; k++) if (q->p[i][k] > 100u) return 0;
-        px_block_canonical((int)i, &q->type[i], q->p[i]);
     }
-    return px_order_valid(q->order);
+    if (!px_order_valid(q->order)) return 0;
+    px_preset_canonical(q);                            /* v75: a RANGEMASTER, EP BOOST or MAXIMIZER in SFX (an older library file) moves to BST */
+    return 1;
 }
 
 /* the sound differs from what its slot holds (the pedal's "*") */
@@ -84,7 +87,7 @@ static int ed_dirty(void)
     static px_preset_t ref;
     static uint32_t ref_slot = ~0u, ref_gen = ~0u;
     if (ref_slot != cur_preset || ref_gen != st_gen) { st_get(cur_preset, &ref); ref_slot = cur_preset; ref_gen = st_gen; }
-    return memcmp(&ref, &PRESET, sizeof ref) != 0 || ui_fs != st_fs_of(cur_preset);   /* v48: and its footswitches */
+    return memcmp(&ref, &PRESET, sizeof ref) != 0 || ui_fs != st_fs_of(cur_preset) || ui_gs_diff();   /* v48: and its footswitches; v75: their gestures */
 }
 static uint32_t ed_state_hash(void)
 {
@@ -94,6 +97,7 @@ static uint32_t ed_state_hash(void)
     h = (h ^ cur_preset) * 16777619u;
     h = (h ^ ui_blk) * 16777619u;
     h = (h ^ (ui_fs | (uint32_t)ui_stomp << 8 | (uint32_t)ui_byp << 9)) * 16777619u;   /* v48: footswitches, STOMP, BYPASS */
+    for (uint32_t i = 0; i < 4u; i++) h = (h ^ ui_gs[i]) * 16777619u;                  /* v75: their gestures */
     return (h ^ st_gen) * 16777619u;
 }
 static void ed_state_frame(void)
@@ -236,7 +240,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         break;
     case ED_SAVE:
         if (n < 1u || a[0] >= ST_NSLOT) return;
-        rc = st_save_fs(a[0], &PRESET, ui_fs) ? 2 : 0;   /* v48: with its footswitches */
+        rc = st_save_fsg(a[0], &PRESET, ui_fs, ui_gs) ? 2 : 0;   /* v48: with its footswitches; v75: and their gestures */
         if (!rc) cur_preset = a[0];
         st_gen++;
         if (!rc) load_preset(cur_preset);
@@ -277,11 +281,40 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         break;
     case ED_FOOTSWITCH:                                /* v48: the current preset's footswitches, STOMP mode, BYPASS */
         if (n >= 3u) {                                 /* (each: a value to set, or 127 to leave it) */
-            for (k = 0; k < 2u; k++) if (a[k] != 127u) ui_fs_put((int)k, a[k] <= UI_FS_BYP ? a[k] : UI_FS_NONE);
+            for (k = 0; k < 2u; k++) if (a[k] != 127u) ui_fs_put((int)k, ui_fs_valid(a[k]) ? a[k] : UI_FS_NONE);   /* (v75: a block, BYPASS, or nothing: 10 and 11 are not blocks) */
             if (a[2] != 127u && (a[2] ? 1u : 0u) != ui_stomp) ui_stomp_toggle();
         }
+        if (n >= 7u) for (k = 0; k < 4u; k++) if (a[3 + k] != 127u) ui_gs[k] = ui_ga_valid(a[3 + k]) ? a[3 + k] : 0xFFu;   /* v75: the gestures: an action, 15 nothing, 127 leave it */
         ed_b(ui_fs_get(0)); ed_b(ui_fs_get(1)); ed_b(ui_stomp); ed_b(ui_byp);
+        for (k = 0; k < 4u; k++) ed_b(ui_ga_valid(ui_gs[k]) ? ui_gs[k] : 15u);
         break;
+    case ED_SHED:                                      /* v75 (protocol 8): the blocks the load safeguard switched off (px_shed.h) */
+        if (n >= 1u && a[0] == 1u) ed_shed_clear();    /* 1: bring them back (they fade in at the next block) */
+        { const uint32_t m = ed_shed_mask(), c = ed_shed_count(); ed_b(m); ed_b(m >> 7); ed_b(c); ed_b(c >> 7); }
+        break;
+    case ED_GLOBAL:                                    /* v75 (protocol 9): the global settings; 11 values to set them (in RAM: COMMIT writes them with the store), none to read */
+        if (n >= 11u) {
+            st_cfg.tn = a[0] > 52u ? 0u : a[0];
+            st_cfg.g.hpf = (uint8_t)(a[1] * 5u > 140u ? 140u : a[1] * 5u);
+            for (k = 0; k < 5u; k++) st_cfg.g.eq[k] = a[2 + k] > 48u ? 24u : a[2 + k];
+            st_cfg.g.lim = a[7] > 24u ? 24u : a[7]; st_cfg.g.tails = a[8] ? 1u : 0u; st_cfg.g.hush = a[9] > 100u ? 100u : a[9];
+            st_cfg.lights = (a[10] > 7u || (a[10] & 3u) == 3u) ? 0u : a[10];
+            audio_globals(&st_cfg.g); ui_tn_ref = st_tn_hz();
+        }
+        ed_b(st_cfg.tn); ed_b(st_cfg.g.hpf / 5u);
+        for (k = 0; k < 5u; k++) ed_b(st_cfg.g.eq[k]);
+        ed_b(st_cfg.g.lim); ed_b(st_cfg.g.tails); ed_b(st_cfg.g.hush); ed_b(st_cfg.lights);
+        break;
+    case ED_TUNER: {                                   /* v75: what the tuner hears now, for the editor's stage view: the frequency in 0.01 Hz (21 bits in three 7-bit values) and whether the pedal's tuner page is open;
+                                                          1 opens the pedal's tuner page (the output is muted, as from the pedal), 0 closes it */
+        if (n >= 1u) {
+            if (a[0] == 1u && (ui_mode == M_CHAIN || ui_mode == M_BLOCK || ui_mode == M_EDIT || ui_mode == M_LIST)) tuner_open();
+            else if (a[0] == 0u && ui_mode == M_TUNER) tuner_close();
+        }
+        const uint32_t f = (uint32_t)(ed_tuner_hz() * 100.0f + 0.5f);
+        ed_b(f); ed_b(f >> 7); ed_b(f >> 14); ed_b(ui_mode == M_TUNER ? 1u : 0u); ed_b(st_cfg.tn);
+        break;
+    }
 #ifdef ED_DIAG_LINES
     case ED_DIAG: {                                    /* read only: nothing here changes the pedal */
         static char l[ED_DIAG_LEN];

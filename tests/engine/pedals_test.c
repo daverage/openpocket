@@ -19,8 +19,8 @@ static float x[N], y[N], z[N], ya[N], yb[N], yc[N];
 static int g_body;                                  /* RANGEMASTER's BODY for the helpers below (0 = the original 5 nF) */
 static void preset(px_preset_t *p, int on, int volume, int pickup)
 {
-    px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
-    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_RANGEMASTER; p->p[PX_B_SFX][0] = (uint8_t)volume; p->p[PX_B_SFX][1] = (uint8_t)pickup; p->p[PX_B_SFX][2] = (uint8_t)g_body;
+    px_preset_base(p); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
+    p->on[PX_B_BST] = (uint8_t)on; p->type[PX_B_BST] = PX_BST_RANGEMASTER; p->p[PX_B_BST][0] = (uint8_t)volume; p->p[PX_B_BST][1] = (uint8_t)pickup; p->p[PX_B_BST][2] = (uint8_t)g_body;
 }
 static void render(const px_preset_t *p, const float *in, float *out, int n)
 {
@@ -48,8 +48,8 @@ static float gain_db(float hz, float emf_mv, int volume, int pickup, float *h2, 
  * documented level (GAIN 100, EARLY: slightly above unity), not a reference simulation: the Xotic's schematic is not published. ---- */
 static void epreset(px_preset_t *p, int on, int gain, int voice)
 {
-    px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
-    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_EPBOOST; p->p[PX_B_SFX][0] = (uint8_t)gain; p->p[PX_B_SFX][1] = (uint8_t)voice;
+    px_preset_base(p); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
+    p->on[PX_B_BST] = (uint8_t)on; p->type[PX_B_BST] = PX_BST_EPBOOST; p->p[PX_B_BST][0] = (uint8_t)gain; p->p[PX_B_BST][1] = (uint8_t)voice;
 }
 static float epgain(float hz, float amp, int gain, int voice, float *h2, float *h3)
 {
@@ -62,8 +62,8 @@ static float epgain(float hz, float amp, int gain, int voice, float *h2, float *
 static int ep_tests(void)
 {
     px_preset_t p; char b[8]; int before = bad;
-    CHECK(px_type_retired(PX_B_SFX, PX_SFX_EPBOOST) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_EPBOOST), "EP BOOST") && px_nparams(PX_B_SFX, PX_SFX_EPBOOST) == 2 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_EPBOOST, 0), "GAIN") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_EPBOOST, 1), "VOICE"), "EP BOOST: GAIN and VOICE");
-    CHECK(px_param_text(PX_B_SFX, PX_SFX_EPBOOST, 1, 0, b) == 1 && !strcmp(b, "EARLY") && px_param_text(PX_B_SFX, PX_SFX_EPBOOST, 1, 100, b) == 1 && !strcmp(b, "FAT"), "VOICE reads EARLY .. FAT: '%s'", b);
+    CHECK(px_type_retired(PX_B_BST, PX_BST_EPBOOST) == 0 && !strcmp(px_type_name(PX_B_BST, PX_BST_EPBOOST), "EP BOOST") && px_nparams(PX_B_BST, PX_BST_EPBOOST) == 2 && !strcmp(px_param_name(PX_B_BST, PX_BST_EPBOOST, 0), "GAIN") && !strcmp(px_param_name(PX_B_BST, PX_BST_EPBOOST, 1), "VOICE"), "EP BOOST: GAIN and VOICE");
+    CHECK(px_param_text(PX_B_BST, PX_BST_EPBOOST, 1, 0, b) == 1 && !strcmp(b, "EARLY") && px_param_text(PX_B_BST, PX_BST_EPBOOST, 1, 100, b) == 1 && !strcmp(b, "FAT"), "VOICE reads EARLY .. FAT: '%s'", b);
     epreset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
     { float m = 0; for (int i = N / 2; i < N; i++) m = fmaxf(m, fabsf(y[i])); CHECK(m < 1e-6f, "EP: silence in, silence out (%.2g)", m); }
     { const float g0 = epgain(1000, 0.0005f, 0, 0, 0, 0), g100 = epgain(1000, 0.0005f, 100, 0, 0, 0), g50 = epgain(1000, 0.0005f, 50, 0, 0, 0);
@@ -106,8 +106,8 @@ static int ep_tests(void)
  * LO CONTOUR = PROCESS = 3, 5, 7, 10. The model is fitted to these (0.76 dB RMS), so this checks that the engine realises the fit; the knob split is an assumption. ---- */
 static void bpreset(px_preset_t *p, int on, int lo, int proc)
 {
-    px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
-    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_MAXIMIZER; p->p[PX_B_SFX][0] = (uint8_t)lo; p->p[PX_B_SFX][1] = (uint8_t)proc;
+    px_preset_base(p); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
+    p->on[PX_B_BST] = (uint8_t)on; p->type[PX_B_BST] = PX_BST_MAXIMIZER; p->p[PX_B_BST][0] = (uint8_t)lo; p->p[PX_B_BST][1] = (uint8_t)proc;
 }
 static float bgain(float hz, float amp, int lo, int proc, float *h2)
 {
@@ -118,14 +118,14 @@ static float bgain(float hz, float amp, int lo, int proc, float *h2)
 static int bbe_tests(void)
 {
     px_preset_t p; int before = bad;
-    CHECK(px_type_retired(PX_B_SFX, PX_SFX_MAXIMIZER) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_MAXIMIZER), "MAXIMIZER") && px_nparams(PX_B_SFX, PX_SFX_MAXIMIZER) == 2 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_MAXIMIZER, 0), "LO CONTOUR") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_MAXIMIZER, 1), "PROCESS"), "MAXIMIZER: LO CONTOUR and PROCESS");
+    CHECK(px_type_retired(PX_B_BST, PX_BST_MAXIMIZER) == 0 && !strcmp(px_type_name(PX_B_BST, PX_BST_MAXIMIZER), "MAXIMIZER") && px_nparams(PX_B_BST, PX_BST_MAXIMIZER) == 2 && !strcmp(px_param_name(PX_B_BST, PX_BST_MAXIMIZER, 0), "LO CONTOUR") && !strcmp(px_param_name(PX_B_BST, PX_BST_MAXIMIZER, 1), "PROCESS"), "MAXIMIZER: LO CONTOUR and PROCESS");
     { static const float hz[7] = {102.0f, 399.0f, 709.0f, 1015.0f, 2585.0f, 7071.0f, 11694.0f};
       static const float ref[4][7] = {{-0.5f, -1.4f, -1.6f, -1.5f, -0.2f, 1.1f, 1.2f}, {-0.4f, -2.6f, -3.0f, -2.7f, -0.6f, 1.6f, 1.8f}, {-0.2f, -4.5f, -5.6f, -4.9f, -1.0f, 1.8f, 2.2f}, {1.8f, -6.8f, -12.2f, -9.6f, -1.2f, 2.9f, 3.4f}};
       static const int set[4] = {30, 50, 70, 100};
       for (int s = 0; s < 4; s++) for (int k = 0; k < 7; k++) { const float g = bgain(hz[k], 0.05f, set[s], set[s], 0) - pxp_bbe_makeup_db((float)set[s], (float)set[s]), tol = ((k == 2 || k == 3) && s == 3) ? 3.0f : (k == 4 ? 2.6f : 2.0f);      /* the fit's worst points: the dip at 10/10 and a small notch at the 1.8 kHz crossover */
         CHECK(fabsf(g - ref[s][k]) < tol, "MAXIMIZER %d/%d at %.0f Hz: %.1f dB (makeup removed) against the real unit's %.1f dB", set[s] / 10, set[s] / 10, hz[k], g, ref[s][k]); } }
     { float h2; bgain(709.0f, 0.3f, 100, 100, &h2); CHECK(h2 < -80.0f, "linear: no harmonics at any level (H2 %.0f dB)", h2); }
-    bpreset(&p, 1, 0, 0); sine(x, N, 440.0f, 0.2f); render(&p, x, y, N); { px_preset_t q = p; q.on[PX_B_SFX] = 0; render(&q, x, z, N); }
+    bpreset(&p, 1, 0, 0); sine(x, N, 440.0f, 0.2f); render(&p, x, y, N); { px_preset_t q = p; q.on[PX_B_BST] = 0; render(&q, x, z, N); }
     { float m = 0; for (int i = 0; i < N; i++) m = fmaxf(m, fabsf(y[i] - z[i])); CHECK(m < 1e-6f, "0 / 0 is exactly bypass (%.2g)", m); }
     { const float lo = bgain(60.0f, 0.05f, 100, 0, 0) - pxp_bbe_makeup_db(100, 0), flat = bgain(60.0f, 0.05f, 0, 0, 0); CHECK(lo - flat > 1.0f, "LO CONTOUR alone lifts the lows (%+.1f dB at 60 Hz)", lo - flat); }
     for (int i = 0; i < N; i++) x[i] = ((i / 200) & 1) ? 1.0f : -1.0f; bpreset(&p, 1, 100, 100); render(&p, x, y, N);
@@ -176,10 +176,10 @@ static void nodrop_tests(void)
 int main(void)
 {
     px_preset_t p, off; char b[8];
-    CHECK(px_type_retired(PX_B_SFX, PX_SFX_RANGEMASTER) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_RANGEMASTER), "RANGEMASTER"), "RANGEMASTER is a live type");
-    CHECK(px_nparams(PX_B_SFX, PX_SFX_RANGEMASTER) == 3 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 0), "VOLUME") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 1), "PICKUP") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_RANGEMASTER, 2), "BODY"), "VOLUME, PICKUP and BODY");
-    CHECK(px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 2, 0, b) == 1 && !strcmp(b, "TREBLE") && px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 2, 100, b) == 1 && !strcmp(b, "FULL"), "BODY reads TREBLE .. FULL: '%s'", b);
-    CHECK(px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 1, 0, b) == 1 && !strcmp(b, "SINGLE") && px_param_text(PX_B_SFX, PX_SFX_RANGEMASTER, 1, 100, b) == 1 && !strcmp(b, "HUMBKR"), "PICKUP reads SINGLE .. HUMBKR: '%s'", b);
+    CHECK(px_type_retired(PX_B_BST, PX_BST_RANGEMASTER) == 0 && !strcmp(px_type_name(PX_B_BST, PX_BST_RANGEMASTER), "RANGEMASTER"), "RANGEMASTER is a live type");
+    CHECK(px_nparams(PX_B_BST, PX_BST_RANGEMASTER) == 3 && !strcmp(px_param_name(PX_B_BST, PX_BST_RANGEMASTER, 0), "VOLUME") && !strcmp(px_param_name(PX_B_BST, PX_BST_RANGEMASTER, 1), "PICKUP") && !strcmp(px_param_name(PX_B_BST, PX_BST_RANGEMASTER, 2), "BODY"), "VOLUME, PICKUP and BODY");
+    CHECK(px_param_text(PX_B_BST, PX_BST_RANGEMASTER, 2, 0, b) == 1 && !strcmp(b, "TREBLE") && px_param_text(PX_B_BST, PX_BST_RANGEMASTER, 2, 100, b) == 1 && !strcmp(b, "FULL"), "BODY reads TREBLE .. FULL: '%s'", b);
+    CHECK(px_param_text(PX_B_BST, PX_BST_RANGEMASTER, 1, 0, b) == 1 && !strcmp(b, "SINGLE") && px_param_text(PX_B_BST, PX_BST_RANGEMASTER, 1, 100, b) == 1 && !strcmp(b, "HUMBKR"), "PICKUP reads SINGLE .. HUMBKR: '%s'", b);
     /* silence, DC */
     preset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
     { float m = 0; for (int i = N / 2; i < N; i++) m = fmaxf(m, fabsf(y[i])); CHECK(m < 1e-6f, "silence in, silence out (%.2g)", m); }

@@ -9,8 +9,8 @@ code has been removed and the standard firmware is unchanged.
 
 ## Measurement
 
-`tools/legacy-synth/syn_compare.py` renders each type fully wet, with the other
-knobs at noon, through `tools/legacy-synth/ensemble_bench.c` on 20 GuitarSet takes.
+`tools/archive/legacy-synth/syn_compare.py` renders each type fully wet, with the other
+knobs at noon, through `tools/archive/legacy-synth/ensemble_bench.c` on 20 GuitarSet takes.
 It measures the share of the output energy, 60 Hz – 4 kHz, that lies within
 30 cents of the harmonics of the notes the guitarist played. Harmonics are
 taken from the type's lowest voice: ½ for the organs, strings and choir, ¼

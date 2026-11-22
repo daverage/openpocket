@@ -78,7 +78,7 @@ check("Synth2: ANALOG and ARCADE play the guitar's note in the WebAssembly engin
     const out = play(mk(t, [5, 50, 50, 50, t === 29 ? 100 : 50]));
     assert.ok(finite(out) && peak(tail(out)) > 0.02, `type ${t}: peak ${peak(tail(out))}`);
     const h = harmonics(tail(out), 220);                                      // the synth plays the 220 Hz it hears
-    assert.ok(h[0] > 0.001, `type ${t}: power at 220 Hz ${h[0]}`);
+    assert.ok(h[0] > 0.0002, `type ${t}: power at 220 Hz ${h[0]}`);       // (the type's level trim of engine/px_trim.h is in it)
   }
   const retired = play(mk(2, [50, 50, 50, 50, 50]));                           // STRINGS (id 2, retired): bypassed, the block adds nothing
   const bare = play(gate);
@@ -145,7 +145,7 @@ try {
   const state = await (await fetch(sim.url + "/api/state")).json();
   check("the pedal's preset, as the simulator reports it, is the engine's", () => {
     const e = engine(state.slot);
-    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 86);   // px_preset_t (v70: 9 blocks)
+    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 94);   // px_preset_t (v75: 10 blocks)
     assert.deepEqual([...presetBytes(state.preset)], [...memory]);
   });
   const served = await fetch(sim.url + "/sim/px_engine.wasm");

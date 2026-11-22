@@ -39,7 +39,7 @@ The engine harness's 82 Hz figure for v48 (7.7 ms) was a lucky alignment of that
 6. **Picks.** Log-band spectral flux finds picks, including a repick of a ringing string.
 7. **The note layer (`pxt_layer`).** A note speaks once its pitch has held for 3 ms. It follows bends and vibrato, takes a slur after 6 ms by a leaky vote, and accepts an octave jump only after 29 ms. It also gives pick strength and expression.
 
-Scores against annotations come from `tools/legacy-synth/track_bench.c` and `tools/research/track_eval.py`. A note is right when the voice's pitch is within 50 cents for most of the middle half of the time it is the newest note:
+Scores against annotations come from `tools/archive/legacy-synth/track_bench.c` and `tools/research/track_eval.py`. A note is right when the voice's pitch is within 50 cents for most of the middle half of the time it is the newest note:
 
 | Notes right | v48 note layer | v49 note layer | Old BASS HQ tracker |
 | --- | ---: | ---: | ---: |
@@ -50,7 +50,7 @@ Scores against annotations come from `tools/legacy-synth/track_bench.c` and `too
 
 On GuitarSet the v49 layer reaches the right pitch in a median 6.6–8 ms after the onset, with 90% within 41–45 ms. v48 took 16 ms median and 79 ms at the 90th percentile. On chords (GuitarSet comping, 48 takes) it finds notes with 61% precision and 45% recall, and gets the lowest note right in 47% of frames. That supports a bass-note option, but is not yet good enough for per-string voices.
 
-[GuitarSet](https://zenodo.org/records/3371780) (CC BY 4.0) is the mono pickup mix with its per-string note annotations. It is downloaded into `build/guitarset`. The owner's recordings have no annotations. `tools/research/track_ref.py` gives them an offline reference from librosa's pYIN and onsets. That reference is automatic and only approximate. The bundled lead loop is scored against its dataset transcription (`tools/legacy-synth/acoustic_truth.py`).
+[GuitarSet](https://zenodo.org/records/3371780) (CC BY 4.0) is the mono pickup mix with its per-string note annotations. It is downloaded into `build/guitarset`. The owner's recordings have no annotations. `tools/research/track_ref.py` gives them an offline reference from librosa's pYIN and onsets. That reference is automatic and only approximate. The bundled lead loop is scored against its dataset transcription (`tools/archive/legacy-synth/acoustic_truth.py`).
 
 **Cost on the pedal.** TRUMPET now uses 27% of a core, TRUMPET MODEL 29%, CELLO 40% and CELLO SECTION 30%. The tracker itself is about 20%. Its per-sample parts (`pxt_run`, `pxt_layer_run`) run from RAM. That is too much for the BASS SYNTH HQ, PWM SYNTH HQ and SQUARE SYNTH HQ voices, which cost 9–12% on their zero-crossing tracker, so they keep it in v49. The research ranks Cycfi Q's bitstream autocorrelation as the cheap mono tracker to try for them next.
 
@@ -127,7 +127,7 @@ jumps to the new pitch. Bends and vibrato glide. The oscillator and ladder
 are unchanged. The standard build keeps `syn_track` and stays bit-identical
 until the voice has had a listening comparison.
 
-`tools/legacy-synth/mono_bench.c` renders what MONO SYNTH plays. `tools/research/mono_eval.py`
+`tools/archive/legacy-synth/mono_bench.c` renders what MONO SYNTH plays. `tools/research/mono_eval.py`
 scores it: a note counts as right when the voice is within 50 cents over most
 of its middle half. Wrong frames play a pitch that is not a sounding note.
 

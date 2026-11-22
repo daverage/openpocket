@@ -16,6 +16,7 @@ export const app = {
   bank: [],                 // [{ saved, preset }] per slot, read in the background after the connection
   focus: 3,                 // the block the block editor shows (v70: SYNTH)
   ping: null,               // the last PING
+  shed: null,               // v75: { mask, blocks, count }: the blocks the pedal switched off for the load, or null
   view: "sound",
 };
 

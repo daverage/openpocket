@@ -30,13 +30,18 @@
     <button type="button" class="meter" id="load" popovertarget="loadpop" hidden aria-label="DSP load">
       <span class="meter-l">DSP</span><span class="meter-bar"><i id="loadbar"></i><b id="loadpeak"></b></span><span class="meter-v" id="loadv">–</span>
     </button>
+    <button type="button" class="conn" id="stagebtn" hidden aria-label="Stage view: a big display for playing live"><svg class="ic"><use href="#i-sliders"/></svg><span>Stage</span></button>
+    <button type="button" class="conn" id="glob" popovertarget="globpop" hidden aria-label="Global settings"><svg class="ic"><use href="#i-sliders"/></svg><span>Global</span></button>
     <button type="button" class="conn" id="conn" popovertarget="connpop" hidden><i class="dot"></i><span id="status">Not connected</span></button>
   </div>
 </header>
 
 <div class="pop" id="loadpop" popover aria-label="DSP load details"></div>
 <div class="pop" id="connpop" popover aria-label="Connection"></div>
+<div class="pop gl" id="globpop" popover aria-label="Global settings"></div>
 <div class="pop menu" id="menu" popover role="menu"></div>
+
+<section class="stage" id="stage" hidden tabindex="-1" aria-label="Stage view"></section>
 
 <div class="lostbar" id="lostbar" hidden role="alert">
   <svg class="ic"><use href="#i-alert"/></svg>
@@ -89,6 +94,23 @@
         <div class="chain" id="tiles" role="group" aria-label="Signal chain, in the order the sound passes through"></div>
         <span class="cap-io" aria-hidden="true">OUT</span>
       </div>
+      <div class="fsrow" id="fsrow" hidden>
+        <button type="button" class="switch" id="stomp" role="switch" aria-checked="false" aria-describedby="fshelp"><i></i><span>Stomp</span></button>
+        <label class="fsel">Left footswitch <select id="fsl"></select></label>
+        <label class="fsel">Right footswitch <select id="fsr"></select></label>
+        <span class="fsstate" id="fsstate" role="status"></span>
+      </div>
+      <details class="fsgest" id="fsgest" hidden>
+        <summary>Gestures: double tap and hold</summary>
+        <div class="fsgest-grid">
+          <label class="fsel">Left: double tap <select id="ldbl"></select></label>
+          <label class="fsel">Left: hold <select id="lhold"></select></label>
+          <label class="fsel">Right: double tap <select id="rdbl"></select></label>
+          <label class="fsel">Right: hold <select id="rhold"></select></label>
+        </div>
+        <p class="hint">A hold (0.7 s) takes the press's own step back, then does its action. A double tap (STOMP mode only: the two toggles cancel) does its action. Part of the preset: Save keeps them.</p>
+      </details>
+      <p class="hint" id="fshelp" hidden></p>
       <p class="hint" id="hint">Drag a block to move it. Arrow keys choose a block, Space switches it, Alt + arrows move it.</p>
 
       <div class="block" id="block">

@@ -1,12 +1,15 @@
-# Analogue pedal emulations (SFX types)
+# Analogue pedal emulations (BST: PRE / BOOST, and ENHANCE in SFX)
 
-Four SFX types model analogue pedals as **circuits and structures**, not as fitted waveforms. They sit after ENHANCE in the SFX list (ids unchanged, each excludes the other SFX types):
+The boost-style pedals live in their own block, **BST (PRE / BOOST)**, so they can run together with an SFX type (a boost into a wah) and be placed anywhere in the chain (by default right after the gate). RANGEMASTER, EP BOOST and MAXIMIZER were SFX types 10..12 in test builds 929..931; those ids are tombstones now and a stored preset that holds one is moved to BST when it is read (store format 7, the editor, a preset file). ENHANCE (Better Box) moved there too (SFX type 9). The rest of this page says "SFX" where the pedal is a BST type now. The whole effect set is reviewed in [EFFECTS-REVIEW.md](EFFECTS-REVIEW.md).
+
+Four types model analogue pedals as **circuits and structures**, not as fitted waveforms. They sit after ENHANCE in the SFX list (ids unchanged, each excludes the other SFX types):
 
 | Type | Controls | What it is | Confidence |
 |---|---|---|---|
 | **ENHANCE** (Better Box) | BETTER, LOUDER | a compander gain cell: the gain follows a fast rectified copy of the signal (no threshold, works at every level); harmonics without clipping | the mechanism is a hypothesis from the maker's words; every constant is a guess. No real unit was measured |
 | **RANGEMASTER** | VOLUME, PICKUP, BODY | the Dallas Rangemaster solved as a circuit: germanium Ebers-Moll stage, R1 470k, R2 68k, R3 3.9k, C1 5n, C3 47u, RV 10k, 9 V, and the guitar's pickup as the source (series R and L) | high for the circuit (reproduces ElectroSmash's numbers); the transistor is a typical part (Is, bf, br are choices) |
 | **EP BOOST** | GAIN, VOICE | an EP-3-style JFET stage (2N5484 numbers measured by Aion FX, 18 V, drain 22k, source 3.3k bypassed by 22 nF..470 nF) | **low**: the Xotic EP Booster's schematic is not published (others call it "inspired by" the EP-3); topology and values are a family guess |
+| **FIXED WAH** | POSITION, PEAK, LEVEL | the Vox V847 wah with the pedal parked: one peaking filter swept 450 Hz (POSITION 0, heel) to 1.6 kHz (100, toe), about 750 Hz at mid travel, up to 18 dB, with the low end cut below it. PEAK is the height (8..18 dB) and sharpness of the peak (the V847's R7); the sharpness follows the position as in a real wah (Q about 1/frequency: -3 dB Q 2.4..3.3 at the toe, 8.5..11.7 at the heel), LEVEL 0..+12 dB over the guitar's own loudness. POSITION shows the peak's frequency in Hz | the frequency range, the mid point and the 18 dB figure are from the ElectroSmash analysis of the V847; the Q law comes from measurements of Vox-style wahs on the music-electronics-forum thread "a Vox wah project: some circuit analysis and measuring results" (-3 dB Q about 2.3..3.3 at the treble end, 8..11 at the bass end, Q = Rp*sqrt(C/L)), and ElectroSmash gives no Q; the position law and the peak height range (8..18 dB) are fits to the ElectroSmash figures. **None of it measured on a unit**: check it against a recorded sweep |
 | **MAXIMIZER** (BBE) | LO CONTOUR, PROCESS | the BBE process as a structure: three bands, the low and mid bands delayed against the high band, band gains | structure from the published description; crossovers, delays and gains fitted to the real BBE 882i's measured response (0.76 dB RMS); the split of the two knobs is an assumption (only LO = PROCESS was measured) |
 
 ## Why circuits
@@ -44,6 +47,14 @@ The ideal-source column is the ElectroSmash circuit (first-order input corner 2.
 
 ## POLY OCTAVE HQ: the -1 and RANGE
 RANGE thins the octave-down out (the bank follows fewer notes): on a single low E the -1 was 7 dB quieter at RANGE 1 than at 100 (a chord 13 dB), and LOWEST OCTAVE HQ is about 9 dB louder than this type anyway. Engaged (RANGE 1..99) the -1 now gets the make-up `(100 / RANGE)^0.196` (`PX_POLY_RANGE_MAKEUP`) and a further +9 dB (`PX_POLY_RANGE_LIFT`, LOWEST's volume; full by RANGE 90, fading out to nothing at 100 so there is no jump): about -27 to -28 dB across RANGE 1..90 on a single low E against -36.4 dB at 100 and LOWEST's -24 to -27 dB (`tests/engine/poly_range_test.c`). A chord at RANGE 1 is -36 dB against -45 before. RANGE 0 and 100 are unchanged.
+
+## FUZZ FACE (BST, v75): the circuit solved, not a clipper
+
+The first Dallas Arbiter Fuzz Face, two transistors with the Q2 emitter feeding back to Q1's base through 100k. Topology and values follow the ElectroSmash analysis (their text; their schematic image is not used). `pxp_ff_*` in `engine/px_pedals.h` solves the four node voltages (Q1 base, Q1 collector = Q2 base, Q2 emitter, Q2 collector) per sample with Newton's method: Ebers-Moll transistors, the 2.2 uF input and 20 uF wiper capacitors as trapezoid companions, and the pickup as a source with series resistance and inductance (as in RANGEMASTER), so the pedal loads the guitar and **cleans up when the guitar's volume comes down**, which a clipper cannot do. Two times oversampling (half-band in and out); a 3x3 solve while Q2's collector is above its base (almost always), the full 4x4 only when it saturates; 1.1 to 1.5 iterations per circuit step.
+
+Controls: FUZZ (the 1k emitter pot: more fuzz, less AC degeneration), VOLUME, PICKUP (source impedance: single coil, P90, humbucker), BIAS (the Q2 collector load, the pedal's bias trim: low starves it, the gated spitting sound; high is open and cleaner), TRANSISTOR (germanium up to 50, silicon above).
+
+The germanium values (Is 3.1e-7, beta 70 and 120) were fitted to land on the analysis's bias (Q2 collector 4.5 V, Q1 collector about 0.7 V at BIAS 50): **not measured on a unit**; silicon is a BC108-like pair. Host: about 4.8 ms/s of audio (RANGEMASTER 1.9, which is 12 % on the pedal), so expect roughly 25 to 35 % of a core; the cost table says 66 % (the scaled host figure, an overestimate). Not read on a pedal yet. Level: FUZZ 25..50 within 0 to +1.5 dB of the guitar, FUZZ 100 about +4 dB (`tools/research/ff_levels.c`). Tests: `tests/engine/fuzzface_test.c`.
 
 ## Not done / open
 * None of this has been **heard or measured on the pedal**. Level matching between the types and the factory presets is not done (their SFX trim is 0).

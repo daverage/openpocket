@@ -18,14 +18,14 @@
  * Controls (ui_buttons, ui_turn and ui_action below: the main loop and the simulator both use them):
  * KNOB = select / adjust; PUSH = open / edit / confirm; HOME = back to PLAY, on PLAY the preset list (v42), hold 0.7 s =
  * tuner, held on = diagnostics; FOOTSWITCHES = next / previous preset, both together = tuner (v42);
- * AMP CAB DLY REV MOD = that block's page (press again = on/off); FX = the next of DRV, SFX, SYN, PIT, CMP, GT, EQ in the
+ * AMP CAB DLY REV MOD = that block's page (press again = on/off); FX = the next of GT, BST, CMP, SFX, EQ in the
  * preset's chain order (v42). Hold PUSH = SAVE (into one of the 52 slots, in flash). Hold FX = MIDI.
  * Double-click PUSH on PLAY = MOVE the selected block: KNOB moves it along the chain, PUSH drops it, HOME puts it back.
  * The preset LEVEL (v36) is the GT page's 3rd setting ("PRESET LVL").
  * v48: hold CAB = STOMP mode on / off (PATCH mode: the footswitches change presets). In STOMP mode each footswitch
  * switches what the preset assigns it: a block on / off, or BYPASS (the dry guitar, DSP off); both together = tuner.
- * To assign: hold the footswitch and press a block button (MOD AMP CAB DLY REV), or FX to step through DRV SFX SYN PIT
- * CMP GT EQ, BYPASS, nothing. The assignment is part of the preset (EDITED, hold PUSH to save).
+ * To assign: hold the footswitch and press a block button (MOD AMP CAB DLY REV), or FX to step through GT BST CMP PIT SYN SFX EQ
+ * MOD DLY REV, BYPASS, nothing (v75: BST, PRE / BOOST, is a block like the others). The assignment is part of the preset (EDITED, hold PUSH to save).
  */
 #pragma once
 
@@ -34,7 +34,10 @@ static uint32_t st_gen;                 /* bumped on each save: the "EDITED" ref
 static void st_get(uint32_t k, px_preset_t *p);
 static int st_save(uint32_t k, const px_preset_t *p);
 static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs);   /* v48: with the footswitches' assignment */
+static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs);   /* v75: and their gestures */
+static int ui_gs_diff(void);
 static uint8_t st_fs_of(uint32_t k);
+static void st_gs_of(uint32_t k, uint8_t *out);
 static int st_reset(uint32_t k);
 static int st_saved(uint32_t k);
 static void save_draw(void);
@@ -55,7 +58,7 @@ static uint32_t ui_mode = M_CHAIN, ui_blk = PX_B_SYN, ui_item = 0;
 #define P_NAME_Y 76u                   /* PLAY: preset name */
 #define T_Y0     122u                  /* PLAY: 1st row of tiles */
 #define T_DY     30u
-#define T_COLS   5                     /* v70: 9 blocks, 5 + 4 */
+#define T_COLS   5                     /* v70: 9 blocks, 5 + 4; v75: 10 blocks, 5 + 5 */
 #define T_PITCH  47u
 #define T_W      43u
 #define T_H      24u
@@ -161,14 +164,21 @@ static int ui_dirty(void)              /* the preset differs from what its slot 
 {
     static uint32_t ref_slot = ~0u, ref_gen = ~0u;
     if (ref_slot != cur_preset || ref_gen != st_gen) { st_get(cur_preset, &ui_ref); ref_slot = cur_preset; ref_gen = st_gen; }
-    return memcmp(&ui_ref, &PRESET, sizeof ui_ref) != 0 || ui_fs != st_fs_of(cur_preset);   /* v48: and its footswitches */
+    return memcmp(&ui_ref, &PRESET, sizeof ui_ref) != 0 || ui_fs != st_fs_of(cur_preset) || ui_gs_diff();   /* v48: and its footswitches; v75: and their gestures */
 }
+/* v75: the footswitches' gestures, beside ui_fs: [0] left double tap, [1] left hold, [2] right double tap, [3] right hold; each an action: 0..9 a block on / off, 12 BYPASS,
+ * 16 the tuner, 17 the next preset, 18 the previous preset, 19 STOMP / PATCH mode; anything else (0xFF) nothing. Kept per preset (px_store.h). */
+static uint8_t ui_gs[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+static int ui_gs_diff(void) { uint8_t s[4]; st_gs_of(cur_preset, s); return memcmp(s, ui_gs, 4) != 0; }
+enum { UI_GA_TUNER = 16, UI_GA_NEXT = 17, UI_GA_PREV = 18, UI_GA_MODE = 19 };
+static int ui_ga_valid(uint32_t a) { return a < PX_NBLK || a == 12u || (a >= UI_GA_TUNER && a <= UI_GA_MODE); }
 /* v48: STOMP mode (the footswitches' assignment: below, at ui_fs_toggle) */
 #define UI_FS_BYP  12u
 #define UI_FS_NONE 15u
 #define UI_HOLD_CAB 800u               /* hold CAB: STOMP mode on / off */
 static uint8_t ui_stomp, ui_byp;       /* STOMP mode; BYPASS engaged (the main loop hands it to the audio) */
-static uint32_t ui_fs_get(int i) { uint32_t t = (uint32_t)(ui_fs >> (4 * i)) & 15u; return t <= UI_FS_BYP ? t : UI_FS_NONE; }
+static int ui_fs_valid(uint32_t t) { return t < PX_NBLK || t == UI_FS_BYP; }   /* a footswitch assignment: a block or BYPASS (else nothing) */
+static uint32_t ui_fs_get(int i) { uint32_t t = (uint32_t)(ui_fs >> (4 * i)) & 15u; return ui_fs_valid(t) ? t : UI_FS_NONE; }   /* (v75: 10 blocks, 0..9; 10 and 11 were accepted by the editor of v48..v74 but never meant: nothing; a stored 9 is cleared by st_migrate6) */
 static const char *ui_fs_name(uint32_t t) { return t < PX_NBLK ? px_block_label((int)t) : t == UI_FS_BYP ? "BYP" : "---"; }
 static void draw_status(int force)
 {
@@ -191,17 +201,18 @@ static struct {                        /* the main loop's last DSP figures, for 
     uint32_t load, peak, cl[2];        /* the load (the peak while bypassed), the peak since the preset, each core's (layer split) */
     uint8_t cores, split, guard, late, bypass;   /* cores: 0 C0, 1 C1, 2 both ("2C"); guard: the safety bypass's limit, % */
 } ui_dg = {.guard = 85};
+static uint16_t ui_shed;                               /* v75: the blocks the load safeguard switched off (px_shed.h): the status reads SHED */
 static void ui_load_text(char *c, uint32_t l, int safe, int bypass, int late)
 {
     if (l > 999u) l = 999u;
     c[0] = 0;
-    b_str(c, safe ? "SAFE " : bypass ? "PEAK " : "DSP ");
+    b_str(c, safe ? "SAFE " : bypass ? "PEAK " : ui_shed ? "SHED " : "DSP ");
     b_num(c, l); b_str(c, "%");
     if (!safe && !bypass && late) b_str(c, "!");
 }
 static int ui_load_kind(uint32_t l, int safe, int bypass, int late, int loading)
 {
-    return loading ? UI_ST_LOADING : bypass ? UI_ST_BYPASS : late ? UI_ST_LATE : !safe && l > UI_LOAD_HIGH ? UI_ST_HIGH : UI_ST_NORM;
+    return loading ? UI_ST_LOADING : bypass ? UI_ST_BYPASS : late ? UI_ST_LATE : !safe && (l > UI_LOAD_HIGH || ui_shed) ? UI_ST_HIGH : UI_ST_NORM;
 }
 static void ui_status(const char *s, int kind)
 {
@@ -254,8 +265,8 @@ static void draw_hint(int force)
 }
 
 /* ===================================================== PLAY ======== */
-static const char *ui_type_label(int b, int t)   /* Synth2: a stored retired type has no name: shown as such, bypassed by the engine */
-{ return px_type_retired(b, t) ? "RETIRED TYPE" : px_type_name(b, t); }
+static const char *ui_type_label(int b, int t)   /* (v75: a retired type never reaches the screen: px_preset_canonical turns it into a live type, off) */
+{ return px_type_name(b, t); }
 static void draw_play_top(int force)
 {
     if (force || uc.preset != cur_preset) {
@@ -591,7 +602,7 @@ static void save_confirm(void)
     if (sv_dest == SV_FACTORY && !st_saved(cur_preset)) return;
     ft_box(0, 186, 240, "SAVING...", &FT_MD, UI_ACC, UI_BG, 1);
     if (sv_dest == SV_FACTORY) { rc = st_reset(cur_preset); }
-    else { rc = st_save_fs(sv_dest, &PRESET, ui_fs); if (!rc) cur_preset = sv_dest; }
+    else { rc = st_save_fsg(sv_dest, &PRESET, ui_fs, ui_gs); if (!rc) cur_preset = sv_dest; }
     st_gen++;
     if (!rc) load_preset(cur_preset);
     {
@@ -714,9 +725,9 @@ static void ui_preset_step(int dd)
     if (UI_PAGE || ui_mode == M_LIST) { ui_mode = M_CHAIN; ui_item = 0; }   /* a footswitch on a block page goes back to PLAY, where the preset shows */
 }
 /* the FX button's blocks (the FX light follows them: px_lights.h) */
-/* v70: FX is INPUT / TONE / UTILITY: the gate, the compressor, the special effects and the EQ */
-#define UI_NFX 4
-static const uint8_t UI_FXB[UI_NFX] = {PX_B_GATE, PX_B_COMP, PX_B_SFX, PX_B_EQ};
+/* v70: FX is INPUT / TONE / UTILITY: the gate, the compressor, the special effects and the EQ; v75: and PRE / BOOST (BST) */
+#define UI_NFX 5
+static const uint8_t UI_FXB[UI_NFX] = {PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_SFX, PX_B_EQ};
 static int ui_is_fx(uint32_t b) { for (int i = 0; i < UI_NFX; i++) if (UI_FXB[i] == b) return 1; return 0; }
 static void ui_fx_cycle(void)          /* FX: the next of its blocks along the preset's chain, as the tiles read (v42), else the first */
 {
@@ -774,6 +785,27 @@ static void list_load(void) { if (ls_at != cur_preset) ui_goto(ls_at); list_clos
 /* v42: the tuner only; the readings for a photo are on the diagnostics page, HOME held on past the tuner */
 static const char *NOTE_N[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 static int tn_last_note = -2, tn_last_x = -1, tn_last_c = 1000, tn_last_dir = 2;
+/* v75: the reference A of the tuner, 415 .. 466 Hz (the PARA knob on the tuner page, one hertz a detent); ui_tn_dirty: it changed, for the main loop to keep;
+ * ui_tn_fresh: the page was just opened, for the main loop to start its smoothing again */
+static float ui_tn_ref = 440.0f;
+static uint8_t ui_tn_dirty, ui_tn_fresh, tn_in_tune;
+static int tn_last_ok = -1;
+static int ui_tn_c;                                    /* v75: the reading for the lights (px_lights.h): the cents off, and whether there is a note */
+static uint8_t ui_tn_have;
+static void tuner_ref_text(void)
+{
+    char b[12] = "A = "; num3(b + 4, (uint32_t)(ui_tn_ref + 0.5f));
+    ft_box(148, 8, 88, b, &FT_SM, BLK, GRN, 2);
+}
+static void tuner_ref_turn(int dd)
+{
+    float r = ui_tn_ref + (float)dd;
+    if (r < 415.0f) r = 415.0f;
+    if (r > 466.0f) r = 466.0f;
+    if (r == ui_tn_ref) return;
+    ui_tn_ref = r; ui_tn_dirty = 1; tuner_ref_text();
+    tn_last_note = -2; tn_last_c = 1000; tn_last_ok = -1;     /* the note is read again against the new A */
+}
 #define TN_BAR_Y 172u
 static void tuner_open(void)
 {
@@ -782,7 +814,7 @@ static void tuner_open(void)
     lcd_rect(0, 0, 240, 240, UI_BG);
     lcd_rect(0, 0, 240, 30, GRN);
     ft_box(8, 4, 140, "TUNER", &FT_MD, BLK, GRN, 0);
-    ft_box(148, 8, 88, "A = 440", &FT_SM, BLK, GRN, 2);
+    tuner_ref_text();
     ui_rbox(18, TN_BAR_Y - 2u, 204, 14, 5, C_BAR, UI_BG);
     lcd_rect(110, TN_BAR_Y - 2u, 20, 14, ui_dark(GRN));
     lcd_rect(119, TN_BAR_Y - 10u, 2, 30, UI_TXT);
@@ -790,24 +822,28 @@ static void tuner_open(void)
     ft_box(100, TN_BAR_Y + 18u, 40, "0", &FT_SM, UI_DIM, UI_BG, 1);
     ft_box(190, TN_BAR_Y + 18u, 40, "+50", &FT_SM, UI_DIM, UI_BG, 1);
     lcd_rect(0, F_Y, 240, 240u - F_Y, UI_PANEL);
-    ft_box(0, F_Y + 3u, 240, "ANY SWITCH: EXIT  HOLD HOME: DIAG", &FT_SM, UI_DIM, UI_PANEL, 1);
-    tn_last_note = -2; tn_last_x = -1; tn_last_c = 1000; tn_last_dir = 2;
+    ft_box(0, F_Y + 3u, 240, "KNOB: A REF   ANY SWITCH: EXIT", &FT_SM, UI_DIM, UI_PANEL, 1);
+    tn_last_note = -2; tn_last_x = -1; tn_last_c = 1000; tn_last_dir = 2; tn_in_tune = 0; tn_last_ok = -1; ui_tn_fresh = 1;
 }
-static void tuner_close(void) { a_tmute = 0; ui_mode = M_CHAIN; lcd_rect(0, 0, 240, 240, UI_BG); uc.screen = -1; ui_invalidate(); }
+static void tuner_close(void) { ui_tn_have = 0; a_tmute = 0; ui_mode = M_CHAIN; lcd_rect(0, 0, 240, 240, UI_BG); uc.screen = -1; ui_invalidate(); }
 static void tuner_draw(float hz)       /* hz <= 0: no note */
 {
     int note = -1, c = 0; float cents = 0.0f;
     if (hz > 20.0f) {
-        float st = 12.0f * logf(hz / 440.0f) * 1.44269504f;   /* semitones from A4 = 440 Hz */
+        float st = 12.0f * logf(hz / ui_tn_ref) * 1.44269504f;   /* semitones from the reference A */
         int r = (int)(st + (st >= 0 ? 0.5f : -0.5f));
         cents = (st - (float)r) * 100.0f;
         note = ((r % 12) + 12 + 9) % 12;                      /* A = 9 */
         c = (int)(cents + (cents >= 0 ? 0.5f : -0.5f));
     }
-    int ok = (note >= 0 && c > -5 && c < 5);
-    if (note != tn_last_note || (note >= 0 && (ok != (tn_last_c > -5 && tn_last_c < 5)))) {
+    ui_tn_have = note >= 0; ui_tn_c = c;                      /* (the lights') */
+    if (note < 0) tn_in_tune = 0;                             /* in tune from 4 cents, until 7 (v75: it does not flicker at the edge) */
+    else if (c > -4 && c < 4) tn_in_tune = 1;
+    else if (c < -7 || c > 7) tn_in_tune = 0;
+    int ok = note >= 0 && tn_in_tune;
+    if (note != tn_last_note || (note >= 0 && ok != tn_last_ok)) {
         ft_box(56, 60, 128, note < 0 ? "-" : NOTE_N[note], &FT_LG, note < 0 ? UI_DIM : (ok ? GRN : UI_TXT), UI_BG, 1);
-        tn_last_note = note;
+        tn_last_note = note; tn_last_ok = ok;
     }
     int dir = note < 0 || ok ? 0 : c < 0 ? -1 : 1;           /* which way to turn: an arrow toward in tune, on the side the note is */
     if (dir != tn_last_dir) {
@@ -1034,15 +1070,19 @@ enum { UA_SAVE = UB_N, UA_MOVE, UA_TUNER, UA_MIDI, UA_FEET, UA_STOMP };   /* the
 #define UI_HOLD_FX   800u              /* hold FX: MIDI */
 #define UI_CLICK2    350u              /* PUSH again within this, after a click opened a block from PLAY: MOVE that block */
 #define UI_FEET      150u              /* the other footswitch within this: both, the tuner */
+#define UI_HOLD_FS   700u              /* v75: a footswitch held this long: its hold gesture */
+#define UI_DTAP      320u              /* v75: a footswitch pressed again within this: its double tap */
 static struct {
     uint32_t held, t[UB_N], clk_t, fs_t;
     uint8_t fired[UB_N], clk, clk_blk;
     int8_t fs, fs_dir;                 /* the last footswitch pressed (-1: none) and the step it made */
     uint8_t fs_set;                    /* v48: a button assigned the held footswitch (its toggle taken back once) */
     int8_t fs_b;                       /* v48: that footswitch */
+    uint32_t gt[2];                    /* v75: the last plain press of each footswitch (the double tap's first), 0: none */
+    uint8_t gs[4];                     /* v75: the gestures of the preset that was playing at the press (a PATCH-mode press changes the preset) */
 } ug = {.fs = -1, .fs_b = -1};
 /* ---- v48: STOMP mode. ui_fs (the edit buffer's assignment, beside PRESET): low 4 bits the left footswitch (UB_FSDN),
- * high 4 the right one (UB_FSUP); 0..8 a block, UI_FS_BYP BYPASS, anything else nothing (px_store.h keeps it per slot) */
+ * high 4 the right one (UB_FSUP); 0..9 a block (v75; 0..8 before), UI_FS_BYP BYPASS, anything else nothing (px_store.h keeps it per slot) */
 static int ui_fs_idx(int b) { return b == UB_FSUP ? 1 : 0; }
 static void ui_fs_put(int i, uint32_t t) { ui_fs = (uint8_t)((ui_fs & ~(15u << (4 * i))) | ((t & 15u) << (4 * i))); }
 static void ui_fs_toggle(int i)        /* a footswitch in STOMP mode: what it is assigned, on / off */
@@ -1063,8 +1103,8 @@ static void ui_fs_assign(int i, int b)
     static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_SYN, PX_B_PITCH, PX_B_DELAY, PX_B_REVERB};   /* MOD AMP CAB DLY REV */
     uint32_t t;
     if (b == UB_FX) {
-        /* v70: every block in signal order, then BYPASS, then nothing */
-        static const uint8_t STEP[PX_NBLK + 2] = {PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
+        /* v70: every block (v75: ten, BST last), then BYPASS, then nothing */
+        static const uint8_t STEP[PX_NBLK + 2] = {PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
                                                   PX_B_DELAY, PX_B_REVERB, UI_FS_BYP, UI_FS_NONE};
         uint32_t cur = ui_fs_get(i); int k = 0;
         for (int q = 0; q < PX_NBLK + 2; q++) if (STEP[q] == cur) { k = q + 1; break; }
@@ -1096,6 +1136,17 @@ static void ui_action(int a)
     default: ui_enter_block(BLK_OF[a - UB_MOD]);
     }
 }
+/* v75: a footswitch gesture's action */
+static void ui_gesture(uint8_t a)
+{
+    if (!ui_ga_valid(a)) return;
+    if (a < PX_NBLK) PRESET.on[a] ^= 1u;
+    else if (a == 12u) ui_byp ^= 1u;
+    else if (a == UI_GA_TUNER) ui_action(UA_TUNER);
+    else if (a == UI_GA_NEXT) ui_preset_step(+1);
+    else if (a == UI_GA_PREV) ui_preset_step(-1);
+    else ui_stomp_toggle();
+}
 static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turned quickly) */
 {
     ug.clk = 0;
@@ -1103,7 +1154,8 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
     else if (ui_mode == M_MIDI) midi_knob(dd);
     else if (ui_mode == M_LIST) list_knob(dd);
     else if (ui_mode == M_DIAG) diag_turn();
-    else if (ui_mode != M_TUNER) ui_knob(dd, fast);
+    else if (ui_mode == M_TUNER) tuner_ref_turn(dd);              /* v75: the reference A */
+    else ui_knob(dd, fast);
 }
 static void ui_press(int b, uint32_t now)   /* a button's plain press: at its press, PUSH HOME FX at a short release */
 {
@@ -1153,10 +1205,29 @@ static void ui_buttons(uint32_t now, uint32_t held)   /* every pass: which butto
     for (int b = 0; b < UB_N; b++) {
         int timed = b == UB_PUSH || b == UB_HOME || b == UB_FX || b == UB_CAB;   /* (these have a hold: they act at the release) */
         uint32_t hold = b == UB_PUSH ? UI_HOLD_PUSH : b == UB_HOME ? UI_HOLD_HOME : b == UB_CAB ? UI_HOLD_CAB : UI_HOLD_FX;
-        if (dn >> b & 1u) { ug.t[b] = now; ug.fired[b] = 0; if (!timed) ui_press(b, now); }
+        const int fsw = b == UB_FSUP || b == UB_FSDN;
+        if (dn >> b & 1u) {
+            ug.t[b] = now; ug.fired[b] = 0;
+            if (fsw) memcpy(ug.gs, ui_gs, 4);
+            if (!timed) ui_press(b, now);
+            if (fsw && ui_mode != M_TUNER && ui_mode != M_DIAG) {       /* v75: a double tap (in STOMP mode: the two toggles cancel, then the action) */
+                const int i = ui_fs_idx(b);
+                if (ug.fs != b) { ug.gt[0] = ug.gt[1] = 0; }             /* (both footswitches: the tuner; no tap of either counts) */
+                else if (ug.gt[i] && now - ug.gt[i] < UI_DTAP && ui_stomp && ui_ga_valid(ug.gs[2 * i])) { ug.gt[i] = 0; ui_gesture(ug.gs[2 * i]); }
+                else ug.gt[i] = now;
+            }
+        }
         else if (timed && (held >> b & 1u) && (b == UB_HOME || !ug.fired[b]) && now - ug.t[b] >= hold) {
             ug.fired[b] = 1; ug.t[b] = now; ug.clk = 0;              /* (HOME: each further hold as long goes one page on) */
             ui_action(b == UB_PUSH ? UA_SAVE : b == UB_HOME ? UA_TUNER : b == UB_CAB ? UA_STOMP : UA_MIDI);
+        }
+        else if (fsw && (held >> b & 1u) && !ug.fired[b] && ug.fs == b && !ug.fs_set && ui_mode != M_TUNER && ui_mode != M_DIAG &&
+                 ui_ga_valid(ug.gs[2 * ui_fs_idx(b) + 1]) && now - ug.t[b] >= UI_HOLD_FS) {   /* v75: a hold: the press's own step is taken back, then the action */
+            const int i = ui_fs_idx(b);
+            ug.fired[b] = 1; ug.gt[i] = 0;
+            if (ug.fs_dir) { if (ui_stomp) ui_fs_toggle(i); else ui_preset_step(-ug.fs_dir); }
+            ug.fs = -1;
+            ui_gesture(ug.gs[2 * i + 1]);
         }
         if ((up >> b & 1u) && timed && !ug.fired[b]) ui_press(b, now);
     }

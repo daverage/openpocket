@@ -262,7 +262,12 @@ static void st_get(uint32_t k, px_preset_t *p);   /* px_store.h: the saved prese
 static uint8_t preset_new;                             /* v40.3: a preset was loaded: the sound follows at once */
 static uint8_t ui_fs = 0xFFu;                          /* v48: the footswitches' assignment beside PRESET (ui.h, px_store.h) */
 static uint8_t st_fs_of(uint32_t k);
+#if AUDIO_PROBE
 static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); preset_new = 1; }
+#else
+static void st_gs_of(uint32_t k, uint8_t *out);
+static void load_preset(uint32_t i);                   /* (defined after ui.h: it loads the gestures too, ui_gs) */
+#endif
 
 #if AUDIO_PROBE
 void fm1_timer5_irq(void) { }
@@ -538,13 +543,18 @@ static const int8_t QDEC[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
 
 #if !AUDIO_PROBE
 #include "ui.h"
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); preset_new = 1; }   /* v75: with its gestures */
 #include "px_lights.h"      /* the button lights follow the blocks (issue #8; px_leds.h drives them) */
 #define PX_LIGHTS_OFF() lights_off()
 #include "px_usb.h"         /* USB-MIDI + update entry (web installer) */
 #include "px_store.h"       /* the user's presets in flash */
 #if !AUDIO_PROBE
 static uint32_t ed_load(void) { return a_bypass ? a_peak : a_load; }   /* PING: the DSP load, as at the bottom right */
-static uint32_t ed_flags(void) { return (a_bypass ? 1u : 0u) | (a_c1 ? 2u : 0u); }
+static uint32_t ed_flags(void) { return (a_bypass ? 1u : 0u) | (a_c1 ? 2u : 0u) | (a_shed ? 4u : 0u); }   /* v75: bit 2: a block is switched off for the load */
+static float ed_tuner_hz(void) { static tn_sm_t sm; return tn_smooth(&sm, tuner_estimate()); }   /* v75 TUNER: what the stage view shows */
+static uint32_t ed_shed_mask(void) { return a_shed; }
+static uint32_t ed_shed_count(void) { return a_sh.total; }
+static void ed_shed_clear(void) { a_unshed = 1; }
 /* v40.1: the stacks' deepest use since boot. fm1_cstart paints them; the bytes at the bottom never written since are free */
 #define OP_PAINT 0x5AA5C33Cu
 extern char _ustack_top[];
@@ -753,6 +763,7 @@ static void app_main(void)
 #if !AUDIO_PROBE
         px_usb_service(now);             /* web installer: handshake, update, UBOOT soft key */
         px_midi_service();               /* USB-MIDI: Program / Control Change in, the pedal's own changes out */
+        lt_style = st_cfg.lights & 3u; lt_off = (st_cfg.lights >> 2) & 1u; lt_c = ui_tn_c; lt_have = ui_tn_have;   /* v75 */
         lights_update(&PRESET, ui_mode == M_TUNER, ui_byp, now);   /* the button lights follow the blocks */
         if (ui_mode != M_TUNER) {        /* DSP load in the status corner: "DSP 42%", "PEAK 150%" (bypassed), "SAFE 42%" */
             static uint32_t t_cpu;
@@ -767,6 +778,7 @@ static void app_main(void)
                 ui_dg.cores = (uint8_t)(a_c1 ? 1u : 0u);
                 ui_dg.split = 0u; ui_dg.guard = (uint8_t)(a_c1 ? 93u : 85u);   /* (px_audio.h's dsp_load limits) */
                 ui_dg.late = (uint8_t)late; ui_dg.bypass = a_bypass;
+                ui_shed = a_shed;                              /* v75: SHED while a block is off for the load */
                 ui_load_text(c, ld, safe, a_bypass, late);
                 int kind = ui_load_kind(ld, safe, a_bypass, late, a_ld);   /* v40.3: LOADING a NAM model; v42: amber when high */
                 bat_raw[2] = (int32_t)a_xrun; bat_raw[3] = (int32_t)a_clip; bat_raw[4] = (int32_t)a_peak_all;   /* diagnostics page */
@@ -791,9 +803,18 @@ static void app_main(void)
 #endif
             }
         }
+        if (ui_tn_dirty) {                               /* v75: the knob moved the tuner's A: kept with the next save */
+            ui_tn_dirty = 0;
+            const int hz = (int)(ui_tn_ref + 0.5f);
+            st_cfg.tn = hz == 440 ? 0u : (uint8_t)(hz - 414);
+        }
         if ((ui_mode == M_TUNER || ui_mode == M_DIAG) && now - t_tuner >= 100u) {
             t_tuner = now;
-            if (ui_mode == M_TUNER) tuner_draw(tuner_estimate()); else diag_draw();
+            if (ui_mode == M_TUNER) {
+                static tn_sm_t tn_sm;
+                if (ui_tn_fresh) { memset(&tn_sm, 0, sizeof tn_sm); ui_tn_fresh = 0; }
+                tuner_draw(tn_smooth(&tn_sm, tuner_estimate()));
+            } else diag_draw();
         }
 #endif
         if (!boots_ok && now > 6000u) {   /* 4.5 s of DSP first: a pedal that resets under load is caught */ boots_ok = 1; guard.pending = 0; guard.failed = 0; op_diag.stage = ST_OK; }

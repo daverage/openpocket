@@ -16,8 +16,8 @@ enum { N = 44100 * 2 };
 static float x[N], y[N], z[N], ya[N], yb[N], yc[N];
 static void preset(px_preset_t *p, int on, int better, int louder)
 {
-    px_preset_factory(p, 7); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
-    p->on[PX_B_SFX] = (uint8_t)on; p->type[PX_B_SFX] = PX_SFX_ENHANCE; p->p[PX_B_SFX][0] = (uint8_t)better; p->p[PX_B_SFX][1] = (uint8_t)louder;
+    px_preset_base(p); for (int k = 0; k < PX_NBLK; k++) p->on[k] = 0;
+    p->on[PX_B_BST] = (uint8_t)on; p->type[PX_B_BST] = PX_BST_ENHANCE; p->p[PX_B_BST][0] = (uint8_t)better; p->p[PX_B_BST][1] = (uint8_t)louder;
 }
 static void render(const px_preset_t *p, const float *in, float *out, int n)
 {
@@ -35,8 +35,8 @@ static void sine(float *o, int n, float hz, float amp) { for (int i = 0; i < n; 
 static double fre[FN], fim[FN];
 static float chord_junk(int better)
 {
-    px_preset_t p; px_preset_factory(&p, 7); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0;
-    p.on[PX_B_SFX] = 1; p.type[PX_B_SFX] = PX_SFX_ENHANCE; p.p[PX_B_SFX][0] = (uint8_t)better; p.p[PX_B_SFX][1] = 0;
+    px_preset_t p; px_preset_base(&p); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0;
+    p.on[PX_B_BST] = 1; p.type[PX_B_BST] = PX_BST_ENHANCE; p.p[PX_B_BST][0] = (uint8_t)better; p.p[PX_B_BST][1] = 0;
     static float in[FN * 6], out[FN * 6]; for (int i = 0; i < FN * 6; i++) in[i] = 0.05f * (sinf(6.2831853f * 148.0f * (float)(i % FN) / FN) + sinf(6.2831853f * 187.0f * (float)(i % FN) / FN));
     static px_engine e; px_engine_init(&e, FS); px_engine_set(&e, &p); for (int at = 0; at + 64 <= FN * 6; at += 64) px_engine_process(&e, in + at, out + at, 64);
     for (int i = 0; i < FN; i++) { fre[i] = out[FN * 5 + i]; fim[i] = 0; }
@@ -52,12 +52,12 @@ int main(void)
     px_preset_t p, off;
     char b[8];
     /* catalogue */
-    CHECK(px_type_retired(PX_B_SFX, PX_SFX_ENHANCE) == 0 && !strcmp(px_type_name(PX_B_SFX, PX_SFX_ENHANCE), "ENHANCE"), "ENHANCE is a live type");
-    CHECK(px_nparams(PX_B_SFX, PX_SFX_ENHANCE) == 2 && !strcmp(px_param_name(PX_B_SFX, PX_SFX_ENHANCE, 0), "BETTER") && !strcmp(px_param_name(PX_B_SFX, PX_SFX_ENHANCE, 1), "LOUDER"), "ENHANCE has BETTER and LOUDER");
-    CHECK(px_param_text(PX_B_SFX, PX_SFX_ENHANCE, 1, 100, b) == 1 && !strcmp(b, "+12"), "LOUDER 100 reads +12: '%s'", b);
-    CHECK(px_nlive(PX_B_SFX) == PX_SFX_COUNT - 1 && px_type_retired(PX_B_SFX, PX_SFX_APPLAUSE) == 1, "APPLAUSE is still the one tombstone");
+    CHECK(px_type_retired(PX_B_BST, PX_BST_ENHANCE) == 0 && !strcmp(px_type_name(PX_B_BST, PX_BST_ENHANCE), "ENHANCE"), "ENHANCE is a live type");
+    CHECK(px_nparams(PX_B_BST, PX_BST_ENHANCE) == 2 && !strcmp(px_param_name(PX_B_BST, PX_BST_ENHANCE, 0), "BETTER") && !strcmp(px_param_name(PX_B_BST, PX_BST_ENHANCE, 1), "LOUDER"), "ENHANCE has BETTER and LOUDER");
+    CHECK(px_param_text(PX_B_BST, PX_BST_ENHANCE, 1, 100, b) == 1 && !strcmp(b, "+12"), "LOUDER 100 reads +12: '%s'", b);
+    CHECK(px_nlive(PX_B_SFX) == PX_SFX_COUNT - 5 && px_type_retired(PX_B_SFX, PX_SFX_APPLAUSE) == 1 && px_type_retired(PX_B_SFX, PX_SFX_ENHANCE) == 1, "APPLAUSE is still a tombstone (with ENHANCE and the three pedals that moved to BST in v75)");
     /* unity and silence */
-    sine(x, N, 110.0f, 0.14f); preset(&p, 1, 0, 0); off = p; off.on[PX_B_SFX] = 0; render(&p, x, y, N); render(&off, x, z, N);
+    sine(x, N, 110.0f, 0.14f); preset(&p, 1, 0, 0); off = p; off.on[PX_B_BST] = 0; render(&p, x, y, N); render(&off, x, z, N);
     { float m = 0; for (int i = 0; i < N; i++) m = fmaxf(m, fabsf(y[i] - z[i])); CHECK(m < 1e-6f, "BETTER 0, LOUDER 0 is the dry signal (%.2g)", m); }
     preset(&p, 1, 100, 0); memset(x, 0, sizeof x); render(&p, x, y, N);
     { float m = 0; for (int i = N / 2; i < N; i++) m = fmaxf(m, fabsf(y[i])); CHECK(m < 1e-7f, "silence in, silence out (%.2g)", m); }
@@ -109,7 +109,7 @@ int main(void)
         CHECK(worst < 1.15f * fmaxf(sa, sb), "a knob jump mid-note (BETTER 10 -> 100, LOUDER 0 -> +12 dB) glides: no click (largest step %.4f, steady %.4f / %.4f)", worst, sa, sb);
     }
     /* a stored retired APPLAUSE stays bypassed */
-    preset(&p, 1, 50, 50); p.type[PX_B_SFX] = PX_SFX_APPLAUSE; off = p; off.on[PX_B_SFX] = 0; sine(x, N, 196.0f, 0.2f); render(&p, x, y, N); render(&off, x, z, N);
+    preset(&p, 1, 50, 50); p.on[PX_B_BST] = 0; p.on[PX_B_SFX] = 1; p.type[PX_B_SFX] = PX_SFX_APPLAUSE; off = p; off.on[PX_B_SFX] = 0; sine(x, N, 196.0f, 0.2f); render(&p, x, y, N); render(&off, x, z, N);
     { float m = 0; for (int i = 0; i < N; i++) m = fmaxf(m, fabsf(y[i] - z[i])); CHECK(m < 1e-6f, "a stored APPLAUSE is still bypassed (%.2g)", m); }
     if (bad) { printf("%d problems\n", bad); return 1; }
     printf("ENHANCE ok: 0 problems\n"); return 0;

@@ -2,10 +2,57 @@
 // OpenPocket web editor: the current sound. Its name and what can be done with it, the signal chain (the order, what is
 // on), and the block editor (type, settings). Every change plays at once on the pedal; a change made on the pedal shows here.
 
-import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName } from "./edcore.js";
+import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName, toast } from "./edcore.js";
+import { costPct } from "./pxcost.js";
 import { save, saveAs, revert, exportOne, setCompare, comparing, duplicate, moveTo, restoreFactory } from "./edpresets.js";
 
 let dragging = null;
+// v75: the footswitches in STOMP mode (protocol 5): the pedal's own state, read after every change that reaches us (its state frames carry a hash of it)
+let fs = null;
+const FS_NONE = 15, FS_BYP = 12;
+// v75: the gestures (protocol 9): a double tap (in STOMP mode) and a hold of each footswitch, each an action
+const GEST = [["ldbl", "Left: double tap"], ["lhold", "Left: hold"], ["rdbl", "Right: double tap"], ["rhold", "Right: hold"]];
+function gestOptions(sel, v) {
+  sel.textContent = "";
+  const opts = [[FS_NONE, "Nothing"], ...app.cat.blocks.map((B, i) => [i, `Switch ${B.label} on / off`]), [FS_BYP, "BYPASS on / off"], [16, "The tuner"], [17, "Next preset"], [18, "Previous preset"], [19, "STOMP / PATCH mode"]];
+  for (const [value, text] of opts) sel.append(h("option", { value, text }));
+  sel.value = opts.some(([x]) => x === v) ? v : FS_NONE;
+}
+const fsValid = (v) => (v < app.cat.blocks.length || v === FS_BYP ? v : FS_NONE);   // a block or BYPASS; an older pedal may report 10 or 11, which are not blocks
+async function refreshFs() {
+  if (!app.ed || !app.ed.hasFootswitch) { fs = null; renderFs(); return; }
+  try { fs = await app.ed.footswitch(); } catch (_) { return; }
+  renderFs(); renderTiles();
+}
+function fsOptions(sel, v) {
+  sel.textContent = "";
+  for (const [value, text] of [...app.cat.blocks.map((B, i) => [i, `${B.label} · ${B.name}`]), [FS_BYP, "BYPASS (the dry guitar)"], [FS_NONE, "Nothing"]]) sel.append(h("option", { value, text }));
+  sel.value = v;
+}
+function renderFs() {
+  const row = $("fsrow");
+  row.hidden = !fs;
+  if (!fs || !app.cat) return;
+  const sw = $("stomp"), cmp = comparing();
+  sw.setAttribute("aria-checked", fs.stomp ? "true" : "false");
+  sw.querySelector("span").textContent = fs.stomp ? "Stomp" : "Patch";
+  if (document.activeElement !== $("fsl")) fsOptions($("fsl"), fsValid(fs.left));
+  if (document.activeElement !== $("fsr")) fsOptions($("fsr"), fsValid(fs.right));
+  $("fsgest").hidden = !fs.gestures;
+  if (fs.gestures) GEST.forEach(([id], i) => { const s = $(id); if (document.activeElement !== s) gestOptions(s, fs.gestures[i]); });
+  const st = $("fsstate");
+  st.textContent = fs.bypass ? "BYPASSED: the dry guitar" : "";
+  st.className = `fsstate${fs.bypass ? " byp" : ""}`;
+  const help = $("fshelp");
+  help.hidden = false;
+  help.textContent = fs.stomp ? "STOMP mode: each footswitch switches the block it is assigned on and off (or the BYPASS). Both together open the tuner. The assignment is part of the preset: Save keeps it."
+    : "PATCH mode: the footswitches change the preset. The assignments below are kept and work in STOMP mode.";
+  row.inert = cmp;
+}
+function setFs(set) {
+  if (comparing()) return;
+  act(async () => { fs = await app.ed.footswitch(set); await sync(); renderFs(); renderTiles(); });
+}
 
 // ---- live editing (also what a learned MIDI control calls) ----
 let pendingParam = null, sendingParam = false;
@@ -35,9 +82,18 @@ export function setFocus(b, tell = true) {
   app.focus = b; renderTiles(); renderPage();
   if (tell) act(() => app.ed.focus(b));
 }
+// v75: a block switched on, or another type chosen: will it fit? The pedal's load now, less what the block cost, plus what it will (docs/pxcost.js: an estimate)
+function fitCheck(b, before, after) {
+  const p = app.ping, B = blk(b);
+  if (!p || p.bypass || !B) return;
+  const cost = (s) => (s.on ? costPct(B.label, B.types[s.type] && B.types[s.type].name) : 0);
+  const was = cost(before), will = cost(after), pred = Math.round(p.load - was + will);
+  if (will > was && pred >= 85) toast(`${B.name} may not fit: the processor would reach about ${pred} % (the pedal's limit is 85 %). If it overloads, the pedal switches the heaviest block off.`, { kind: "info" });
+}
 export function setOn(b, v) {
   if (comparing()) return undefined;
-  return act(async () => { app.st.preset.on[b] = await app.ed.setOn(b, v); await sync(); renderTiles(); renderPage(); });
+  const type = app.st.preset.type[b], was = !!app.st.preset.on[b];
+  return act(async () => { app.st.preset.on[b] = await app.ed.setOn(b, v); fitCheck(b, { on: was, type }, { on: app.st.preset.on[b], type }); await sync(); renderTiles(); renderPage(); });
 }
 export const toggle = (b) => setOn(b, !app.st.preset.on[b]);
 export function setType(b, t) {
@@ -46,7 +102,8 @@ export function setType(b, t) {
   const direction = t < app.st.preset.type[b] ? -1 : 1;
   t = ((t % n) + n) % n;
   while (!types[t].name) t = (t + direction + n) % n;
-  return act(async () => { app.st.preset.type[b] = await app.ed.setType(b, t); await sync(); renderTiles(); renderPage(); });
+  const was = { on: !!app.st.preset.on[b], type: app.st.preset.type[b] };
+  return act(async () => { app.st.preset.type[b] = await app.ed.setType(b, t); fitCheck(b, was, { on: was.on, type: app.st.preset.type[b] }); await sync(); renderTiles(); renderPage(); });
 }
 async function sendOrder(order) {
   await act(async () => { if (await app.ed.order(order) === 0) app.st.preset.order = order; await sync(); renderTiles(); renderPage(); });
@@ -92,7 +149,9 @@ function renderTiles() {
       h("span", { class: "tl", text: B.label }), h("span", { class: "tt", text: typeOf(p, b).name }));
     const pw = h("button", { type: "button", class: "pw", tabIndex: -1, role: "switch", "aria-checked": is ? "true" : "false", "aria-label": `${B.name} ${is ? "on" : "off"}` },
       h("i"), h("span", { text: is ? "ON" : "OFF" }));
-    const t = h("div", { class: `tile${is ? " on" : ""}${sel ? " sel" : ""}${dragging && dragging.b === b ? " drag" : ""}`, "data-b": b, style: `--c:${B.color}` }, tsel, pw, h("i", { class: "share" }));
+    const mark = fs ? (fs.left === b ? "L" : "") + (fs.right === b ? (fs.left === b ? "+R" : "R") : "") : "";   // the footswitches assigned to it (STOMP mode)
+    const t = h("div", { class: `tile${is ? " on" : ""}${sel ? " sel" : ""}${dragging && dragging.b === b ? " drag" : ""}`, "data-b": b, style: `--c:${B.color}` }, tsel, pw, h("i", { class: "share" }),
+      ...(mark ? [h("i", { class: "fsb", text: mark, title: `${mark === "L" ? "Left" : mark === "R" ? "Right" : "Both"} footswitch${fs.stomp ? "" : " (in STOMP mode)"}` })] : []));
     pw.onclick = () => toggle(b);
     tsel.onpointerdown = (e) => startDrag(e, t, b);
     tsel.onkeydown = (e) => {
@@ -113,7 +172,9 @@ function renderShares() {
   for (const t of $("tiles").children) {
     const v = prof ? prof[+t.dataset.b] || 0 : 0;
     t.querySelector(".share").style.width = `${Math.min(100, v * 2)}%`;
-    t.title = prof && v ? `${blk(+t.dataset.b).name}: ${v} % of the processor` : "";
+    const off = !!(app.shed && app.shed.blocks.includes(+t.dataset.b));                  // v75: switched off by the pedal for the load
+    t.classList.toggle("shed", off);
+    t.title = off ? `${blk(+t.dataset.b).name}: switched off by the pedal for the load` : prof && v ? `${blk(+t.dataset.b).name}: ${v} % of the processor` : "";
   }
 }
 function startDrag(e, el, b) {
@@ -172,12 +233,10 @@ function renderPage(fromPush) {
   sw.querySelector("span").textContent = is ? "On" : "Off";
   $("mvl").disabled = pos <= 0; $("mvr").disabled = pos >= p.order.length - 1;
   const sel = $("type");
-  const retired = !(B.types[p.type[b]] && B.types[p.type[b]].name);       // Synth2: a stored retired type is bypassed by the pedal, its settings kept
-  if (sel.dataset.b !== String(b) || sel.dataset.t !== String(retired ? p.type[b] : "") || sel.options.length !== B.types.filter((t) => t.name).length + (retired ? 1 : 0)) {
+  if (sel.dataset.b !== String(b) || sel.options.length !== B.types.filter((t) => t.name).length) {         // (v75: the pedal sends no retired type: it turns one into a live type, off)
     sel.textContent = "";
-    if (retired) sel.append(h("option", { value: p.type[b], text: "RETIRED TYPE (bypassed)" }));
     B.types.forEach((t, i) => { if (t.name) sel.append(h("option", { value: i, text: t.name })); });
-    sel.dataset.b = b; sel.dataset.t = retired ? p.type[b] : "";
+    sel.dataset.b = b;
   }
   sel.value = p.type[b];
   sel.setAttribute("aria-label", `${B.name} type`);
@@ -241,8 +300,12 @@ function showVal(k) {
 function renderNote() { $("blocknote").hidden = true; }
 
 export function initSound() {
-  on("state", (o) => { if (!app.st) return; renderHeader(); if (!o.own) { renderTiles(); renderPage(o.push); } });
-  on("compare", () => { renderHeader(); renderTiles(); renderPage(); });
+  on("state", (o) => { if (!app.st) return; renderHeader(); if (!o.own) { renderTiles(); renderPage(o.push); } if (!o.own) refreshFs(); });
+  on("compare", () => { renderHeader(); renderTiles(); renderPage(); renderFs(); });
+  $("stomp").onclick = () => setFs({ stomp: $("stomp").getAttribute("aria-checked") !== "true" });
+  $("fsl").onchange = () => setFs({ left: +$("fsl").value });
+  $("fsr").onchange = () => setFs({ right: +$("fsr").value });
+  GEST.forEach(([id], i) => { $(id).onchange = () => setFs({ gestures: GEST.map((_, j) => (j === i ? +$(id).value : undefined)) }); });   // (v75: only the one that changed)
   on("ping", renderShares);
   $("onoff").onclick = () => toggle(app.focus);
   $("type").onchange = () => setType(app.focus, +$("type").value);

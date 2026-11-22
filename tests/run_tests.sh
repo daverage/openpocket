@@ -44,6 +44,18 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/synth_test.c fir
 # SFX ENHANCE v3: warmth (even harmonics of the low-mid band) and presence (an exciter-style high band), level independent; unity, bounds, no clicks
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/enhance_test.c firmware/px_math.c -lm -o build/enhance_test && build/enhance_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pedals_test.c firmware/px_math.c -lm -o build/pedals_test && build/pedals_test | tail -1
+# v75: BST (PRE / BOOST) and its VOX FIXED WAH: the catalogue, the move of the SFX pedals, the V847 tone curve, level, no clicks
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/voxwah_test.c firmware/px_math.c -lm -o build/voxwah_test && build/voxwah_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/fuzzface_test.c firmware/px_math.c -lm -o build/fuzzface_test && build/fuzzface_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hum_test.c firmware/px_math.c -lm -o build/hum_test && build/hum_test | tail -1
+$CC -O2 -w tests/tunersim.c -lm -o build/tunersim && build/tunersim | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pv_test.c firmware/px_math.c -lm -o build/pv_test && build/pv_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/global_test.c firmware/px_math.c -lm -o build/global_test && build/global_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/tails_test.c firmware/px_math.c -lm -o build/tails_test && build/tails_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hush_test.c firmware/px_math.c -lm -o build/hush_test && build/hush_test | tail -1
+$CC -O2 -w -Iengine tests/engine/factory_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/factory_test && build/factory_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/shed_test.c firmware/px_math.c -lm -o build/shed_test && build/shed_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -Ifirmware tests/shedsim.c firmware/px_math.c -lm -o build/shedsim && build/shedsim | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/poly_range_test.c firmware/px_math.c -lm -o build/poly_range_test && build/poly_range_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/choir_click_test.c firmware/px_math.c -lm -o build/choir_click_test && build/choir_click_test | tail -1
 # Felucca's own golden renders for the vendored engines

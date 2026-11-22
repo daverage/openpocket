@@ -3,7 +3,7 @@
 // numbers and the same scaling), a decoder for the messages a port delivers, and the editor's learned mappings: a control
 // of another MIDI device (a foot controller plugged into the computer) -> something on the pedal. No DOM, no port here.
 
-export const NBLK = 9, NPAR = 5;                 // v70: 9 blocks
+export const NBLK = 10, NPAR = 5;                // v75: 10 blocks (v70: 9; BST, PRE / BOOST, is the last)
 export const CC_MASTER = 7, CC_TOGGLE0 = 8, CC_ON0 = 20, CC_TYPE0 = 52;
 
 // 60 settings over three runs of free numbers (px_cc_param)
@@ -16,12 +16,13 @@ export const ccToggle = (b) => CC_TOGGLE0 + b;
 export const ccType = (b) => CC_TYPE0 + b;
 
 // what a Control Change number means to the pedal: { kind: "master" | "toggle" | "on" | "type" | "param", b, k } or null
-export function ccTarget(cc) {
+// nblk: the pedal's own block count (an older pedal has nine: the numbers of the tenth block mean nothing there)
+export function ccTarget(cc, nblk = NBLK) {
   if (cc === CC_MASTER) return { kind: "master" };
-  if (cc >= CC_TOGGLE0 && cc < CC_TOGGLE0 + NBLK) return { kind: "toggle", b: cc - CC_TOGGLE0 };
-  if (cc >= CC_ON0 && cc < CC_ON0 + NBLK) return { kind: "on", b: cc - CC_ON0 };
-  if (cc >= CC_TYPE0 && cc < CC_TYPE0 + NBLK) return { kind: "type", b: cc - CC_TYPE0 };
-  for (let b = 0; b < NBLK; b++) for (let k = 0; k < NPAR; k++) if (ccParam(b, k) === cc) return { kind: "param", b, k };
+  if (cc >= CC_TOGGLE0 && cc < CC_TOGGLE0 + nblk) return { kind: "toggle", b: cc - CC_TOGGLE0 };
+  if (cc >= CC_ON0 && cc < CC_ON0 + nblk) return { kind: "on", b: cc - CC_ON0 };
+  if (cc >= CC_TYPE0 && cc < CC_TYPE0 + nblk) return { kind: "type", b: cc - CC_TYPE0 };
+  for (let b = 0; b < nblk; b++) for (let k = 0; k < NPAR; k++) if (ccParam(b, k) === cc) return { kind: "param", b, k };
   return null;
 }
 

@@ -10,4 +10,5 @@ static const uint16_t BLK_COL[PX_NBLK] = {
     0x7D5F,           /* MOD: lavender */
     0x47FF,           /* DLY: cyan */
     0x8FE0,           /* REV: green */
+    0xFEE0,           /* BST: yellow (PRE / BOOST, in the FX group with GT, CMP, SFX, EQ) */
 };

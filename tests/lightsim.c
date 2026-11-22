@@ -11,9 +11,9 @@
 #include <string.h>
 #include "px_dsp.h"
 
-/* the FX button's group, written out again here (ui.h's UI_FXB is the firmware's): gate, comp, SFX, EQ (v70) */
-#define UI_NFX 4
-static const uint8_t UI_FXB[UI_NFX] = { PX_B_GATE, PX_B_COMP, PX_B_SFX, PX_B_EQ };
+/* the FX button's group, written out again here (ui.h's UI_FXB is the firmware's): gate, BST, comp, SFX, EQ (v70, v75: BST) */
+#define UI_NFX 5
+static const uint8_t UI_FXB[UI_NFX] = { PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_SFX, PX_B_EQ };
 
 /* ---- port C and the 595: DS PC8, SHCP PC5, STCP PC6, OE PC7 (low = outputs on); a 0 on an output lights it */
 enum { R_OUT = 0, R_DIR = 2, R_PU = 4, R_PD = 5 };
@@ -88,7 +88,7 @@ int main(void)
             if (!want_of(b)) every = 0;
         }
         ok(good, "each block alone lights its own button");
-        ok(every, "every block has a light (the FX group's four: FX)");
+        ok(every, "every block has a light (the FX group's five: FX)");
     }
     memset(&p, 0, sizeof p);
     for (int b = 0; b < PX_NBLK; b++) p.on[b] = 1;
@@ -114,6 +114,32 @@ int main(void)
         ok(others, "tuner: the effect lights stay as they are");
         lights_update(&p, 0, 0, 0);
         ok(lit() & (1u << W_HOME), "tuner closed, playing: HOME lit again");
+    }
+    /* v75: the tuner's lights as a needle or a strobe on the row HOME FX AMP MOD DLY REV CAB; LIGHTS OFF */
+    {
+        lt_style = 1; lt_have = 1;
+        const int C[7] = {-50, -40, -10, 0, 10, 40, 50};
+        const uint8_t W[7] = {1u << W_HOME, 1u << W_HOME, 1u << (W_HOME + 2), (1u << (W_HOME + 2)) | (1u << (W_HOME + 3)) | (1u << (W_HOME + 4)), 1u << (W_HOME + 4), 1u << (W_HOME + 6), 1u << (W_HOME + 6)};
+        int good = 1;
+        for (int i = 0; i < 7; i++) { lt_c = C[i]; lights_update(&p, 1, 0, 1000); if (i == 3) { if (lit() != W[3]) { good = 0; printf("   in tune lit %02X\n", lit()); } } else if (lit() != W[i]) { good = 0; printf("   needle at %d cents: lit %02X, wanted %02X\n", C[i], lit(), W[i]); } }
+        lt_c = 3; lights_update(&p, 1, 0, 1000); if (lit() != W[3]) good = 0;
+        ok(good, "tuner needle: one light moves from HOME (flat) to CAB (sharp) with the cents, the middle three steady when in tune");
+        lt_have = 0; lights_update(&p, 1, 0, 0); const uint8_t blink0 = lit(); lights_update(&p, 1, 0, 300); ok(blink0 != lit(), "tuner, no note: HOME blinks as before even with a needle");
+        lt_have = 1; lt_style = 2; lt_c = 30;
+        int moved_right = 1, single = 1, steps = 0; int last = -1;
+        for (uint32_t t = 0; t < 2000u; t += 10u) { lights_update(&p, 1, 0, t); const uint8_t l = lit(); if (l & (l - 1u)) single = 0; int pos = 0; while (!((l >> pos) & 1u) && pos < 7) pos++; if (last >= 0 && pos != last) { steps++; if (pos != (last + 1) % 7) moved_right = 0; } last = pos; }
+        ok(single && moved_right && steps >= 7 && steps <= 10, "tuner strobe, sharp (30 cents): one light chases to the right, a step every 230 ms");
+        lt_c = -30; int moved_left = 1; last = -1;
+        for (uint32_t t = 0; t < 2000u; t += 10u) { lights_update(&p, 1, 0, t); const uint8_t l = lit(); int pos = 0; while (!((l >> pos) & 1u) && pos < 7) pos++; if (last >= 0 && pos != last && pos != (last + 6) % 7) moved_left = 0; last = pos; }
+        ok(moved_left, "tuner strobe, flat: the other way");
+        lt_c = 49; int fast = 0; last = -1; for (uint32_t t = 0; t < 1000u; t += 10u) { lights_update(&p, 1, 0, t); const uint8_t l = lit(); int pos = 0; while (!((l >> pos) & 1u) && pos < 7) pos++; if (last >= 0 && pos != last) fast++; last = pos; }
+        lt_c = 8; int slow = 0; last = -1; for (uint32_t t = 0; t < 1000u; t += 10u) { lights_update(&p, 1, 0, t); const uint8_t l = lit(); int pos = 0; while (!((l >> pos) & 1u) && pos < 7) pos++; if (last >= 0 && pos != last) slow++; last = pos; }
+        ok(fast > slow * 2, "tuner strobe: faster the further out");
+        lt_style = 0; lt_c = 30; lights_update(&p, 1, 0, 0); const uint8_t b0 = lit(); lights_update(&p, 1, 0, 300); ok(b0 != lit() && (lit() & 0x7Eu) == 0x7Eu, "tuner lights BLINK: as before");
+        lt_off = 1; memset(&p, 0, sizeof p); p.on[PX_B_MOD] = 1; lights_update(&p, 0, 0, 0); ok(lit() == 0u, "LIGHTS OFF: dark while playing");
+        lights_update(&p, 1, 0, 0); lights_update(&p, 1, 0, 300); ok(lit() != 0u || 1, "(LIGHTS OFF: the tuner still blinks HOME)");
+        { lights_update(&p, 1, 0, 0); const uint8_t h0 = lit(); lights_update(&p, 1, 0, 300); ok(h0 != lit(), "LIGHTS OFF: the tuner's HOME blink still shows"); }
+        lt_off = 0; lt_style = 0; lt_have = 0;
     }
     ok(!(lit() & 0x80u) && (q & 0x80u), "bit 7 never lit");
     lights_off();

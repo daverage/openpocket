@@ -12,7 +12,7 @@ const check = async (what, fn) => { await fn(); console.log(`${what.padEnd(76)} 
 // ---- MIDI ----
 await check("the Control Change map is the one docs/MIDI.md prints", () => {
   const md = readFileSync(`${ROOT}docs/MIDI.md`, "utf8");
-  const rows = [...md.matchAll(/^\| (GATE|COMP|OCTAVE|SYNTH|SFX|EQ|MOD|DELAY|REVERB) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \|$/gm)];
+  const rows = [...md.matchAll(/^\| (GATE|COMP|OCTAVE|SYNTH|SFX|EQ|MOD|DELAY|REVERB|BST \(PRE \/ BOOST\)) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \|$/gm)];
   assert.equal(rows.length, NBLK);
   rows.forEach((r, b) => {
     assert.equal(ccOn(b), +r[2]); assert.equal(ccType(b), +r[3]);

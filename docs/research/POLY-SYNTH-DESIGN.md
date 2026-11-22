@@ -31,7 +31,7 @@ STRING MACHINE uses the STRINGS HQ swell and tone filters. The direct voice supp
 a shorter envelope, lower waveshaping drive, and a separate BITE amount. ORGAN HQ already provides the drawbar patch.
 These are starting voicings for a pedal listening pass, especially on close dyads and fast stabs.
 
-To audition the host oscillator prototype, compile `tools/legacy-synth/track_bench.c` as described in its header and run
+To audition the host oscillator prototype, compile `tools/archive/legacy-synth/track_bench.c` as described in its header and run
 `build/track_bench input.wav notes.csv 1 pulse.f32`. Use a 44.1 kHz mono DI. CSV columns `v1` and `v2` show the assigned pitches, and `pick1` and `pick2` mark voice starts or retriggers. The render is mono 44.1 kHz native float32. The allocator acquires candidates after
 five agreeing frames, holds a missing voice for eight frames, and uses a rise in that candidate's salience as
 additional evidence for a repick. A synthetic 110/196 Hz pair demonstrated independent arrival and muting, with
@@ -62,7 +62,7 @@ To reproduce, compile the benchmark with `-DPXT_NB=22`, `-DPXT_SECOND_REL=0.35f`
 `-DPXT_SHARED_RESIDUAL=1` as appropriate:
 
 ```sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
 python3 tools/research/track_eval.py guitarset 24
 ```
 
@@ -115,7 +115,7 @@ ready for Saw Poly or Arcade Poly.
 
 ```sh
 OP_CHANNEL=pulse-test sh firmware/build.sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
 build/pulse_poly_bench notes.csv < mono-44100.f32 > pulse.f32
 ```
 
@@ -191,7 +191,7 @@ tests passed ASan and UBSan.
 
 ```sh
 OP_CHANNEL=poly-test sh firmware/build.sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
 build/pulse_poly_bench - fm 40 74 40 60 95 < mono-44100.f32 > fm.f32
 build/pulse_poly_bench --fm-oscillator 1250 5 capped > fm-high.f32
 ```
@@ -236,14 +236,14 @@ remain open.
 
 v57 is the reference for the tracking work that follows. The tracker and
 allocator are shared by all four Poly voicings, so one score covers them.
-`tools/legacy-synth/poly_score.py` reruns every figure below from
-`tools/legacy-synth/pulse_poly_bench.c` in about five seconds:
+`tools/archive/legacy-synth/poly_score.py` reruns every figure below from
+`tools/archive/legacy-synth/pulse_poly_bench.c` in about five seconds:
 
 ```sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
-PYTHONPATH=tools/research python3 tools/legacy-synth/poly_score.py build/pulse_poly_bench --guitar
-PYTHONPATH=tools/research python3 tools/legacy-synth/poly_score.py build/pulse_poly_bench --guitar --transpose -5
-PYTHONPATH=tools/research python3 tools/legacy-synth/poly_score.py build/pulse_poly_bench --bass-di DIR
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+PYTHONPATH=tools/research python3 tools/archive/legacy-synth/poly_score.py build/pulse_poly_bench --guitar
+PYTHONPATH=tools/research python3 tools/archive/legacy-synth/poly_score.py build/pulse_poly_bench --guitar --transpose -5
+PYTHONPATH=tools/research python3 tools/archive/legacy-synth/poly_score.py build/pulse_poly_bench --bass-di DIR
 ```
 
 | v57 voices, GuitarSet takes 24–47 | Standard | −5 semitones |
@@ -325,9 +325,9 @@ removed octaves entirely and lowered guitar dyads, so it was not kept. The
 recorded bass pairs drop from 0–20% to 0–6% both-note sustain. The GuitarSet
 bass measure rises from 51.3% to 56.9%.
 
-`tools/legacy-synth/poly_diag.py` breaks dyad accuracy down by interval, on the dev,
+`tools/archive/legacy-synth/poly_diag.py` breaks dyad accuracy down by interval, on the dev,
 held or remaining takes. `PXP_SET="RHO=0.3 ACQ=0.05 …"` overrides the picker
-and allocator constants in `tools/legacy-synth/pulse_poly_bench.c` for sweeps.
+and allocator constants in `tools/archive/legacy-synth/pulse_poly_bench.c` for sweeps.
 
 BlackBox v59: peak 18–21%, or 23–24% with Smart Gate. There were no late
 blocks, no safety bypass and the second core stayed active. The saved
@@ -341,7 +341,7 @@ FM is fun but tracks badly. STRING DUO's violin rarely sounds. STRING and
 BRASS ENSEMBLE track badly. CELLO ENSEMBLE's latency is good. STRING MACHINE
 and POLY OCT FUZZ are good. POLY OCTAVE HQ and OCT −2 are fine.
 
-`tools/legacy-synth/poly_latency.py` scores GuitarSet solos. On v65, 58% of voice
+`tools/archive/legacy-synth/poly_latency.py` scores GuitarSet solos. On v65, 58% of voice
 starts were on pitches nobody played, 196 a minute on the dev takes. Most
 were a second voice starting while the first held a note: on that note's
 octave (517), within a semitone of it, as during a bend (350), or on

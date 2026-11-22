@@ -6,7 +6,7 @@
   python3 tools/research/mono_compare.py report --set dev|test|owner
 
 Candidates (each writes t, f0 rows to build/stage5/<set>/<cand>/<take>.csv; f0 0 = no note):
-  engine   v70 MONO SYNTH as the pedal runs it (tools/legacy-synth/mono_bench.c, build/mono_v70): causal
+  engine   v70 MONO SYNTH as the pedal runs it (tools/archive/legacy-synth/mono_bench.c, build/mono_v70): causal
   q        Cycfi Q bitstream autocorrelation with its own conditioning (tools/research/q_bench.cpp): causal
   yin      librosa YIN, 46 ms frames, stamped at the frame's end: causal
   pyin     librosa pYIN with its Viterbi over the whole take: an offline reference, not a pedal candidate

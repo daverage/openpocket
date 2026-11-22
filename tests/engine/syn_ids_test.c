@@ -25,7 +25,7 @@ int main(void)
     CHECK(PX_SYN_OCT_FUZZ == 16, "POLY OCT FUZZ keeps id 16");
     CHECK(PX_SYN_X_STRING_DUO == 27, "STRING DUO was the last legacy id (27)");
     CHECK(px_ntypes(PX_B_SYN) >= 28 && PX_SYN_ANALOG == 28 && PX_SYN_ARCADE == 29 && PX_SYN_ARCADE_SPLIT == 30 && PX_SYN_INSTRUMENT == 31 && PX_SYN_ENSEMBLE == 32 && PX_SYN_CHOIR == 33, "the catalogue never shrinks; Synth2's ANALOG and ARCADE are the first appended ids (28, 29)");
-    px_preset_t off; px_preset_factory(&off, 7);
+    px_preset_t off; px_preset_base(&off);
     for (int z = 0; z < PX_NBLK; z++) off.on[z] = 0;
     static float ref[2048]; render(&off, ref);
     for (int t = 0; t < 256; t++) {

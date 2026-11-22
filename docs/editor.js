@@ -2,11 +2,13 @@
 // OpenPocket web editor: the start. Finding the pedal and every way that can fail, the sections and the way between
 // them, the DSP load, the keyboard. The sections themselves: edsound.js, edpresets.js, edmidi.js.
 
-import { app, $, h, icon, on, emit, say, busy } from "./edcore.js";
+import { app, $, h, icon, on, emit, say, busy, toast } from "./edcore.js";
 import { Editor } from "./pxedit.js";
 import { initPresets, loadBank, refreshSlots, refreshBank, stepPreset, save, comparing, compareSlotChanged, compareBeforeUnload } from "./edpresets.js";
 import { initSound } from "./edsound.js";
 import { initMidi } from "./edmidi.js";
+import { initGlobal } from "./edglobal.js";
+import { initStage } from "./edstage.js";
 
 let pingTimer = null, connecting = false, progress = 0;
 
@@ -84,7 +86,7 @@ async function ping() {
     const gap = Date.now() - pinged;
     pinged = Date.now();
     if (gap > 4000 && app.conn === "ready") { await app.ed.watch(true); if (!comparing()) { app.st = await app.ed.state(); app.focus = app.st.focus; emit("state", { push: true }); } }
-    app.ping = await app.ed.ping(); renderLoad(); emit("ping");
+    app.ping = await app.ed.ping(); await readShed(); renderLoad(); emit("ping");
   } catch (_) { }
 }
 
@@ -168,23 +170,38 @@ function setView(v, push = true) {
 }
 
 // ---- the DSP load ----
-function loadLevel(p) { return p.bypass ? "over" : p.load >= 85 ? "high" : p.load >= 70 ? "warm" : "ok"; }
+// v75: the pedal's safeguard switches the heaviest block off before it gives up and bypasses everything (PING flag bit 2, then SHED says which)
+async function readShed() {
+  const p = app.ping;
+  if (!p || !app.ed.hasShed) { app.shed = null; return; }
+  if (!p.shed) { app.shed = null; return; }
+  const s = await app.ed.shed();
+  const fresh = s.blocks.filter((b) => !app.shed || !app.shed.blocks.includes(b));
+  app.shed = s;
+  if (fresh.length && app.st) {
+    const names = fresh.map((b) => app.cat.blocks[b].name).join(", ");
+    toast(`Overload: ${names} switched off to keep the sound going.`, { kind: "err", action: { label: "Bring back", run: restoreShed } });
+  }
+}
+async function restoreShed() { try { app.shed = null; await app.ed.shed(true); } catch (_) { } ping(); }
+function loadLevel(p) { return p.bypass ? "over" : p.shed ? "high" : p.load >= 85 ? "high" : p.load >= 70 ? "warm" : "ok"; }
 function renderLoad() {
   const p = app.ping;
   if (!p) return;
   const lv = loadLevel(p), el = $("load");
   el.dataset.level = lv;
-  $("loadv").textContent = p.bypass ? "BYPASS" : `${p.load}%`;
+  $("loadv").textContent = p.bypass ? "BYPASS" : p.shed ? "SHED" : `${p.load}%`;
   $("loadbar").style.width = `${Math.min(100, p.load)}%`;
   $("loadpeak").style.left = `${Math.min(100, p.peak ?? p.load)}%`;
   $("loadpeak").hidden = p.peak === undefined;
-  el.setAttribute("aria-label", p.bypass ? "DSP overload: the pedal bypasses the effects" : `DSP load ${p.load} percent`);
+  el.setAttribute("aria-label", p.bypass ? "DSP overload: the pedal bypasses the effects" : p.shed ? "DSP overload: a block is switched off" : `DSP load ${p.load} percent`);
   if ($("loadpop").matches(":popover-open")) renderLoadPop();
 }
 function renderLoadPop() {
   const p = app.ping, pop = $("loadpop"), lv = loadLevel(p);
   const words = { ok: "Room to spare.", warm: "Getting full: another heavy block may not fit.", high: "Near the limit. One more block can push the pedal into its overload guard.",
     over: "Overload guard: the pedal passes the guitar through without effects. Switch a block off, or choose a lighter type." };
+  if (p.shed && app.shed && app.st) words.high = `Overload: ${app.shed.blocks.map((b) => app.cat.blocks[b].name).join(", ")} ${app.shed.blocks.length > 1 ? "are" : "is"} switched off to keep the sound going. Choose a lighter type, switch another block off, or bring it back.`;
   pop.textContent = "";
   pop.append(h("h2", { text: "DSP load" }), h("p", { class: lv === "ok" ? "dim" : "warn", text: words[lv] }),
     h("dl", { class: "facts" },
@@ -192,6 +209,7 @@ function renderLoadPop() {
       p.peak !== undefined && [h("dt", { text: "Peak, this preset" }), h("dd", { text: `${p.peak} %` }), h("dt", { text: "Peak since power-on" }), h("dd", { text: `${p.peakAll} %` }),
         h("dt", { text: "Late audio blocks" }), h("dd", { text: p.xrun ? `${p.xrun} since power-on (each one is a click)` : "none" }),
         h("dt", { text: "Blocks at the clipper" }), h("dd", { text: p.clip ? `${p.clip} since power-on: lower the preset LEVEL` : "none" })]));
+  if (p.shed && app.shed) pop.append(h("button", { type: "button", class: "btn small", text: "Bring back the blocks", onclick: restoreShed }));
   if (p.prof && app.st) {
     const rows = app.st.preset.order.filter((b) => p.prof[b]).map((b) => ({ name: app.cat.blocks[b].label, v: p.prof[b], c: app.cat.blocks[b].color }));
     if (rows.length) pop.append(h("h3", { text: "Where it goes" }), h("div", { class: "prof" }, rows.map((r) =>
@@ -212,7 +230,7 @@ function renderConnPop() {
 }
 
 // ---- start ----
-initPresets(); initSound(); initMidi();
+initPresets(); initSound(); initMidi(); initGlobal(); initStage();
 on("view-go", (v) => setView(v));
 $("reconnect").onclick = connect;
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setView(b.dataset.go); };

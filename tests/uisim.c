@@ -30,8 +30,11 @@ static int st_reset(uint32_t k) { saved_ok[k] = 0; return 0; }
 static int st_saved(uint32_t k) { return saved_ok[k]; }
 static uint8_t saved_fs[52], ui_fs = 0xFFu;                 /* v48: footswitch assignments */
 static uint8_t st_fs_of(uint32_t k) { return saved_ok[k] ? saved_fs[k] : 0xFFu; }
-static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs) { st_save(k, p); saved_fs[k] = fs; return 0; }
-static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); }
+static uint8_t saved_gs[52][4];                             /* v75: footswitch gestures */
+static void st_gs_of(uint32_t k, uint8_t *out) { for (int i = 0; i < 4; i++) out[i] = saved_ok[k] ? saved_gs[k][i] : 0xFFu; }
+static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs) { st_save(k, p); saved_fs[k] = fs; for (int i = 0; i < 4; i++) saved_gs[k][i] = gs ? gs[i] : 0xFFu; return 0; }
+static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs) { return st_save_fsg(k, p, fs, 0); }
+static void load_preset(uint32_t i);
 static int a_level_db(int ch) { return ch ? -84 : -62; }
 static uint8_t a_pf[PX_NBLK] = {0, 0, 0, 64, 0, 3, 0, 5, 7};   /* v38: CPU per block (the tuner's footer) */
 static uint32_t a_wcut = 2;                            /* v39: wet blocks cut short */
@@ -46,6 +49,7 @@ static int midi_saved;
 static void midi_persist(void) { midi_saved++; }
 #include "ui_text.h"
 #include "ui.h"
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); }   /* (v75: and its gestures) */
 
 static void shot(const char *dir, const char *name)
 {
@@ -294,6 +298,57 @@ static int overhaul(const char *d)
     return 0;
 }
 
+/* v75: footswitch gestures: a double tap (STOMP mode) and a hold, per footswitch, each an action; the press's own toggle is taken back for a hold */
+static int gestures(void)
+{
+    int bad = 0;
+#define GCHECK(c, what) do { if (!(c)) { printf("gestures: %s\n", what); bad++; } } while (0)
+    load_preset(9); cur_preset = 9; ui_mode = M_CHAIN; ui_item = 0; ui_stomp = 1; ui_byp = 0;
+    ui_fs = 0xFFu; ui_fs_put(0, PX_B_BST); ui_fs_put(1, PX_B_EQ);
+    PRESET.on[PX_B_BST] = 0; PRESET.on[PX_B_EQ] = 0; PRESET.on[PX_B_COMP] = 0;
+    ui_gs[0] = PX_B_COMP; ui_gs[1] = UI_GA_NEXT; ui_gs[2] = UI_GA_TUNER; ui_gs[3] = UI_GA_MODE;     /* left: double COMP, hold next preset; right: double tuner, hold mode */
+    hold(0, 500);
+    tap(UB_FSDN); hold(0, 500);
+    GCHECK(PRESET.on[PX_B_BST] == 1 && PRESET.on[PX_B_COMP] == 0, "a single tap: its own toggle, no gesture");
+    tap(UB_FSDN); hold(0, 500);                                   /* BST off again */
+    tap(UB_FSDN); hold(0, 120); tap(UB_FSDN); hold(0, 500);
+    GCHECK(PRESET.on[PX_B_BST] == 0 && PRESET.on[PX_B_COMP] == 1, "a double tap: the two toggles cancel, the action runs (COMP on)");
+    tap(UB_FSDN); hold(0, 450); tap(UB_FSDN); hold(0, 500);
+    GCHECK(PRESET.on[PX_B_BST] == 0 && PRESET.on[PX_B_COMP] == 1, "two taps 450 ms apart: two single taps, no gesture");
+    { const uint32_t was = cur_preset; PRESET.on[PX_B_BST] = 0;
+      hold(1u << UB_FSDN, 800); hold(0, 300);
+      GCHECK(PRESET.on[PX_B_BST] == 0 && cur_preset != was, "a hold: its own toggle is taken back, the next preset plays"); }
+    load_preset(9); cur_preset = 9; ui_stomp = 1; ui_fs = 0xFFu; ui_fs_put(0, PX_B_BST); ui_fs_put(1, PX_B_EQ); ui_gs[0] = 0xFF; ui_gs[1] = 0xFF; ui_gs[2] = UI_GA_TUNER; ui_gs[3] = 0xFF;
+    PRESET.on[PX_B_BST] = 0; hold(0, 500);
+    hold(1u << UB_FSDN, 900); hold(0, 300);
+    GCHECK(PRESET.on[PX_B_BST] == 1, "no hold gesture set: the press's toggle stands");
+    PRESET.on[PX_B_BST] = 0; PRESET.on[PX_B_EQ] = 0; hold(0, 400);
+    tap(UB_FSUP); hold(0, 120); tap(UB_FSUP); hold(0, 200);
+    GCHECK(ui_mode == M_TUNER && PRESET.on[PX_B_EQ] == 0, "a double tap on the right: the tuner, the toggles cancelled");
+    hold(1u << UB_FSUP, 60); hold(0, 300);
+    GCHECK(ui_mode == M_CHAIN, "any switch leaves the tuner");
+    ui_gs[0] = PX_B_COMP; PRESET.on[PX_B_COMP] = 0; PRESET.on[PX_B_BST] = 0; hold(0, 400);
+    hold(1u << UB_FSDN | 1u << UB_FSUP, 60); hold(0, 300);
+    GCHECK(ui_mode == M_TUNER && PRESET.on[PX_B_COMP] == 0, "both footswitches: the tuner, no gesture");
+    hold(1u << UB_FSDN, 60); hold(0, 400);
+    /* PATCH mode: a hold works (its step taken back), a double tap does not */
+    ui_stomp = 0; load_preset(9); cur_preset = 9; ui_gs[0] = PX_B_COMP; ui_gs[1] = UI_GA_TUNER; ui_gs[2] = 0xFF; ui_gs[3] = 0xFF; PRESET.on[PX_B_COMP] = 0; hold(0, 400);
+    hold(1u << UB_FSDN, 800); hold(0, 300);
+    GCHECK(ui_mode == M_TUNER && cur_preset == 9, "PATCH mode: a hold takes its preset step back and opens the tuner");
+    hold(1u << UB_FSDN, 60); hold(0, 400);
+    ui_gs[1] = 0xFF; tap(UB_FSUP); hold(0, 120); tap(UB_FSUP); hold(0, 400);
+    GCHECK(PRESET.on[PX_B_COMP] == 0, "PATCH mode: a double tap runs no gesture");
+    /* the gestures are part of the preset: EDITED until they are saved, kept with the slot */
+    ui_stomp = 1; load_preset(9); cur_preset = 9; ui_gs[0] = 0xFF; ui_gs[1] = 0xFF; ui_gs[2] = 0xFF; ui_gs[3] = 0xFF;
+    GCHECK(!ui_dirty(), "unchanged gestures: not edited");
+    ui_gs[1] = UI_GA_TUNER; GCHECK(ui_dirty(), "a gesture set: the preset reads EDITED");
+    st_save_fsg(9, &PRESET, ui_fs, ui_gs); load_preset(9);
+    GCHECK(ui_gs[1] == UI_GA_TUNER && !ui_dirty(), "saved with the slot: back after loading it, not edited");
+    GCHECK(!ui_ga_valid(10) && !ui_ga_valid(11) && !ui_ga_valid(20) && ui_ga_valid(PX_B_BST) && ui_ga_valid(12) && ui_ga_valid(UI_GA_MODE), "action codes: blocks, BYPASS (12), 16..19; 10, 11, 20 and 0xFF are nothing");
+    st_reset(9); st_gen++; load_preset(9); cur_preset = 9; ui_stomp = 0; ui_byp = 0; hold(0, 300);
+#undef GCHECK
+    return bad;
+}
 int main(int argc, char **argv)
 {
     const char *d = argc > 1 ? argv[1] : ".";
@@ -344,5 +399,5 @@ int main(int argc, char **argv)
     mid_cfg.chan = 16; midi_open(); midi_knob(1); midi_draw(); shot(d, "midi_channel_wraps_to_omni");
     if (mid_cfg.chan != 0) { printf("midi: channel 16 + 1 must wrap to omni\n"); return 1; }
     midi_knob(-1); if (mid_cfg.chan != 16) { printf("midi: omni - 1 must wrap to 16\n"); return 1; }
-    return quick_wins(d) || overhaul(d);
+    return quick_wins(d) || overhaul(d) || gestures();
 }

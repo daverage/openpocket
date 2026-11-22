@@ -12,13 +12,16 @@
  * I2S driver: the one from the official JieLi SDK (sdk/iis.bc, Apache-2.0), compiled from its bitcode.
  *
  * Processing runs in the I2S interrupt (block of 128 frames = 2.9 ms), in float on the hardware
- * FPU (-mcpu=r3 -mfprev1). Safeguard: if the DSP takes more than 85 % of the time for 8 blocks
- * in a row, we switch to BYPASS (direct guitar) instead of locking up the pedal. The UI shows the load.
+ * FPU (-mcpu=r3 -mfprev1). Safeguard (v75: in stages): if the DSP takes more than 85 % of the time for 4 blocks in a
+ * row, the heaviest block is switched off (px_engine_shed: a fade, the preset unchanged, up to 3 blocks, one every ~35 ms);
+ * only if it is still over for 8 blocks in a row (or there is no block left to shed) we switch to BYPASS (direct guitar)
+ * instead of locking up the pedal. The UI shows the load, and SHED while a block is off for it.
  */
 #pragma once
 #include <stdint.h>
 #include <math.h>
 #include "px_dsp.h"
+#include "px_shed.h"
 
 /* ===================== JieLi I2S driver API (SDK iis.h) ===================== */
 struct iis_platform_data {
@@ -94,7 +97,15 @@ static uint32_t a_lds;
  * misses part of a block), a_xrun_at the block of the last one; a_clip: blocks whose output reached the soft clipper's
  * knee (0.8 of full scale; it used to be a hard clip at full scale) */
 static volatile uint32_t a_xrun, a_xrun_at, a_clip, a_peak_all;
-static volatile uint8_t a_bypass, a_over, a_hold;   /* a_hold: DSP held off (boot, safe mode) */
+static volatile uint8_t a_bypass, a_hold;   /* a_hold: DSP held off (boot, safe mode) */
+/* v75: load shedding (px_shed.h). a_shed: the blocks switched off for the load now (bit b; px_engine.shed); a_sh: the judge's state (its total: how many
+ * times since boot); a_unshed: the main loop asks for them back (applied at the next block) */
+static volatile uint16_t a_shed;
+static px_shed_t a_sh;
+static volatile uint8_t a_unshed;
+/* v75: the global settings (px_global_t): a copy for the audio side, applied at the start of its next block (a_commit) */
+static px_global_t a_gl;
+static volatile uint8_t a_gpend;
 static volatile uint8_t a_ubyp;                     /* v48: BYPASS chosen on a footswitch (ui.h): the dry guitar, DSP off */
 static volatile uint8_t a_mute;                      /* output zeros (a flash write is coming) */
 static volatile uint8_t a_tmute;                     /* v36: tuner open: the output fades to silence (5 ms) */
@@ -112,7 +123,12 @@ static volatile uint8_t a_xft = 1;                     /* where the change fade 
 static px_preset_t a_kp;
 static volatile uint8_t a_kpend;
 static uint8_t a_full;                                 /* the next apply must be a full one (a user model rewritten) */
-static void a_commit(void) { if (a_kpend) { px_engine_knobs(&g_eng, &a_kp); a_kpend = 0; } }
+static void a_commit(void)
+{
+    if (a_gpend) { px_engine_globals(&g_eng, &a_gl); a_gpend = 0; }   /* v75: the global settings */
+    if (a_unshed) { px_engine_unshed(&g_eng); a_unshed = 0; px_shed_reset(&a_sh); }   /* v75: the blocks shed for the load come back */
+    if (a_kpend) { px_engine_knobs(&g_eng, &a_kp); a_kpend = 0; }
+}
 /* v38: where the time goes, per block, over the last second: % of an audio block's time */
 static uint8_t a_pf[PX_NBLK];
 static uint32_t a_wcut;                                /* v39: wet blocks cut short so far (the footer, when not 0) */
@@ -201,8 +217,11 @@ static void dsp_load(uint32_t t0, uint32_t lim)        /* the block's load, the 
     if (pct > a_peak) a_peak = pct;
     if (pct > a_peak_all) a_peak_all = pct;
     if (pct >= 100u && !a_hold) { a_xrun++; a_xrun_at = a_blocks; }
+    a_shed = g_eng.shed;
     if (!a_bypass && !a_hold) {
-        if (pct > lim) { if (++a_over >= 8u) a_bypass = 1; } else a_over = 0;
+        const int r = px_shed_judge(&a_sh, &g_eng, pct, lim);
+        if (r == PX_SHED_DID) a_shed = g_eng.shed;
+        else if (r == PX_SHED_BYPASS) a_bypass = 1;
     }
     a_blocks++;
 }
@@ -240,8 +259,7 @@ static void a_collect(void)                            /* collects the block in 
 #endif
 }
 
-/* ---- tuner: the interrupt stores the input decimated by 4 (11025 Hz); the main loop estimates the note ---- */
-#define TN_N 1024u
+/* ---- tuner: the interrupt stores the input low-passed and decimated by 4 (11025 Hz); the main loop estimates the note (px_tuner.h, v75) ---- */
 #if OP_BLE_TEST   /* the Bluetooth test image: the buffers in the cache RAM (app.ld CRAM); without it (pxc_init failed) no tuner */
 #define TN_MEM __attribute__((section(".cram.tuner")))
 #define TN_READY (pxc_status == PXC_READY)
@@ -249,55 +267,7 @@ static void a_collect(void)                            /* collects the block in 
 #define TN_MEM
 #define TN_READY 1
 #endif
-static float tn_buf[TN_N] TN_MEM;
-static volatile uint32_t tn_w;
-static void tn_capture(const float *x, uint32_t n)
-{
-    if (!TN_READY) return;
-    uint32_t w = tn_w;
-    for (uint32_t i = 0; i + 3u < n; i += 4u) {
-        tn_buf[w] = (x[i] + x[i + 1u] + x[i + 2u] + x[i + 3u]) * 0.25f;
-        w = (w + 1u) & (TN_N - 1u);
-    }
-    tn_w = w;
-}
-#define TN_W 600u
-#define TN_TMAX 180u
-static float tn_lin[TN_W + TN_TMAX] TN_MEM;   /* the newest W + TMAX samples in order: all the difference function reads */
-static float tn_d[200] TN_MEM;
-static float tuner_estimate(void)      /* frequency in Hz, or 0 (silence / unclear). YIN algorithm. */
-{
-    const uint32_t W = TN_W, TMIN = 10u, TMAX = TN_TMAX;  /* 61 Hz .. 1100 Hz at 11025 Hz */
-    uint32_t w = tn_w;
-    float e = 0.0f;
-    if (!TN_READY) return 0.0f;
-    for (uint32_t i = 0; i < TN_N; i++) {              /* the energy over all TN_N samples, the copy of the newest */
-        const float v = tn_buf[(w + i) & (TN_N - 1u)];
-        e += v * v;
-        if (i >= TN_N - W - TMAX) tn_lin[i - (TN_N - W - TMAX)] = v;
-    }
-    if (e < (float)TN_N * 1.0e-6f) return 0.0f;        /* too weak: nothing to tune */
-    const float *x = tn_lin;
-    float run = 0.0f;
-    tn_d[0] = 1.0f;
-    for (uint32_t t = 1; t <= TMAX; t++) {
-        float d = 0.0f;
-        for (uint32_t i = 0; i < W; i++) { float v = x[i] - x[i + t]; d += v * v; }
-        run += d;
-        tn_d[t] = (run > 0.0f) ? d * (float)t / run : 1.0f;
-    }
-    uint32_t best = 0;
-    for (uint32_t t = TMIN; t < TMAX; t++)
-        if (tn_d[t] < 0.15f) { while (t + 1u < TMAX && tn_d[t + 1u] < tn_d[t]) t++; best = t; break; }
-    if (!best) {
-        float m = 0.35f;
-        for (uint32_t t = TMIN; t < TMAX; t++) if (tn_d[t] < m) { m = tn_d[t]; best = t; }
-        if (!best) return 0.0f;
-    }
-    float a = tn_d[best - 1u], b = tn_d[best], c = tn_d[best + 1u], den = a - 2.0f * b + c;
-    float tf = (float)best + ((den != 0.0f) ? 0.5f * (a - c) / den : 0.0f);
-    return 11025.0f / tf;
-}
+#include "px_tuner.h"
 
 /* v40.2: OP_TESTSIG 1 (measurements only, never a release): a synthetic guitar replaces the input, so the effects that
  * work only while something sounds (envelopes, pitch tracking, the synth's keys, tails) run as with a player: a note and
@@ -419,6 +389,12 @@ static int a_wait(volatile uint8_t *v, uint8_t until, uint32_t ms)   /* 1 = *v r
     for (uint32_t t = 0; *v != until; t++) { if (t >= ms * 10u) return 0; fm1_delay_us(100); }
     return 1;
 }
+static void audio_globals(const px_global_t *g)       /* v75: new global settings (main loop): the audio side takes them at its next block */
+{
+    a_gl = *g;
+    __asm__ volatile("" ::: "memory");
+    a_gpend = 1;
+}
 static void audio_apply(void)                          /* the preset to the engine (main loop) */
 {
     px_preset_t pp;
@@ -447,7 +423,7 @@ static void audio_apply(void)                          /* the preset to the engi
     px_engine_set(&g_eng, &pp);
     a_swset = fm1_ticks() - t0;
     a_kpend = 0;
-    a_bypass = 0; a_over = 0; a_peak = 0;
+    a_bypass = 0; px_shed_reset(&a_sh); a_peak = 0; a_unshed = 0;   /* (px_engine_set cleared the shed blocks) */
     if (a_xf != 1.0f) a_swin = 1; else a_sw1 = fm1_ticks();   /* (not faded out: the audio was not running) */
     if (a_running) fm1_irq_unmask(FM1_IRQ_ALNK0);
     a_xft = 1;
@@ -462,6 +438,7 @@ static void audio_reset(void)                          /* after a NaN: engine re
 #if DSP_CPU1
     px_wet_mode(&g_eng, a_c1 && OP_WET_LANES, A_WLAG);   /* (the init cleared it) */
 #endif
+    px_engine_globals(&g_eng, &a_gl);                  /* v75 (the init cleared them) */
     px_engine_set(&g_eng, &pp);
     a_kpend = 0; a_xf = 0.0f; a_xft = 1;               /* (back from silence) */
     a_nan = 0; a_nan_count++;
@@ -509,6 +486,7 @@ static void audio_start(void)
 {
     op_stage(ST_ENG_INIT, "ENGINE INIT...");
     px_engine_init(&g_eng, 44100.0f);
+    px_engine_globals(&g_eng, &a_gl);                  /* v75: the global settings, loaded with the store before this */
     px_clock = b_ticks;                                /* v38: each block's time (the tuner page shows it) */
     op_stage(ST_ENG_SET, "ENGINE SET...");
 #if DSP_CPU1

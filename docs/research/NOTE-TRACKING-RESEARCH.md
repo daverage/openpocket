@@ -49,7 +49,7 @@ the false octave that returns when the allocator sees high even partials.
 
 ### Octave evidence results
 
-`tools/legacy-synth/octave_evidence.py` feeds the original audio to the host Poly
+`tools/archive/legacy-synth/octave_evidence.py` feeds the original audio to the host Poly
 resonator dump. It compares the Stage 1 candidate's static check with several
 causal features, including an average of the last four reports (11.6 ms).
 It calibrates the thresholds to the static check's single-note admission rate
@@ -57,9 +57,9 @@ on GuitarSet takes 0–23. It reads the same fixed owner DI note ranges as
 `poly_diag.py`.
 
 ```sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
-python3 tools/legacy-synth/octave_evidence.py build/pulse_poly_bench --offset 24 --owner-di 'My Audio'
-python3 tools/legacy-synth/octave_evidence.py build/pulse_poly_bench --offset 144
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/pulse_poly_bench.c firmware/px_math.c -lm -o build/pulse_poly_bench
+python3 tools/archive/legacy-synth/octave_evidence.py build/pulse_poly_bench --offset 24 --owner-di 'My Audio'
+python3 tools/archive/legacy-synth/octave_evidence.py build/pulse_poly_bench --offset 144
 ```
 
 The four-report average measures the balance between odd and even groups.

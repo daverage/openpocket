@@ -242,6 +242,7 @@ export async function startSim(opts = {}) {
     if (what === "tuner") return json(res, await ok(`#hz ${num(a, 0, 5000, "tuner Hz")}`));
     if (what === "load") return json(res, await ok(`#dsp load ${Math.trunc(num(a, 0, 999, "DSP load"))}`));
     if (what === "bypass") return json(res, await ok(`#dsp bypass ${Math.trunc(num(a, 0, 1, "bypass"))}`));
+    if (what === "shed") return json(res, await ok(`#dsp shed ${Math.trunc(num(a, 0, 1023, "shed mask"))}`));
     throw new HttpError(404, "no such endpoint");
   }
 

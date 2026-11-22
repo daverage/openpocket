@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure the MONO SYNTH lead through interference and after a lead mute.
 
-Run against one or more tools/legacy-synth/mono_bench.c builds. The bench reports the
+Run against one or more tools/archive/legacy-synth/mono_bench.c builds. The bench reports the
 sounding oscillator pitch every 64 samples. Use --pair LEAD_MIDI LEAD.wav
 SECOND_MIDI SECOND.wav to add a pair of isolated real guitar plucks.
 """

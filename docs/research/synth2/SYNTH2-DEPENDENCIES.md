@@ -23,7 +23,7 @@ block alone; all identical).
 | `engine/px_acoustic.h`, `engine/px_acoustic_bank.h`, `tools/mk_acoustic_bank.py`, `tests/engine/acoustic_test.c` | TRUMPET, CELLO, CELLO SECTION, STRING/BRASS ENSEMBLE |
 | `syn_run`, `syn_organ_run`, `syn_keys*`, `syn_shift`, `syn_ladder*`, `syn_tap`, `ps_voice_al`, `syn_voice`, `syn_octave_hq`, the old `rc_syn` cases, their param-text and level-helper functions | ORGAN, CHURCH, STRINGS, CHOIR (+HQ), MONO, PWM, BASS HQ, 12-STRING, ACOUSTIC, SITAR, BARITONE, BRASS, STRING MACHINE |
 | `px_engine` state: `syn_buf`, `syn_cb`/`syn_ac`, `syn_ph/off/inc/W`, ladder, tracker, sitar and envelope state, `syn_track_hq`, `px_acoustic`, `PX_SYN_CB` | the above |
-| `tools/sim`/`tools/research` benches and scripts of the retired voices and the Duo | moved to `tools/legacy-synth/` (they do not build against this tree; they build on the `synth` branch) |
+| `tools/sim`/`tools/research` benches and scripts of the retired voices and the Duo | moved to `tools/archive/legacy-synth/` (they do not build against this tree; they build on the `synth` branch) |
 
 ## Not decided here
 

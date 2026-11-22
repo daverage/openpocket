@@ -5,10 +5,14 @@ export const ENGINE_RATE = 44100;
 export const BLOCK = 128;
 // tools/calib_levels.py: a guitar at the pedal's level, which a full-scale DI recording reaches at this gain
 export const GUITAR_LEVEL = 0.15;
-const NAME = 14, NBLK = 9, NPAR = 5;                     // v70: 9 blocks
+const NAME = 14, NBLK = 10, NPAR = 5;                    // v75: 10 blocks (v70: 9)
 
 // `preset` is the sound as `GET /api/state` reports it; the bytes are px_preset_t (engine/px_dsp.h)
 export function presetBytes(preset) {
+  if (preset.on.length === NBLK - 1) {          // a nine-block preset (v70..v74): BST added, off, right after the gate in the order
+    preset = { ...preset, on: [...preset.on, 0], type: [...preset.type, 0], p: [...preset.p, [50, 0, 0, 0, 0]],
+      order: preset.order.flatMap((b) => (b === 0 ? [0, NBLK - 1] : [b])) };
+  }
   const b = new Uint8Array(NAME + NBLK * 3 + NBLK * NPAR);
   b.set([...preset.name].slice(0, NAME - 1).map((c) => c.charCodeAt(0)));
   b.set(preset.on, NAME);

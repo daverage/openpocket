@@ -86,7 +86,7 @@ Synth2 (docs/research/synth2/SYNTH2-PLAN.md) rebuilt this block: POLY OCT FUZZ f
 | Mono synth, sung vowels | CHOIR | VOWEL, SINGERS, SPREAD, TONE, LEVEL | The original FM-1 synth's VOICE engine (a Klatt formant synthesizer: a glottal source through formant resonators, with breath), one note from the tracker sung by several singers. VOWEL 0-9 AH, 10-19 EH, 20-29 EE, 30-39 OH, 40-49 OO, 50-59 OO>AH, 60-69 AH>OO, 70-79 AH>EE (the mouth moves from one vowel to the other over each note, 330 ms), 80-89 MIXED (every note and singer a random vowel), 90-100 BREATHY (a whisper). SINGERS are the ENSEMBLE voicings (2 to 5 singers; UNISON 3), SPREAD scales each singer's drift and detune, TONE shifts all the formants +-5 semitones (the size of the singer), LEVEL as the others. Attack 190 ms, release 800 ms (Felucca's CHOIR AAH: 476 ms and 980 ms). One note, not a chord (docs/research/synth2/SYNTH2-VOICE-CHOIR.md) |
 | Octave fuzz (chords OK) | POLY OCT FUZZ | DOWN, UP, FUZZ, TONE, LEVEL | mixes dry guitar and both HQ octave voices before the complete Drive Fuzz Face. With both octaves at zero and TONE and LEVEL at noon, it matches Drive Fuzz Face at the same FUZZ and noon LEVEL. TONE adjusts treble around a flat noon setting. LEVEL (0–100, v66) sets the fuzz output: 0 is silent, noon is 0 dB, 100 is +6 dB. |
 
-**Retired types.** The 27 other SYNTH types of v29–v73 (organs, strings, choirs, MONO / PWM / BASS synths, 12-STRING, ACOUSTIC, SITAR, BARITONE, brass, trumpet, cello, STRING MACHINE, the Poly and Duo voices, the ensembles) are gone. Their numbers are never reused: a preset saved with one of them loads with the SYNTH block bypassed, keeps its stored type and its five settings untouched (until you pick another type and save), and shows RETIRED TYPE on the pedal and in the editor. The pedal and the editor skip retired types when you step through the list; MIDI model slices count only the live types.
+**Retired types.** The 27 other SYNTH types of v29–v73 (organs, strings, choirs, MONO / PWM / BASS synths, 12-STRING, ACOUSTIC, SITAR, BARITONE, brass, trumpet, cello, STRING MACHINE, the Poly and Duo voices, the ensembles) are gone. Their numbers are never reused: a preset saved with one of them loads with the SYNTH block switched off and set to the first live type (its five settings are kept), with no message (v75: before it showed RETIRED TYPE). The same goes for the SFX types that moved to BST. The pedal and the editor skip retired types when you step through the list; MIDI model slices count only the live types.
 
 The old implementations are on the `synth` branch.
 
@@ -95,6 +95,10 @@ Turn up from `FULL` to select a cutoff from B1 to E5. Try E3 for the low E strin
 or A3 for the A string through fret 12. The filter tapers around the cutoff and follows pitch across all strings.
 Dry and OCT +1 keep their full range.
 
+### BST — PRE / BOOST (the tenth block)
+
+RANGEMASTER, EP BOOST, MAXIMIZER, FIXED WAH (the Vox V847 tone curve with the pedal parked; POSITION, PEAK, LEVEL), FUZZ FACE (the two-transistor circuit solved sample by sample, with FUZZ, VOLUME, PICKUP, BIAS and a germanium / silicon TRANSISTOR switch: it cleans up with the guitar's volume), and ENHANCE (moved here from SFX: BETTER adds second-harmonic warmth in parallel with the untouched signal, LOUDER is a clean 0 to +12 dB boost; [ENHANCE.md](ENHANCE.md)). Details in [PEDALS.md](PEDALS.md). It is reached with the FX button (GT, BST, CMP, SFX, EQ in the chain order), can be assigned to a footswitch in STOMP mode like any block, and is CC 29 (on/off), 61 (model), 97 and 102..105 (settings), toggle CC 17 in [MIDI.md](MIDI.md).
+
 ### Effects
 
 SMART GATE uses a filtered detector and learns the background while closed. Lower SENS to pick up quieter attacks. HOLD keeps it open through short gaps, RELEASE sets the closing fade, and REDUCTION sets how far the level dips. Start with a brief pause so the detector can hear the idle signal. A sudden noise jump can still open it.
@@ -102,9 +106,9 @@ SMART GATE uses a filtered detector and learns the background while closed. Lowe
 |---|---|
 | GT | NOISE GATE (THRESH, RELEASE), SMART GATE (SENS, RELEASE, HOLD, REDUCTION) |
 | CMP | SQUASH (Dyna Comp), STUDIO (parallel, MIX), OPTO LA-2 (optical, slow release), SLOW SWELL (attack removed: violin effect) |
-| PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (−1 and +1 octave), POLY OCTAVE HQ (same controls, phase-scaled octave voices), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents) |
-| SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, SQUARE SYNTH (square-wave synth + sub, opening filter), SQUARE SYNTH HQ (monophonic pitch-tracked square + sub with the same controls), ENHANCE (a clean harmonic enhancer modelled on the NE570 compander chip's gain cell: BETTER adds second-harmonic-led warmth in parallel with the untouched signal, LOUDER is a clean 0 to +12 dB boost; docs/ENHANCE.md) |
-| EQ | 5 BAND, GRAPHIC 5 (the Mesa "V"), PARAMETRIC |
+| PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (−1 and +1 octave), POLY OCTAVE HQ (same controls, phase-scaled octave voices), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents), POLY SHIFTER (v75: a phase-vocoder shifter for chords: SHIFT −12..+12 semitones, FINE ±50 cents, MIX, ATTACK; 17 ms of latency, dry and wet kept together; see [POLY-SHIFTER.md](POLY-SHIFTER.md)) |
+| SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, SQUARE SYNTH (square-wave synth + sub, opening filter), SQUARE SYNTH HQ (monophonic pitch-tracked square + sub with the same controls) (ENHANCE, RANGEMASTER, EP BOOST and MAXIMIZER moved to the BST block in v75: a stored preset is converted) |
+| EQ | 5 BAND, GRAPHIC 5 (the Mesa "V"), PARAMETRIC, HUM FILTER (v75: notches at the mains and its harmonics for 50 Hz countries (Europe, Asia, Africa, Australia) and 60 Hz countries (the Americas, Korea, Taiwan, parts of Japan and the Gulf); MAINS = 50 HZ, AUTO (it listens for which hum is in the signal and follows a change, in about a second) or 60 HZ; DEPTH 3..40 dB, WIDTH 1..20 Hz, HARMONICS 1..5. At the default width a low E (82 Hz) and an A (110 Hz) pass untouched; a 60 Hz hum's 2nd harmonic (120 Hz) sits next to the B string's lowest note (123 Hz), so keep WIDTH low when playing there) |
 | MOD | CE CHORUS, DIMENSION (4 modes), FLANGER, PHASE 90, SMALL STONE, UNI-VIBE, OPTO TREMOLO, BIAS TREMOLO, HARMONIC TREM, ROTARY (Leslie, real SLOW↔FAST ramp), VIBRATO |
 | DLY | DIGITAL, ANALOG BBD, MEMORY MAN (modulated repeats), TAPE EP-3 (wow & flutter), SPACE ECHO (3 heads, 7 combinations), REVERSE, LO-FI, DUAL TAP (quarter + dotted eighth) — TIME 20–2000 ms (REVERSE 250–1000 ms) |
 | REV | ROOM, HALL, CATHEDRAL, PLATE, SPRING (DRIP), SHIMMER (octave in the tail), GATED (80s), AMBIENT (up to 20 s) |
@@ -123,26 +127,29 @@ plate). DECAY sets the real decay time (RT60) of the lows: ROOM 0.3–1.2 s, HAL
 PLATE 0.6–5 s, SPRING 1.5–4 s, SHIMMER 2–8 s, AMBIENT 6–20 s. They run at 22 kHz in 16 bits (like the classic
 studio units), in a quarter of v34's memory.
 
-## Factory presets (v37): 24 sounds, all at the same loudness, then 28 USER slots
-Built round the NAM models (v37; v36's were built round the fitted amps) and the fitted drives. Every preset is levelled to the
-same loudness (-23 LUFS, EBU R128, measured on real DI guitar by `tools/level_presets.py`): going from a clean to a
-high-gain preset no longer jumps by 20 dB.
+### Overload (v75)
 
-| | Clean | Crunch | Lead | High gain | Effects |
-|---|---|---|---|---|---|
-| | 01 TWIN CLEAN | 07 TS BLUES | 13 BRIT LEAD | 17 MODERN ROCK | 22 VIBE ROCK |
-| | 02 CHORUS CLEAN | 08 BLUES BREAKUP | 14 SMOOTH LEAD | 18 5150 RHYTHM | 23 ORGAN |
-| | 03 AC15 CHIME | 09 KLON CRUNCH | 15 HAIR METAL | 19 TIGHT METAL | 24 ACOUSTIC |
-| | 04 FUNK WAH | 10 BRIT CRUNCH | 16 SPACE LEAD | 20 SWEDE DEATH | |
-| | 05 SURF SPRING | 11 70S ROCK | | 21 DOOM | |
-| | 06 AMBIENT SWELL | 12 BOUTIQUE | | | |
+The pedal watches how much of each audio block's time the effects take. When it stays over 85 % for four blocks in a row it **switches off the heaviest block** (a short fade, nothing in the preset changes), then waits a moment and, if it is still over, the next heaviest, up to three. Only when that is not enough, or there is nothing left to switch off, does it do what it always did: pass the dry guitar through (BYPASS). The screen reads **SHED 71%** instead of DSP while a block is off for the load, and the web editor hatches its tile, says so, and offers **Bring back**. A block comes back by itself when you switch it or change its type, and every preset change starts clean. The gate is never switched off. The web editor also warns before you switch on a block or pick a type that its estimate says will not fit (the estimate is `docs/pxcost.js`, from host timings scaled to one pedal reading; the real shares are PING's, shown in the editor's load popover).
 
-25–52: **USER 25 … USER 52**, a clean NAM TWIN + 1x12 + a little room, to build your own.
+## Factory presets (v75): 52 sounds, all at the same loudness
+A new bank (the old one was built round the NAM models and drives of v37, which v70 removed). Every preset plays as loud as the guitar alone at noon: its **PRESET LVL** (the GT page's 3rd line,
+-15..+15 dB) is set so that the mean loudness over the five bundled guitar loops (ITU-R BS.1770) is within 0.15 dB of the dry guitar (`tools/research/preset_levels.py`; `tests/engine/factory_test.c` keeps it
+within 0.5 dB and the peaks under -3 dBFS). The estimated processor share of every preset is under 55 % (the editor's `docs/pxcost.js`).
 
-**Levels (v36)**: every amp plays at the same loudness at GAIN noon and moves only +-3 dB over the whole knob; every
-block type, with its knobs at noon, keeps the loudness when switched on; each preset has its own **PRESET LVL**
-(GT page, 3rd line: -15..+15 dB) to balance your sounds. The output ends in a soft limiter (transparent up to
--2 dBFS) instead of a hard clip.
+| Group | Slots |
+|---|---|
+| Clean and boost | 01 CLEAN HALL, 02 STUDIO CLEAN, 03 TREBLE BOOST (RANGEMASTER), 04 RM FULL BODY, 05 EP PUSH, 06 EP FAT, 07 BBE MAX (MAXIMIZER), 08 WAH PARKED LO, 09 WAH PARKED HI (FIXED WAH), 10 ENHANCED |
+| Pitch | 11 POLY OCTAVES, 12 LOWEST OCT, 13 WHAMMY +12, 14 HARMONY +3RD, 15 HARMONY +5TH, 16 DETUNE, 17 POLY SHIFT +7, 18 SHIFT -12 PAD (POLY SHIFTER) |
+| Synths | 19 SQUARE LEAD, 20 SQ HQ BASS, 21 POLY FUZZ, 22 MOOG BASS, 23 CHIP LEAD, 24 STRING PAD, 25 JAZZ ORGAN, 26 STRING ENSEMB, 27 CHOIR AAH, 28 BRASS + SQ HQ, 29 ARCADE SPLIT, 30 ANALOG LEAD |
+| Modulation, delay, reverb | 31 CE CHORUS, 32 DIMENSION, 33 JET FLANGER, 34 PHASE 90, 35 UNI-VIBE, 36 OPTO TREM, 37 ROTARY, 38 SPRING SURF, 39 SHIMMER PAD, 40 AMBIENT WASH, 41 TAPE ECHO, 42 SPACE ECHO, 43 REVERSE |
+| Special effects and utility | 44 ENV WAH, 45 LFO WAH, 46 SLICER, 47 RING MOD, 48 LO-FI RADIO, 49 BIT CRUSH, 50 SLOW SWELL, 51 NOISY ROOM (smart gate, HUM FILTER, studio compressor, room) |
+| Blank | 52 INIT: the gate only, LEVEL 0 dB, to build your own |
+
+Presets you have saved are not touched: this is only what an unsaved slot plays and what **restore** gives back. The settings are a first set by ear-less measurement (the loudness and the processor share are
+measured; the voicing is not yet judged on a pedal).
+
+**Levels (v36)**: every block type, with its knobs at noon, keeps the loudness when switched on (`engine/px_trim.h`); each preset has its own **PRESET LVL** to balance your sounds. The output ends in a soft
+limiter (transparent up to -2 dBFS) instead of a hard clip.
 
 ## Controls
 | Control | Action |
@@ -211,6 +218,36 @@ CC 7 is the MASTER volume. Details, the clock sync and the limits: [MIDI.md](MID
 ## Tuner
 Both footswitches, or a long press on HOME. The output is muted while the tuner is open (v36). The note, how far off it
 is in cents, and an amber arrow on the side of the note that points toward in tune. Any switch leaves it.
+
+v75: it reads from **25 Hz to 1.5 kHz** (a 5-string bass's low B is 31 Hz; it used to stop at 61 Hz) and is steadied: the median of the last five readings, a note change shown at once,
+the in-tune state from 4 cents until 7 so it does not flicker at the edge. The reading is YIN (de Cheveigne and Kawahara) on the input low-passed to 11 kHz, then the fundamental's own frequency from how far its
+phase turns between two windows, so a string's stretched upper partials do not pull it sharp (they did, by about 2 cents). On synthetic strings it is within 1.5 cents from B0 to E6 (tests/tunersim.c; not yet heard on a real
+guitar). **The knob sets the reference A** (415 to 466 Hz, one hertz a detent; the editor's Global panel too; kept with the next save). Tuner lights: see "Global settings".
+
+## Global settings (v75)
+Set once for the pedal and the room, not per preset. In the web editor: **Global** in the header. They play at once and are written to the pedal's flash with the next save or a moment after the last change.
+
+| Setting | What it does |
+|---|---|
+| Input high-pass | off, or 20 to 140 Hz: cuts a steady low rumble before every effect (25 Hz and below for bass, about 80 Hz for a guitar on a loud stage) |
+| Output EQ | five bands, 80 Hz shelf, 250 Hz, 1 kHz, 3.5 kHz, 9 kHz shelf, each -12 to +12 dB |
+| Limiter | off, or a ceiling from -0.5 to -12 dB on the output |
+| Tails | a delay (3 s) or reverb (6 s) that is switched off, or left by a preset change, plays out with its input muted and its own settings instead of stopping |
+| Smart gate hush | 0 to 100 %: the SMART GATE's dynamic hiss filter, a low-pass that closes as the note dies away; only with the SMART GATE |
+| Tuner reference A | 415 to 466 Hz (also the knob on the tuner page) |
+| Tuner lights | BLINK (HOME blinks, as before), NEEDLE (one of the seven button lights moves from HOME to CAB with the cents; the three in the middle are steady when in tune), STROBE (one light chases toward the side the note is out to, faster the further out) |
+| Lights off | the button lights stay dark while you play (the tuner still shows) |
+
+The defaults change nothing in the sound except TAILS, which is on. Older stores read as the defaults.
+
+## Footswitch gestures (v75)
+Each footswitch has a **double tap** (STOMP mode only: the two toggles cancel, then the action runs) and a **hold** (0.7 s: the press's own step is taken back, then the action runs; PATCH mode too).
+Each is an action: nothing, a block on / off, BYPASS, the tuner, the next or previous preset, or STOMP / PATCH mode. Set in the web editor (Footswitches, Gestures); part of the preset: Save keeps them in the slot.
+
+## Stage view (v75)
+The web editor's **Stage** button: a big second display for the pedalboard (put a phone or laptop beside it). The preset, the blocks that are on (tap one to switch it), the two footswitches with their assignment and
+gestures (tap one as on the pedal), previous / next preset, a **tuner** (the pedal's own: it opens its tuner page, the output is muted, the editor draws the note and the needle), a screen lock (tap to lock, hold the padlock for
+a second to unlock), and three looks (Color, AMOLED, Mono). The screen stays on where the browser allows it.
 
 ## Diagnostics
 Keep holding HOME past the tuner (1.4 s in all), or hold HOME again on the tuner. The pages bug reports ask for a photo of

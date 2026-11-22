@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scores tools/legacy-synth/track_bench.c CSVs against note annotations (v49, docs/archive/NOTE-TRACKING.md). Host only.
+"""Scores tools/archive/legacy-synth/track_bench.c CSVs against note annotations (v49, docs/archive/NOTE-TRACKING.md). Host only.
 
   python3 tools/research/track_eval.py lead                 the bundled lead loop against its transcription (build/acoustic)
   python3 tools/research/track_eval.py guitarset [N] [offset] GuitarSet's mono pickup mix against its per-string notes

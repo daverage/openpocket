@@ -114,7 +114,8 @@ static uint32_t cur_preset;
 static void st_get(uint32_t k, px_preset_t *p);
 static uint8_t ui_fs = 0xFFu;                          /* v48: the footswitches' assignment (ui.h) */
 static uint8_t st_fs_of(uint32_t k);
-static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); }
+static void st_gs_of(uint32_t k, uint8_t *out);
+static void load_preset(uint32_t i);
 static uint32_t master_vol = 80;
 static int bat_mv = 3920, bat_usb_mv = 0;
 static int32_t bat_raw[5] = {612, 1, 0, 3, 91};   /* bat_read's raw values (the tuner page shows them) */
@@ -130,10 +131,19 @@ static void b_num(char *d, uint32_t v) { char t[12]; int n = 0; while (*d) d++; 
 static void b_str(char *d, const char *s) { while (*d) d++; while (*s) *d++ = *s++; *d = 0; }
 #include "../firmware/ui_text.h"
 #include "../firmware/ui.h"
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); }   /* (v75: and its gestures) */
 static uint32_t dsp_load = 42u;
 static int dsp_bypass;
 static uint32_t ed_load(void) { return dsp_load; }
-static uint32_t ed_flags(void) { return (dsp_bypass ? 1u : 0u) | 2u; }
+static px_global_t a_gl;                               /* v75: the global settings: the simulator has no audio to apply them to */
+static void audio_globals(const px_global_t *g) { a_gl = *g; }
+static float ed_tuner_hz(void);
+static uint32_t dsp_shed, dsp_nshed;                   /* v75: the blocks the load safeguard switched off (#dsp shed MASK), how many times */
+static uint32_t ed_flags(void) { return (dsp_bypass ? 1u : 0u) | 2u | (dsp_shed ? 4u : 0u); }
+static uint32_t ed_shed_mask(void) { return dsp_shed; }
+static float ed_tuner_hz(void) { return tuner_hz; }
+static uint32_t ed_shed_count(void) { return dsp_nshed; }
+static void ed_shed_clear(void) { dsp_shed = 0; }
 static uint32_t ed_stat(uint32_t k) { return k < 2u ? dsp_load : k < 4u ? 0u : 4096u; }
 static uint32_t ed_ua_stat(uint32_t k) { (void)k; return 0u; }   /* v42: USB audio's figures: no computer records here */
 
@@ -252,6 +262,7 @@ static void frame_draw(void)                           /* what the main loop doe
     char c[12];
     ui_dg.load = ui_dg.peak = dsp_load; ui_dg.cores = 2; ui_dg.split = 1; ui_dg.guard = 93; ui_dg.bypass = (uint8_t)dsp_bypass;
     ui_dg.cl[0] = dsp_load; ui_dg.cl[1] = dsp_load * 9u / 10u;
+    ui_shed = (uint16_t)dsp_shed;
     ui_load_text(c, dsp_load, 0, dsp_bypass, 0);
     ui_status(c, ui_load_kind(dsp_load, 0, dsp_bypass, 0, 0));
     if (ui_mode == M_TUNER) tuner_draw(tuner_hz);
@@ -362,6 +373,10 @@ static void command(const char *l)
         fflush(stdout);
     } else if (sscanf(l, "#dsp load %d", &v) == 1 && v >= 0 && v <= 999) {
         dsp_load = (uint32_t)v;
+        printf("#dsp ok\n");
+        fflush(stdout);
+    } else if (sscanf(l, "#dsp shed %d", &v) == 1 && v >= 0 && v < 1024) {
+        dsp_shed = (uint32_t)v; if (v) dsp_nshed++;
         printf("#dsp ok\n");
         fflush(stdout);
     } else if (sscanf(l, "#dsp bypass %d", &v) == 1) {

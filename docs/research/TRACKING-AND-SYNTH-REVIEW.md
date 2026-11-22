@@ -1,6 +1,6 @@
 # Trackers, CPU split and the original synths: a review (Synth2, after build 916)
 
-Asked by the user: look at the different trackers and where they can improve; at splitting tracking and processing between the CPUs; at `docs/POLY-TRACKING-EXPERIMENT.md`; and at the original code, which had no bleeps or blips, to see whether that was a better tracker or better envelopes. Host measurements only; nothing here has run on a pedal. Reproduce the tracker comparison with `sh tools/research/tracker_compare/run.sh`.
+Asked by the user: look at the different trackers and where they can improve; at splitting tracking and processing between the CPUs; at `docs/archive/polytrack/POLY-TRACKING-EXPERIMENT.md`; and at the original code, which had no bleeps or blips, to see whether that was a better tracker or better envelopes. Host measurements only; nothing here has run on a pedal. Reproduce the tracker comparison with `sh tools/research/tracker_compare/run.sh`.
 
 ## 1. The original synths: neither a better tracker nor better envelopes
 

@@ -52,14 +52,15 @@ last model.
 | MOD | 26 | 58 | 82 | 83 | 84 | 85 | 86 |
 | DELAY | 27 | 59 | 87 | 88 | 89 | 90 | 91 |
 | REVERB | 28 | 60 | 92 | 93 | 94 | 95 | 96 |
+| BST (PRE / BOOST) | 29 | 61 | 97 | 102 | 103 | 104 | 105 |
 
-**Toggles (footswitches).** CC 8 to 16 flip a block with **value 0** and ignore every other value, so a footswitch that sends
+**Toggles (footswitches).** CC 8 to 17 flip a block with **value 0** and ignore every other value, so a footswitch that sends
 127 then 0 for a tap flips it once. The pedal holds the state, so a preset change cannot put the footswitch out of step, as
 it can with the on/off numbers above.
 
-| CC | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Block | GATE | COMP | OCTAVE | SYNTH | SFX | EQ | MOD | DELAY | REVERB |
+| CC | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Block | GATE | COMP | OCTAVE | SYNTH | SFX | EQ | MOD | DELAY | REVERB | BST |
 
 The order is the order of the blocks above: CC 8 + n flips what CC 20 + n switches. The pedal never sends these numbers: it reports a
 block with its on/off number.

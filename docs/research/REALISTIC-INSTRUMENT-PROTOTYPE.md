@@ -3,7 +3,7 @@
 This is the host listening prototype that [REALISTIC-INSTRUMENT-SYNTHESIS.md](REALISTIC-INSTRUMENT-SYNTHESIS.md) and its [handoff](../archive/REALISTIC-SYNTH-HANDOFF.md) asked for. It runs on the computer only. Nothing here is in the firmware, and every timing below is a host timing. Nobody has listened to the renders yet. The numbers measure tracking, tuning, level and a steady-spectrum proxy, but they can't choose a sound.
 
 ```
-tools/legacy-synth/acoustic_voice.sh        # C compiler, Python 3 with numpy and scipy; downloads about 160 MB the first time
+tools/archive/legacy-synth/acoustic_voice.sh        # C compiler, Python 3 with numpy and scipy; downloads about 160 MB the first time
 ```
 
 It writes `build/acoustic/out/matched/*.wav`, with every render at -20 dBFS RMS for listening, and the unnormalised renders to `raw/`. The full measurement tables go to `build/acoustic/out/report.md`. Nothing is committed under `build/`.
@@ -12,12 +12,12 @@ It writes `build/acoustic/out/matched/*.wav`, with every render at -20 dBFS RMS 
 
 | Part | File | What it is |
 | --- | --- | --- |
-| Sample bank | `tools/legacy-synth/acoustic_prep.py` | Twelve VSCO 2 CE recordings (CC0) at a pinned commit: trumpet `sus` and cello section `susvib`, 3 roots × 2 dynamics. Each is converted to mono 22.05 kHz with its leading silence trimmed. Its f0 is measured and a crossfaded sustain loop is found (30 ms on the trumpet, 90 ms on the cello section, whose vibrato never repeats exactly). Source URL, SHA-256, measured tuning, loop points and level go to `bank.json`. VSCO names notes an octave below scientific pitch: the measured trumpet roots are F3, D#4 and D5, and the cello roots are C2, B2 and A3. |
-| Voices | `tools/legacy-synth/acoustic_voice.c` | **Sample voice**: nearest root, soft or loud layer chosen by pick strength, expression as level (24 dB range) and brightness, a 10 ms crossfade on a repick, and a crossfade into the nearer root's loop when a slur moves more than 6 semitones. **Waveguide voices**: a bowed string and a lip-reed brass model, following STK `Bowed` / `Brass`. The trumpet sounds one octave above the guitar; the cello sounds at guitar pitch. |
+| Sample bank | `tools/archive/legacy-synth/acoustic_prep.py` | Twelve VSCO 2 CE recordings (CC0) at a pinned commit: trumpet `sus` and cello section `susvib`, 3 roots × 2 dynamics. Each is converted to mono 22.05 kHz with its leading silence trimmed. Its f0 is measured and a crossfaded sustain loop is found (30 ms on the trumpet, 90 ms on the cello section, whose vibrato never repeats exactly). Source URL, SHA-256, measured tuning, loop points and level go to `bank.json`. VSCO names notes an octave below scientific pitch: the measured trumpet roots are F3, D#4 and D5, and the cello roots are C2, B2 and A3. |
+| Voices | `tools/archive/legacy-synth/acoustic_voice.c` | **Sample voice**: nearest root, soft or loud layer chosen by pick strength, expression as level (24 dB range) and brightness, a 10 ms crossfade on a repick, and a crossfade into the nearer root's loop when a slur moves more than 6 semitones. **Waveguide voices**: a bowed string and a lip-reed brass model, following STK `Bowed` / `Brass`. The trumpet sounds one octave above the guitar; the cello sounds at guitar pitch. |
 | Control | same | A fixture mode (known pitch, gate and expression from a score, no tracking), and a tracked mode: the engine's own `synth_hq_track` plus a note layer (pick detector, lock test, octave guard, pick strength, expression). |
 | Baselines | same | The engine's current BRASS and STRINGS (`px_engine`, SYN only) on the same DI. |
-| Ground truth | same, `tools/legacy-synth/acoustic_truth.py` | A Karplus-Strong DI of the fixture score: quiet and accented picks, a swell, a slur and bend, fast repicks on a ringing string, a slide, muted stabs. For `assets/loops/lead.wav`, the dataset's own transcription `midi_12.mid`: its onsets are off the grid, and one falls exactly on the loop's start. |
-| Spectrum proxy | `tools/legacy-synth/acoustic_compare.py` | 1/3-octave long-term spectrum of each steady synthetic note against the recording at the same pitch and dynamic. |
+| Ground truth | same, `tools/archive/legacy-synth/acoustic_truth.py` | A Karplus-Strong DI of the fixture score: quiet and accented picks, a swell, a slur and bend, fast repicks on a ringing string, a slide, muted stabs. For `assets/loops/lead.wav`, the dataset's own transcription `midi_12.mid`: its onsets are off the grid, and one falls exactly on the loop's start. |
+| Spectrum proxy | `tools/archive/legacy-synth/acoustic_compare.py` | 1/3-octave long-term spectrum of each steady synthetic note against the recording at the same pitch and dynamic. |
 
 ## Results
 

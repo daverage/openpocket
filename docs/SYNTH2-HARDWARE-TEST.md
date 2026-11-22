@@ -10,7 +10,7 @@ Read `.claude/skills/openpocket-flash/SKILL.md` first. Dry run before any write:
 
 ## What to try (about 20 minutes)
 
-1. Boot and the SYNTH block's list: POLY OCT FUZZ, ANALOG, ARCADE only. A preset saved on v73 with another SYNTH type shows RETIRED TYPE and the block is bypassed; its settings are untouched.
+1. Boot and the SYNTH block's list: POLY OCT FUZZ, ANALOG, ARCADE only. A preset saved on v73 with another SYNTH type loads with that block off and the first live type (since v75 there is no "RETIRED TYPE" message); its settings are untouched.
 2. POLY OCTAVE HQ and POLY OCT FUZZ against v73 by ear (they are bit-identical on the host; the pedal's codec and the second core are the same code, so they should sound the same).
 3. ANALOG on a single-note lead (high strings) and on a low-string riff, patches 0-9 (PATCH 5, 15, ... 95). Listen for: wrong notes, octave jumps (a wrong first 10-80 ms on low notes is known), missed attacks, stuck notes after muting, a late release, gaps, clicks on patch change, aliasing.
 4. The same with a slide, a bend, vibrato, a repeated note and a palm mute. The synth should glide with the string, restart on a repick, and stop when you mute.

@@ -43,6 +43,7 @@ function sim(args) {
   return {
     access, ready, lines,
     pedal: (l) => child.stdin.write(`#pedal ${l}\n`),
+    raw: (l) => child.stdin.write(`${l}\n`),                    // a simulator control line, e.g. "#dsp shed 520"
     dump: async () => { lines.length = 0; child.stdin.write("#dump\n"); for (let i = 0; i < 50 && !lines.length; i++) await sleep(10); return lines[0] || ""; },
     end: () => { child.stdin.end(); return done; },
   };
@@ -54,12 +55,12 @@ let s = sim(["--dump", flash1]);
 await s.ready;
 let ed = new Editor(s.access);
 const info = await ed.connect();
-ok(info && info.proto === 6 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
-ok(info && info.nblk === 9 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 9 blocks, 5 parameters, 52 slots, names of 13");
+ok(info && info.proto === 9 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
+ok(info && info.nblk === 10 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 10 blocks, 5 parameters, 52 slots, names of 13");
 const t0 = Date.now();
 const cat = await ed.catalog();
 const ntypes = cat.blocks.reduce((n, b) => n + b.types.length, 0);
-ok(cat.blocks.length === 9 && cat.blocks.map((b) => b.label).join() === "GT,CMP,OCT,SYN,SFX,EQ,MOD,DLY,REV", `catalogue: 9 blocks, ${ntypes} types (${Date.now() - t0} ms)`);
+ok(cat.blocks.length === 10 && cat.blocks.map((b) => b.label).join() === "GT,CMP,OCT,SYN,SFX,EQ,MOD,DLY,REV,BST", `catalogue: 10 blocks, ${ntypes} types (${Date.now() - t0} ms)`);
 ok(cat.blocks[3].name === "SYNTH" && cat.blocks[3].color === "#ff6500", `catalogue: the SYNTH block and its tile colour (${cat.blocks[3].color})`);
 const withTexts = cat.blocks.flatMap((b) => b.types.flatMap((t) => t.params.filter((p) => p.texts))).length;
 ok(withTexts > 0 && cat.blocks[7].types[0].params.some((p) => p.texts && p.texts.some((x) => /ms|\d/.test(x))), `catalogue: value texts for ${withTexts} parameters (delay time...)`);
@@ -74,8 +75,54 @@ ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st
   ok(f1.left === 4 && f1.right === 12 && f1.stomp && (await ed.state()).dirty, "FOOTSWITCH set: left SFX, right BYPASS, STOMP mode; the preset is edited");
   const f2 = await ed.footswitch({ left: 99, stomp: false });
   ok(f2.left === 15 && f2.right === 12 && !f2.stomp, "an out-of-range block is nothing; a field left out stays; PATCH again");
+  const fb = await ed.footswitch({ left: 9, right: 10 });
+  ok(fb.left === 9 && fb.right === 15, "BST (block 9) can be assigned; 10 and 11 are not blocks: nothing");
+  const gz = await ed.footswitch({ gestures: [17, 16, 5, 19] });
+  ok(gz.gestures && gz.gestures.join() === "17,16,5,19" && (await ed.state()).dirty, "gestures: left double tap = next preset, left hold = the tuner, right double tap = block 5, right hold = STOMP/PATCH; the preset is edited");
+  const gz2 = await ed.footswitch({ gestures: [undefined, 99, undefined, 15] });
+  ok(gz2.gestures.join() === "17,15,5,15", "gestures: one left alone, an unknown action is nothing, 15 clears one");
+  await ed.footswitch({ gestures: [15, 15, 15, 15] });
+  await ed.footswitch({ left: 15 });
   const f3 = await ed.footswitch({ right: 15 });
   ok(f3.right === 15 && !(await ed.state()).dirty, "nothing assigned again: the preset is as saved");
+}
+
+// v75: docs/pxcost.js, the estimate behind the editor's "may not fit" warning, has every live type of every block but the gate
+{
+  const { COST, costPct } = await import("../docs/pxcost.js");
+  const missing = [];
+  for (const B of cat.blocks) if (B.label !== "GT") for (const t of B.types) if (t.name && !(`${B.label}:${t.name}` in COST)) missing.push(`${B.label}:${t.name}`);
+  ok(missing.length === 0, `pxcost.js covers every live type (missing: ${missing.join(", ") || "none"})`);
+  ok(costPct("SYN", "POLY OCT FUZZ") > 40 && costPct("SYN", "POLY OCT FUZZ") > costPct("MOD", "CE CHORUS") * 3 && costPct("GT", "NOISE GATE") === 0, "pxcost.js: POLY OCT FUZZ is the heavy one, a chorus light, the gate unlisted");
+}
+// v75: the factory bank through the editor: 52 presets, none with a block the pedal could not carry (the estimated processor share of what is on, docs/pxcost.js, under 80 %)
+{
+  const { COST } = await import("../docs/pxcost.js");
+  let worst = 0, worstName = "", bad = [];
+  const names = new Set();
+  for (let i = 0; i < 52; i++) {
+    const g = await ed.slotGet(i), pr = g.preset;
+    names.add(pr.name);
+    let share = 0;
+    pr.on.forEach((on, b) => { if (on && cat.blocks[b].label !== "GT") share += COST[`${cat.blocks[b].label}:${cat.blocks[b].types[pr.type[b]].name}`] || 0; });
+    if (share > worst) { worst = share; worstName = pr.name; }
+    if (share >= 80) bad.push(`${pr.name} ${share.toFixed(0)}`);
+  }
+  ok(names.size === 52 && bad.length === 0, `factory bank: 52 different names, every preset under 80 % of the processor (worst ${worstName} ${worst.toFixed(0)} %${bad.length ? "; over: " + bad.join(", ") : ""})`);
+}
+// v75 (protocol 8): SHED, the blocks the pedal's load safeguard switched off (PING flag bit 2, then SHED says which)
+{
+  const p0 = await ed.ping();
+  ok(ed.hasShed && !p0.shed, "SHED: nothing switched off, PING's flag clear");
+  const r0 = await ed.shed();
+  ok(r0.mask === 0 && r0.blocks.length === 0 && r0.count === 0, "SHED: no blocks, none since power-on");
+  s.raw("#dsp shed 520"); await sleep(80);                  // blocks 3 (SYN) and 9 (BST)
+  const p1 = await ed.ping();
+  ok(p1.shed && !p1.bypass, "SHED: the safeguard acted: PING's flag bit 2 set, not the bypass");
+  const r1 = await ed.shed();
+  ok(r1.mask === 520 && r1.blocks.join() === "3,9" && r1.count === 1, `SHED: the blocks are SYN and BST (mask ${r1.mask}, blocks ${r1.blocks})`);
+  const r2 = await ed.shed(true);
+  ok(r2.mask === 0 && !(await ed.ping()).shed, "SHED(restore): the blocks come back, the flag clears");
 }
 
 // ---- 2. live editing ----
@@ -138,6 +185,27 @@ const r = presetFromJSON(back[0], cat, (await ed.slotGet(0)).preset);
 ok(r.warn.length === 0 && JSON.stringify(r.preset) === JSON.stringify(q), "file: a preset survives export -> import exactly");
 const odd = presetFromJSON({ name: "X", blocks: [{ block: "SYN", on: true, type: "NO SUCH SYNTH", params: [1, 2, 3] }, { block: "AMP" }] }, cat, q);
 ok(odd.warn.length === 2 && odd.preset.p[amp][0] === 1, "file: unknown type and block are reported, the rest comes through");
+// v75 (protocol 9): GLOBAL (the settings outside the presets) and TUNER
+{
+  const g0 = await ed.global();
+  ok(ed.hasGlobal && g0.tuner === 440 && g0.hpf === 0 && g0.eq.every((d) => d === 0) && g0.lim === 0 && g0.tails === true && g0.hush === 0 && g0.tunerLights === 0 && g0.lightsOff === false, "GLOBAL: the defaults (flat, no limiter, tails on, the tuner's HOME blink, lights on)");
+  const g1 = await ed.global({ tuner: 432, hpf: 80, eq: [3, -1.5, 0, 6, -12], lim: -3, tails: false, hush: 40, tunerLights: 2, lightsOff: true });
+  ok(g1.tuner === 432 && g1.hpf === 80 && g1.eq.join() === "3,-1.5,0,6,-12" && g1.lim === -3 && g1.tails === false && g1.hush === 40 && g1.tunerLights === 2 && g1.lightsOff === true, `GLOBAL set: read back as set (${JSON.stringify(g1)})`);
+  const g2 = await ed.global({ tuner: 440, hpf: 0, eq: [50, -50, 0, 0, 0], lim: -99, tails: true, hush: 500 });
+  ok(g2.tuner === 440 && g2.eq[0] === 12 && g2.eq[1] === -12 && g2.lim === -12 && g2.hush === 100, "GLOBAL set: out-of-range values are clamped");
+  await ed.global({ tuner: 466, hpf: 25, eq: [0, 0, 1, 0, 0], lim: 0, tails: true, hush: 25, tunerLights: 1, lightsOff: false });
+  const tu = await ed.tuner();
+  ok(tu.hz === 0 && tu.open === false && tu.ref === 466, `TUNER: no note, the page closed, the reference A (${JSON.stringify(tu)})`);
+  s.raw("#hz 110.25"); await sleep(80);
+  const tu2 = await ed.tuner();
+  ok(Math.abs(tu2.hz - 110.25) < 0.011, `TUNER: the frequency in 0.01 Hz (${tu2.hz})`);
+  s.raw("#hz 0");
+  const to = await ed.tuner(true);
+  ok(to.open === true && (await ed.tuner()).open === true, "TUNER(true): the pedal's tuner page opens");
+  const tc = await ed.tuner(false);
+  ok(tc.open === false && (await ed.tuner()).open === false, "TUNER(false): and closes");
+  ok(await ed.commit() === 0, "GLOBAL: written with the store");
+}
 // ---- v42: USB AUDIO (protocol 4): off until asked for; kept in the store ----
 {
   const u0 = await ed.usbAudio();
@@ -155,6 +223,8 @@ list = await ed.list();
 {
   let u = await ed.usbAudio();
   ok(u.on && u.rc === 0, "USB audio: still on after a power cycle");
+  const gp = await ed.global();
+  ok(gp.tuner === 466 && gp.hpf === 25 && gp.eq[2] === 1 && gp.hush === 25 && gp.tails === true && gp.tunerLights === 1, `GLOBAL: still set after a power cycle (${JSON.stringify(gp)})`);
   ok(!u.recording && !u.playing && Object.keys(u.counts).length === 20, "USB audio: the streams' state and 20 counts");
   u = await ed.usbAudio(false);
   ok(!u.on && u.rc === 0 && !(await ed.usbAudio()).on, "USB audio: switched off again");

@@ -36,8 +36,8 @@ const png = async (path = "/api/screen.png") => Buffer.from(await (await fetch(s
 let info = await get("/api/info");
 ok(info.kind === "pedal" && info.port === "OpenPocket" && info.controls.includes("fs_up"), `info: ${info.kind} on port "${info.port}"`);
 let s = await state();
-ok(s.slot === 0 && s.name === "SQUARE LEAD" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
-ok(s.preset.p.length === 9 && s.preset.order.length === 9 && s.dsp.load === 42 && s.writes_ok === 1, "state: 9 blocks, the DSP load, flash writes allowed");
+ok(s.slot === 0 && s.name === "CLEAN HALL" && s.mode === "chain" && s.saved === 0 && s.dirty === 0, `state: slot 1 "${s.name}", chain page, factory sound`);
+ok(s.preset.p.length === 10 && s.preset.order.length === 10 && s.dsp.load === 42 && s.writes_ok === 1, "state: 10 blocks, the DSP load, flash writes allowed");
 
 // ---- 2. footswitches and the screen ----
 const shot0 = await png("/api/screen.rgb565"), f0 = s.frame;
@@ -45,7 +45,7 @@ ok(shot0.length === 240 * 240 * 2, "screen.rgb565: 240 x 240 x 2 bytes");
 await act("/api/press/fs_up");
 s = await state();
 const shot1 = await png("/api/screen.rgb565");
-ok(s.slot === 1 && s.name === "SQ HQ BASS" && s.last_press === "fs_up" && s.presses === 1, `footswitch up: slot 2 "${s.name}"`);
+ok(s.slot === 1 && s.name === "STUDIO CLEAN" && s.last_press === "fs_up" && s.presses === 1, `footswitch up: slot 2 "${s.name}"`);
 ok(s.frame !== f0 && !shot0.equals(shot1), "the screen was redrawn (frame counter and pixels changed)");
 const p = await png("/api/screen.png?scale=2");
 ok(p.subarray(1, 4).toString() === "PNG" && p.readUInt32BE(16) === 480 && p.readUInt32BE(20) === 480, "screen.png?scale=2: a 480 x 480 PNG");
@@ -170,10 +170,10 @@ await act("/api/press/home");
   ok((await state()).preset.on[3] === 1 - amp0 && (await state()).slot === slot0, "the left footswitch: SYNTH on / off, the preset stays");
   await act("/api/press/fs_dn");
   await act("/api/down/fs_up");
-  for (let i = 0; i < 10; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // the 9 blocks, then BYP
+  for (let i = 0; i < 11; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // the 10 blocks, then BYP
   await act("/api/up/fs_up");
   t = await state();
-  ok(t.fs[1] === 12, "hold the right footswitch + FX ten times: every block, then BYPASS");
+  ok(t.fs[1] === 12, "hold the right footswitch + FX eleven times: every block, then BYPASS");
   await act("/api/press/fs_up");
   ok((await state()).bypass === 1 && (await state()).dsp.bypass === 0, "the right footswitch: BYPASS on (the user's, not the overload's)");
   await act("/api/press/fs_up");
@@ -270,7 +270,7 @@ const ed = new Editor(access);
 const inf = await ed.connect();
 ok(inf && inf.version === `v${VER}` && inf.identity === `PocketX_9${VER}`, "editor (pxedit.js) over the shim: INFO");
 const cat = await ed.catalog();
-ok(cat.blocks.length === 9 && cat.blocks[3].label === "SYN", "editor: the catalogue");
+ok(cat.blocks.length === 10 && cat.blocks[3].label === "SYN", "editor: the catalogue");
 await ed.setParam(3, 1, 33);
 s = await state();
 ok(s.preset.p[3][1] === 33, "editor: SET reaches the simulated pedal (seen in /api/state)");

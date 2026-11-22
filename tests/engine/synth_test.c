@@ -18,10 +18,12 @@ static int g_type = PX_SYN_ANALOG;   /* the SYNTH type under test */
 static float cents(float a, float b) { return 1200.0f * log2f(a / b); }
 static void preset_of(px_preset_t *p, const uint8_t *q)
 {
-    px_preset_factory(p, 7);
+    px_preset_base(p);
     for (int z = 0; z < PX_NBLK; z++) p->on[z] = 0;
     p->on[PX_B_SYN] = 1; p->type[PX_B_SYN] = (uint8_t)g_type; memcpy(p->p[PX_B_SYN], q, 5);
 }
+/* the type's level trim (engine/px_trim.h, matched to the guitar on the bundled loops): these tests are about the voices, so they are read without it */
+static float trim_db(int type) { return SYN_DB[type]; }
 /* a plucked string: harmonic sines with a decay; notes (hz, start s); glide to hz_end for note 0 */
 static void string(float *x, int N, const float *hz, const float *st, int n, float amp, float decay, float hz_end)
 {
@@ -168,7 +170,7 @@ static void arcade_suite(void)
         render(&p, x, y, N_, 64);
         const float mid = rms(y, 22050, 4096), late = rms(y, (int)(4.5f * FS_), 4096);
         printf("STEP: rms %.4f at 0.5 s, %.5f at 4.5 s\n", mid, late);
-        CHECK(mid > 0.01f && late < 0.05f * mid, "a stepped patch sounds, then ends");
+        CHECK(mid * powf(10.0f, -trim_db(g_type) * 0.05f) > 0.01f && late < 0.05f * mid, "a stepped patch sounds, then ends");
     }
     {   /* determinism, call-size independence, bounds on every patch and macro, silence */
         static const float H[2] = {146.83f, 196.0f}, ST[2] = {0.1f, 1.2f}; const uint8_t q[5] = {10, 60, 40, 55, 70}; px_preset_t p; preset_of(&p, q);
@@ -576,7 +578,7 @@ static void instrument_suite(void)
             /* the rotary and the percussion do not change the loudness much: the RMS (20 ms windows) over 2..4 s swings less than 4 dB */
             float lo = 1e9f, hi = 0; for (int i = 2 * 44100; i + 882 < 4 * 44100; i += 441) { const float r = rms(y, i, 882); if (r < lo) lo = r; if (r > hi) hi = r; }
             CHECK(20.0f * log10f(hi / (lo + 1e-9f)) < 4.0f, "WHEEL %s: the rotary leaves the loudness steady (%.1f dB)", PX_INSTRUMENT_PATCHES[b].name, 20.0f * log10f(hi / (lo + 1e-9f)));
-            const float lvl = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f);
+            const float lvl = 20.0f * log10f(rms(y, 2 * 44100, 44100) + 1e-9f) - trim_db(g_type);
             CHECK(lvl > -22.0f && lvl < -14.0f, "WHEEL %s: level near the ANALOG patches' (%.1f dBFS)", PX_INSTRUMENT_PATCHES[b].name, lvl);
         }
         float mx, mn;
@@ -749,7 +751,7 @@ static void legato_suite(void)
         static const float FQ[6] = {130.81f, 146.83f, 164.81f, 196.0f, 220.0f, 261.63f}; static float xs[44100 * 2], ys[44100 * 2]; const int NL = 44100 * 2; memset(xs, 0, sizeof xs);
         for (int k = 0; k < 30; k++) { const int st = (int)((0.2f + (float)k * 0.045f) * FS_); float ph = 0; for (int i = st; i < NL && i < st + 3000; i++) { ph += FQ[(k * 5) % 6] / FS_; ph -= floorf(ph); const float pp = 6.2831853f * ph; xs[i] += 0.25f * expf(-(float)(i - st) / FS_ / 0.05f) * (sinf(pp) + 0.6f * sinf(2 * pp) + 0.4f * sinf(3 * pp) + 0.25f * sinf(4 * pp));
                 if (i - st < 150) { static unsigned rq = 7; rq = rq * 1664525u + 1013904223u; xs[i] += 0.8f * ((float)(rq >> 9) / 4194304.0f - 1.0f) * expf(-(float)(i - st) / 50.0f); } } }
-        for (int ty = 0; ty < 2; ty++) { px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SYN] = 1;
+        for (int ty = 0; ty < 2; ty++) { px_preset_t pr; px_preset_base(&pr); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SYN] = 1;
             pr.type[PX_B_SYN] = PX_SYN_ANALOG; { uint8_t q[5] = {ty ? 80 : 5, 50, 50, 50, 50}; memcpy(pr.p[PX_B_SYN], q, 5); }   /* ty 0: CLASSIC (follows), 1: SWEEP (restarts) */
             px_engine e2;
             px_engine_init(&e2, FS_); px_engine_set(&e2, &pr);
@@ -768,9 +770,9 @@ static void legato_suite(void)
         enum { NL = 8192 }; static float xa[NL], ya[NL], yb[NL];
         CHECK(px_type_retired(PX_B_SFX, PX_SFX_APPLAUSE) == 1, "SFX APPLAUSE is a retired tombstone");
         CHECK(px_type_name(PX_B_SFX, PX_SFX_APPLAUSE)[0] == 0, "its name is empty, so the UI skips it");
-        CHECK(px_nlive(PX_B_SFX) == PX_SFX_COUNT - 1, "SFX has %d live types (%d ids)", px_nlive(PX_B_SFX), PX_SFX_COUNT);
+        CHECK(px_nlive(PX_B_SFX) == PX_SFX_COUNT - 5, "SFX has %d live types (%d ids: APPLAUSE, ENHANCE and the three pedals that moved to BST are tombstones)", px_nlive(PX_B_SFX), PX_SFX_COUNT);
         for (int i = 0; i < PX_SFX_COUNT - 1; i++) CHECK(px_live_type(PX_B_SFX, i) != PX_SFX_APPLAUSE, "the live SFX list never offers APPLAUSE (slot %d)", i);
-        px_preset_t pr; px_preset_factory(&pr, 7); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE;
+        px_preset_t pr; px_preset_base(&pr); for (int z = 0; z < PX_NBLK; z++) pr.on[z] = 0; pr.on[PX_B_SFX] = 1; pr.type[PX_B_SFX] = PX_SFX_APPLAUSE;
         { uint8_t q[5] = {50, 50, 30, 100, 0}; memcpy(pr.p[PX_B_SFX], q, 5); }
         for (int i = 0; i < NL; i++) xa[i] = 0.2f * sinf(0.05f * (float)i) * (i > 2000 ? 1.0f : 0.0f);
         { px_engine ea, eb; px_preset_t off = pr; off.on[PX_B_SFX] = 0; px_engine_init(&ea, FS_); px_engine_set(&ea, &pr); px_engine_init(&eb, FS_); px_engine_set(&eb, &off);

@@ -222,14 +222,14 @@ Prototype within the current memory budget and record the target map deltas.
   inside the bank's 14 Hz bandwidth, so a decaying tail drifts between bins.
 
 ### 1d. Scoring before the build
-- `tools/legacy-synth/poly_score.py` comping holdout (24–47), reproduced from the current
+- `tools/archive/legacy-synth/poly_score.py` comping holdout (24–47), reproduced from the current
   v66 source: 40.9% both-note accuracy, 28.9% extra voices on single notes, and
   129 of 270 second-note entries found within 100 ms, with a 25.3 ms median among
   hits. Report hit rate with median and tail latency so missed notes remain visible.
 - Separate [v66 solo baseline](../research/POLY-SYNTH-DESIGN.md#L359): 118 false starts per
   minute and 11.8 ms median / 45.2 ms p90 to the right pitch. Record this separately
   from second-note acquisition and from audible pedal latency.
-- Add overtone-ghost frame rate and duration to `tools/legacy-synth/poly_diag.py`. Re-score
+- Add overtone-ghost frame rate and duration to `tools/archive/legacy-synth/poly_diag.py`. Re-score
   the named scale DI and low-E DI above against v66 and each candidate, along with
   GuitarSet solos. Keep a separate count for all second voices so the reported
   39% second-voice baseline on the scale can be distinguished from overtone-only
@@ -254,7 +254,7 @@ Prototype within the current memory budget and record the target map deltas.
 - Keep the trumpet-to-horn level ratio constant across notes. Today the sampled
   trumpet's level changes with register; the horn layer's does not.
 - **Reason.** The scale sounds like it jumps octaves although the pitch is right.
-- **Check:** `tools/legacy-synth/ensemble_bench.c` on a slow scale. The level difference
+- **Check:** `tools/archive/legacy-synth/ensemble_bench.c` on a slow scale. The level difference
   between the two layers should vary by less than 3 dB across the guitar's range.
   Score the tracker independently of this voicing change.
 
@@ -479,7 +479,7 @@ checked for sound match, only for "on pitch".
   band energies below 200 Hz and above 3 kHz within 1 dB.
 - Compare wet-only tone and the mixed output at matching settings. Include
   attacks and releases so the sustained-note metrics cannot hide voicing differences.
-- Add it to `tools/legacy-synth/syn_compare.py`, alongside today's pitch and wobble scores.
+- Add it to `tools/archive/legacy-synth/syn_compare.py`, alongside today's pitch and wobble scores.
 
 **Pairs:**
 - SQUARE / SQUARE HQ (SFX)
@@ -606,7 +606,7 @@ for host comparison. Meaningful retention through a second string and
 stronger natural overtones remains unproven.
 
 To reproduce the local-period comparison on the poly-test mono path,
-build `tools/legacy-synth/mono_bench.c` with `-DPX_MONO_LAYER=1 -DPX_ERB_LAYOUT2=1`
+build `tools/archive/legacy-synth/mono_bench.c` with `-DPX_MONO_LAYER=1 -DPX_ERB_LAYOUT2=1`
 and `-DPXT_LOCAL_PERIOD_FIRST=1`. Run `mono_eval.py --offset 30 --solo 60`
 with the v66 and candidate benches, `mono_interference.py`, and
 `poly_diag.py --mono --owner-di 'My Audio'`.
@@ -853,7 +853,7 @@ listening checks justify.
 ## Stage 1 progress
 
 The owner DI check now runs both recordings through the actual host benches via
-`tools/legacy-synth/poly_diag.py BENCH --owner-di 'My Audio'`. Add `--mono` for
+`tools/archive/legacy-synth/poly_diag.py BENCH --owner-di 'My Audio'`. Add `--mono` for
 `mono_bench`. The scorer uses the left channel at 44.1 kHz and the original gain,
 with PCM16 conversion for the mono bench. It uses fixed note ranges derived from
 the DI pitches and partials. The v66 reference is engine revision `f12462e`,
@@ -1055,9 +1055,9 @@ cc -O2 -Iengine -Ifirmware \
   -DPX_POLY_OCTAVE_EVIDENCE_TEST=1 -DPXP_EVICT_FAST_RELEASE=1 \
   -DPXP_OCT_ODD_LIMIT=0.10f -DPXP_OCT_SIXTH_FLOOR=0.025f \
   -DPX_POLY_FADE_TEST=1 -DPXP_FADE_SETTLE=16 -DPXP_LATE_ROOT_TEST=9 \
-  -DPXP_NOMINAL_OCTAVE_TEST=1 tools/legacy-synth/pulse_poly_bench.c firmware/px_math.c \
+  -DPXP_NOMINAL_OCTAVE_TEST=1 tools/archive/legacy-synth/pulse_poly_bench.c firmware/px_math.c \
   -lm -o build/phase2b/poly-nominal-low
-PXP_SET='ACQB=0.06 SECOND=0.58' python3 tools/legacy-synth/poly_diag.py \
+PXP_SET='ACQB=0.06 SECOND=0.58' python3 tools/archive/legacy-synth/poly_diag.py \
   build/phase2b/poly-nominal-low --owner-di 'My Audio'
 ```
 
@@ -1110,9 +1110,9 @@ output at DRY or MIX 50, keeps the dry DI, and writes note locations and
 per-note scores alongside the aligned audition WAVs.
 
 ```sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
-python3 tools/legacy-synth/syn_compare.py --match build/phase2b/hq-real-reference --match-real --takes 48
-python3 tools/legacy-synth/syn_compare.py --match build/phase2b/hq-shared-trim --match-real --takes 48 --share-trim
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/ensemble_bench.c firmware/px_math.c -lm -o build/ensemble_bench
+python3 tools/archive/legacy-synth/syn_compare.py --match build/phase2b/hq-real-reference --match-real --takes 48
+python3 tools/archive/legacy-synth/syn_compare.py --match build/phase2b/hq-shared-trim --match-real --takes 48 --share-trim
 ```
 
 Both runs selected 30 clean notes from 48 evenly spaced GuitarSet solo

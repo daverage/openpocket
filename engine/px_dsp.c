@@ -27,6 +27,8 @@
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
+#define PX_PV_IMPL
+#include "px_pv.h"                                      /* v75: POLY SHIFTER's functions (the state is in px_dsp.h) */
 #ifdef __PI32V2__   /* on the pedal: a buffer out of the 96 KB RAM. v40.4: in the 24 KB below it (firmware/app.ld .bss_lo); it was in
                      * the free end of the RAM code window (.bss_hi), which the audio path's code now needs */
 #define PX_LO(name) __attribute__((section(".bss.lo." #name)))
@@ -411,6 +413,14 @@ static void bq_bandpass(px_bq *b, float fs, float f, float q)
     float w = 2.0f * PI_F * f / fs, c = cosf(w), s = sinf(w), al = s / (2.0f * q);
     bq_set(b, al, 0, -al, 1 + al, -2 * c, 1 - al);
 }
+/* a notch with its own width and depth: (s^2 + 2 zz s + 1) / (s^2 + 2 zp s + 1) at the notch frequency, by the bilinear transform with the frequency prewarped;
+ * zp = width / (2 f) sets the -3 dB width in hertz (the skirts stay out of the notes next to the hum), zz = zp * 10^(-depth/20) the depth at the centre
+ * (a peaking filter's skirts are as wide as its depth: a 27 dB cut of "4 Hz" took 3 dB off an A at 110 Hz against a 100 Hz notch) */
+static void bq_notch(px_bq *b, float fs, float f, float width, float depth_db)
+{
+    const float w = PI_F * f / fs, K = sinf(w) / cosf(w), zp = 0.5f * width / f, zz = zp * db2lin(-depth_db), K2 = K * K;
+    bq_set(b, 1.0f + 2.0f * zz * K + K2, 2.0f * K2 - 2.0f, 1.0f - 2.0f * zz * K + K2, 1.0f + 2.0f * zp * K + K2, 2.0f * K2 - 2.0f, 1.0f - 2.0f * zp * K + K2);
+}
 static void bq_peak(px_bq *b, float fs, float f, float q, float db)
 {
     f = clampf_hz(fs, f);
@@ -452,12 +462,12 @@ static void bq_hp1(px_bq *b, float fs, float f)          /* first order (RC coup
 }
 
 /* ============================================================ catalog ===== */
-static const char *const BLK_LABEL[PX_NBLK] = {"GT", "CMP", "OCT", "SYN", "SFX", "EQ", "MOD", "DLY", "REV"};
+static const char *const BLK_LABEL[PX_NBLK] = {"GT", "CMP", "OCT", "SYN", "SFX", "EQ", "MOD", "DLY", "REV", "BST"};
 static const char *const BLK_NAME[PX_NBLK] = {"NOISE GATE", "COMPRESSOR", "OCTAVE", "SYNTH", "SPECIAL FX", "EQUALIZER",
-                                              "MODULATION", "DELAY", "REVERB"};
+                                              "MODULATION", "DELAY", "REVERB", "PRE / BOOST"};
 /* default processing order (v29: each preset carries its own): the enum's, the signal order */
-static const uint8_t ORDER_DEF[PX_NBLK] = {PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
-                                           PX_B_DELAY, PX_B_REVERB};
+static const uint8_t ORDER_DEF[PX_NBLK] = {PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
+                                           PX_B_DELAY, PX_B_REVERB};   /* (v75: BST, the pedals that boost and colour the guitar, goes in right after the gate) */
 void px_order_default(uint8_t *o) { for (int i = 0; i < PX_NBLK; i++) o[i] = ORDER_DEF[i]; }
 int px_order_valid(const uint8_t *o)
 {
@@ -483,11 +493,13 @@ static const char *const PN_POLY_HQ[] = {"DRY", "OCT -1", "OCT +1", "RANGE", "OC
 static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
+static const char *const PN_PSH[] = {"SHIFT", "FINE", "MIX", "ATTACK"};   /* v75 POLY SHIFTER */
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT},
     {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
     {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 5, PN_POLY_HQ},
     {"LOWEST OCTAVE HQ", 4, PN_POLY_HQ},   /* DRY, OCT -1, OCT +1, RANGE (the same note cut as POLY OCTAVE HQ) */
+    {"POLY SHIFTER", 4, PN_PSH},           /* v75: SHIFT -12..+12 semitones, FINE -50..+50 cents, MIX, ATTACK (how readily a pick restarts the phases) */
 };
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
@@ -500,11 +512,13 @@ static const char *const PN_SYN[] = {"SWEEP", "RESO", "SUB", "MIX"};
 static const char *const PN_RM[] = {"VOLUME", "PICKUP", "BODY"};   /* RANGEMASTER: VOLUME (unity at 50), PICKUP is the source (single coil 0 .. humbucker 100), BODY the input capacitor (5 nF treble booster .. 100 nF full range): engine/px_pedals.h */
 static const char *const PN_EP[] = {"GAIN", "VOICE"};   /* EP BOOST: the 500k log volume pot; VOICE is the source bypass (EARLY .. LATE .. FAT): engine/px_pedals.h */
 static const char *const PN_BBE[] = {"LO CONTOUR", "PROCESS"};   /* MAXIMIZER: the BBE process, fitted to the real unit: engine/px_pedals.h */
+static const char *const PN_VW[] = {"POSITION", "PEAK", "LEVEL"};   /* BST VOX FIXED WAH: the parked pedal's position (heel .. toe, shown in Hz), the peak's Q and height (R7), the boost 0..+12 dB: engine/px_pedals.h */
+static const char *const PN_FF[] = {"FUZZ", "VOLUME", "PICKUP", "BIAS", "TRANSISTOR"};   /* BST FUZZ FACE: the 1k fuzz pot, the 500k volume, the source (single coil .. humbucker), the Q2 collector load (the bias trim), germanium or silicon */
 static const char *const PN_ENH[] = {"BETTER", "LOUDER"};   /* ENHANCE v4: amount (harmonics + compression), clean boost 0..+12 dB: engine/px_enhance.h */
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"ENHANCE", 2, PN_ENH}, {"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}};   /* APPLAUSE: retired tombstone; ENHANCE appended after it */
+    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}};   /* APPLAUSE: retired tombstone; v75: RANGEMASTER, EP BOOST and MAXIMIZER moved to the BST block (tombstones here, px_preset_canonical moves a stored one); ENHANCE appended after it */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
@@ -526,7 +540,23 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ENSEMBLE", 5, PN_ENSEMBLE},
     {"CHOIR", 5, PN_CHOIR},
 };
-int px_type_retired(int b, int t) { return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && t == PX_SFX_APPLAUSE); }
+static const tdef T_BST[PX_BST_COUNT] = {{"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}, {"FIXED WAH", 3, PN_VW}, {"ENHANCE", 2, PN_ENH}, {"FUZZ FACE", 5, PN_FF}};
+/* v75: the SFX types that moved to the BST block and the BST type each became (-1: still an SFX type). The one place that lists them
+ * (docs/pxedit.js MOVED is the browser's copy). */
+static int px_sfx_to_bst(int t)
+{
+    switch (t) {
+    case PX_SFX_RANGEMASTER: return PX_BST_RANGEMASTER;
+    case PX_SFX_EPBOOST:     return PX_BST_EPBOOST;
+    case PX_SFX_MAXIMIZER:   return PX_BST_MAXIMIZER;
+    case PX_SFX_ENHANCE:     return PX_BST_ENHANCE;
+    default:                 return -1;
+    }
+}
+int px_type_retired(int b, int t)
+{
+    return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && (t == PX_SFX_APPLAUSE || px_sfx_to_bst(t) >= 0));
+}
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
 int px_live_type(int b, int i)
 {
@@ -562,7 +592,8 @@ static float drive_gain(const drv_v *drive, float setting)
 static const char *const PN_EQ5[] = {"100 HZ", "400 HZ", "1 KHZ", "2.5 KHZ", "6 KHZ"};
 static const char *const PN_GEQ[] = {"80 HZ", "240 HZ", "750 HZ", "2.2 KHZ", "6.6 KHZ"};
 static const char *const PN_PEQ[] = {"LOW", "MID FREQ", "MID GAIN", "MID Q", "HIGH"};
-static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ}};
+static const char *const PN_HUM[] = {"MAINS", "DEPTH", "WIDTH", "HARMONICS"};
+static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ}, {"HUM FILTER", 4, PN_HUM}};
 
 /* ========================================================== modulation ===== */
 static const char *const PN_RDM[] = {"RATE", "DEPTH", "MIX"};
@@ -606,13 +637,40 @@ const char *px_block_name(int b)  { return (b >= 0 && b < PX_NBLK) ? BLK_NAME[b]
 int px_ntypes(int b)
 {
     static const uint8_t N[PX_NBLK] = {PX_GATE_COUNT, PX_CMP_COUNT, PX_PIT_COUNT, PX_SYN_COUNT, PX_SFX_COUNT,
-                                       PX_EQ_COUNT, PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT};
+                                       PX_EQ_COUNT, PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT, PX_BST_COUNT};
     return (b >= 0 && b < PX_NBLK) ? N[b] : 1;
 }
 /* v70: the retired types (v63/64: BASS SYNTH, PWM SYNTH HQ, TRUMPET MODEL, the delay-line POLY OCTAVE) are removed, so
  * every type is its own; kept for the callers (the store, MIDI, the screen) */
 int px_type_canonical(int b, int t) { (void)b; return t; }
 void px_block_canonical(int b, uint8_t *type, uint8_t *p) { (void)b; (void)type; (void)p; }
+/* v75: ENHANCE (SFX type 9), RANGEMASTER, EP BOOST and MAXIMIZER (SFX types 10..12, test builds 929..931); they live in the BST block now. A preset that still holds one has it
+ * moved (type, on/off and settings) when the BST block is still as the factory and the older formats leave it (RANGEMASTER, off, default settings); the SFX
+ * block is then an ENVELOPE WAH, off, with its default settings. With BST already used (on, or another type or settings), the old SFX pedal stays as a
+ * tombstone (off; the engine bypasses it) and BST is never overwritten. Idempotent. */
+static int bst_untouched(const px_preset_t *p)   /* BST as a format 6 slot, an older editor file or the factory has it: RANGEMASTER, off, its defaults */
+{
+    static const uint8_t DEF[PX_NPAR] = {50, 0, 0, 0, 0};
+    return !p->on[PX_B_BST] && p->type[PX_B_BST] == PX_BST_RANGEMASTER && !memcmp(p->p[PX_B_BST], DEF, PX_NPAR);
+}
+void px_preset_canonical(px_preset_t *p)
+{
+    for (int b = 0; b < PX_NBLK; b++) px_block_canonical(b, &p->type[b], p->p[b]);
+    const int to = px_sfx_to_bst(p->type[PX_B_SFX]);
+    if (to >= 0 && bst_untouched(p)) {
+        p->type[PX_B_BST] = (uint8_t)to;
+        p->on[PX_B_BST] = p->on[PX_B_SFX];
+        memcpy(p->p[PX_B_BST], p->p[PX_B_SFX], PX_NPAR);
+        p->on[PX_B_SFX] = 0; p->type[PX_B_SFX] = PX_SFX_AUTOWAH;
+        static const uint8_t DEF[PX_NPAR] = {60, 60, 60, 40, 0};
+        memcpy(p->p[PX_B_SFX], DEF, PX_NPAR);
+    }
+    /* v75: a retired type (the SYNTH types of v29..v73, SFX APPLAUSE and the SFX pedals that moved to BST) is never shown or kept: the block becomes the first live type of
+     * its block, switched off, its settings as they were. The screen and the editor have no "retired type" any more (the engine still bypasses a tombstone it is
+     * handed directly). Idempotent. */
+    for (int b = 0; b < PX_NBLK; b++)
+        if (px_type_retired(b, p->type[b])) { p->on[b] = 0; p->type[b] = (uint8_t)px_live_type(b, 0); }
+}
 static const tdef *tdef_of(int b, int t)
 {
     switch (b) {
@@ -625,6 +683,7 @@ static const tdef *tdef_of(int b, int t)
     case PX_B_DELAY: return &T_DLY[t];
     case PX_B_REVERB: return &T_REV[t];
     case PX_B_SYN: return &T_SYN[t];
+    case PX_B_BST: return &T_BST[t];
     }
     return 0;
 }
@@ -728,6 +787,8 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             }
             return 1;
         }
+        if (t == PX_PIT_POLYSHIFT && k == 0) { put_int(buf, (int)(x * 24.0f + 0.5f) - 12, 1); return 1; }              /* SHIFT in semitones */
+        if (t == PX_PIT_POLYSHIFT && k == 1) { put_int(buf, (int)((x - 0.5f) * 100.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* FINE in cents */
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
         if (t == PX_PIT_WHAMMY && k == 0) { float st = (x - 0.5f) * 48.0f; put_int(buf, (int)(st + (st >= 0 ? 0.5f : -0.5f)), 1); return 1; }
         if (t == PX_PIT_DETUNE && k == 0) { put_int(buf, (int)(3.0f + x * 27.0f + 0.5f), 0); return 1; }
@@ -736,13 +797,25 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_SFX_CRUSH && k == 0) { put_int(buf, 16 - (int)(x * 14.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
-        if (t == PX_SFX_EPBOOST && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "EARLY" : v < 67 ? "LATE" : "FAT"); return 1; }   /* VOICE */
-        if (t == PX_SFX_RANGEMASTER && k == 2) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "TREBLE" : v < 67 ? "MID" : "FULL"); return 1; }   /* BODY */
-        if (t == PX_SFX_RANGEMASTER && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "SINGLE" : v < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
-        if (t == PX_SFX_ENHANCE && k == 1) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LOUDER in dB */
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
         break;
+    case PX_B_BST:
+        if (t == PX_BST_EPBOOST && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "EARLY" : v < 67 ? "LATE" : "FAT"); return 1; }   /* VOICE */
+        if (t == PX_BST_RANGEMASTER && k == 2) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "TREBLE" : v < 67 ? "MID" : "FULL"); return 1; }   /* BODY */
+        if (t == PX_BST_FUZZFACE && k == 2) { const int v2 = (int)(x * 100.0f + 0.5f); put_str(buf, v2 < 34 ? "SINGLE" : v2 < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
+        if (t == PX_BST_FUZZFACE && k == 4) { const int v2 = (int)(x * 100.0f + 0.5f); put_str(buf, v2 > 50 ? "SILICON" : "GERMAN"); return 1; }   /* TRANSISTOR */
+        if (t == PX_BST_RANGEMASTER && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "SINGLE" : v < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
+        if (t == PX_BST_ENHANCE && k == 1) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LOUDER in dB */
+        if (t == PX_BST_VOXWAH && k == 0) { put_int(buf, (int)(pxp_vw_hz(x) + 0.5f), 0); return 1; }   /* POSITION: the peak's frequency in Hz */
+        if (t == PX_BST_VOXWAH && k == 2) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LEVEL in dB */
+        break;
     case PX_B_EQ:
+        if (t == PX_EQ_HUM) {
+            if (k == 0) { put_str(buf, v < 34 ? "50 HZ" : v < 67 ? "AUTO" : "60 HZ"); return 1; }
+            if (k == 1) { put_int(buf, 3 + (int)(x * 37.0f + 0.5f), 0); return 1; }          /* DEPTH in dB */
+            if (k == 2) { put_int(buf, 1 + (int)(x * 19.0f + 0.5f), 0); return 1; }          /* WIDTH in Hz */
+            put_int(buf, 1 + (int)(x * 4.99f), 0); return 1;                                 /* HARMONICS */
+        }
         if (t == PX_EQ_PARAM && k == 1) { put_int(buf, (int)(150.0f * powf(33.0f, x) + 0.5f), 0); return 1; }
         if (t == PX_EQ_PARAM && k == 3) { int q = (int)((0.4f + x * 5.6f) * 10.0f + 0.5f);
             buf[0] = (char)('0' + q / 10); buf[1] = '.'; buf[2] = (char)('0' + q % 10); buf[3] = 0; return 1; }
@@ -797,6 +870,7 @@ static void base_preset(px_preset_t *p)
     blk(p, PX_B_DELAY,  0, PX_DLY_DIGITAL, 28, 30, 25, 50, 30);
     blk(p, PX_B_REVERB, 0, PX_REV_HALL, 50, 50, 20, 40, 0);
     blk(p, PX_B_SYN,    0, PX_SYN_OCT_FUZZ, 50, 70, 40, 30, 0);
+    blk(p, PX_B_BST,    0, PX_BST_RANGEMASTER, 50, 0, 0, 0, 0);
     px_order_default(p->order);
 }
 static void setname(px_preset_t *p, const char *s)
@@ -807,22 +881,73 @@ static void setname(px_preset_t *p, const char *s)
 }
 enum { NPRESETS = 52 };
 int px_preset_count(void) { return NPRESETS; }
-/* Factory presets: slots 01..12 show off the synths and the poly octaves (the same twelve as docs/presets/synth-showcase.json, made by
- * tools/mk_synth_showcase.c); 13..52 are still blank placeholders (the gate on, everything else off, LEVEL 0 dB). */
-typedef struct { const char *name; struct { int8_t blk; uint8_t type, p[5]; } b[3]; } fact_spec;
-#define FE {-1, 0, {0}}
+void px_preset_base(px_preset_t *p) { base_preset(p); }
+/* Factory presets (v75: a new bank of 52, in six groups; tools/research/preset_levels.c matches their loudness). Each is the blank base (the gate on, everything else off)
+ * with up to six blocks switched on; lvl is its PRESET LEVEL (the gate block's 3rd setting, 50 = 0 dB, 0.3 dB a step; 0 here means 50) as calibrated, so that every sound
+ * plays as loud as the guitar alone at noon (the mean over the five bundled loops):
+ *   01..10 clean and boost (RANGEMASTER, EP BOOST, MAXIMIZER, the parked FIXED WAH, ENHANCE)   11..18 pitch (the octaves, WHAMMY, HARMONIZER, DETUNE, POLY SHIFTER)
+ *   19..30 synths   31..43 modulation, delays and reverbs   44..51 special effects, SLOW SWELL and the hum filter   52 INIT: a blank to start from */
+typedef struct { const char *name; uint8_t lvl; struct { int8_t b1; uint8_t type, p[5]; } b[6]; } fact_spec;   /* b1: the block + 1 (0: none) */
+#define FB(blk, type, a, b, c, d, e) {(blk) + 1, type, {a, b, c, d, e}}
 static const fact_spec FACT[] = {
-    {"SQUARE LEAD",   {{PX_B_SFX, PX_SFX_SYNTH, {60, 40, 55, 100, 0}}, {PX_B_DELAY, PX_DLY_ANALOG, {45, 35, 25, 50, 0}}, {PX_B_REVERB, PX_REV_PLATE, {40, 50, 20, 0, 0}}}},
-    {"SQ HQ BASS",    {{PX_B_COMP, PX_CMP_SQUASH, {60, 40, 50, 0, 0}}, {PX_B_SFX, PX_SFX_SYNTH_HQ, {35, 30, 70, 80, 0}}, FE}},
-    {"POLY OCTAVES",  {{PX_B_PITCH, PX_PIT_POLYOCT_HQ, {55, 60, 45, 100, 40}}, {PX_B_REVERB, PX_REV_HALL, {45, 55, 22, 0, 0}}, FE}},
-    {"POLY FUZZ",     {{PX_B_SYN, PX_SYN_OCT_FUZZ, {60, 50, 60, 50, 100}}, {PX_B_REVERB, PX_REV_ROOM, {30, 50, 15, 0, 0}}, FE}},
-    {"MOOG BASS",     {{PX_B_SYN, PX_SYN_ANALOG, {60, 50, 55, 50, 50}}, {PX_B_DELAY, PX_DLY_TAPE, {40, 30, 20, 50, 30}}, FE}},
-    {"CHIP LEAD",     {{PX_B_SYN, PX_SYN_ARCADE, {10, 50, 50, 50, 100}}, {PX_B_DELAY, PX_DLY_DIGITAL, {30, 30, 20, 60, 0}}, FE}},
-    {"STRING PAD",    {{PX_B_SYN, PX_SYN_INSTRUMENT, {15, 50, 50, 50, 50}}, {PX_B_MOD, PX_MOD_CHORUS, {30, 50, 35, 0, 0}}, {PX_B_REVERB, PX_REV_HALL, {60, 50, 30, 0, 0}}}},
-    {"JAZZ ORGAN",    {{PX_B_SYN, PX_SYN_INSTRUMENT, {65, 50, 50, 50, 50}}, {PX_B_MOD, PX_MOD_ROTARY, {40, 60, 50, 0, 0}}, {PX_B_REVERB, PX_REV_ROOM, {30, 50, 15, 0, 0}}}},
-    {"STRING ENSEMB", {{PX_B_SYN, PX_SYN_ENSEMBLE, {15, 15, 50, 50, 50}}, {PX_B_REVERB, PX_REV_HALL, {55, 50, 30, 0, 0}}, FE}},
-    {"CHOIR AAH",     {{PX_B_SYN, PX_SYN_CHOIR, {5, 50, 50, 50, 50}}, {PX_B_REVERB, PX_REV_CATHEDRAL, {60, 45, 30, 0, 0}}, FE}},
-    {"BRASS + SQ HQ", {{PX_B_SYN, PX_SYN_ENSEMBLE, {25, 45, 50, 50, 50}}, {PX_B_SFX, PX_SFX_SYNTH_HQ, {40, 30, 60, 30, 0}}, {PX_B_REVERB, PX_REV_PLATE, {35, 50, 18, 0, 0}}}},
+    /* 01..10 clean and boost */
+    {"CLEAN HALL",    48, {FB(PX_B_COMP, PX_CMP_SQUASH, 35, 40, 50, 100, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 55, 18, 0, 0)}},
+    {"STUDIO CLEAN",  46, {FB(PX_B_COMP, PX_CMP_STUDIO, 40, 35, 50, 55, 0), FB(PX_B_EQ, PX_EQ_PARAM, 52, 45, 58, 45, 55), FB(PX_B_REVERB, PX_REV_ROOM, 30, 55, 14, 0, 0)}},
+    {"TREBLE BOOST",  42, {FB(PX_B_BST, PX_BST_RANGEMASTER, 58, 25, 10, 0, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 38, 32, 16, 50, 0), FB(PX_B_REVERB, PX_REV_PLATE, 40, 50, 14, 0, 0)}},
+    {"RM FULL BODY",  43, {FB(PX_B_BST, PX_BST_RANGEMASTER, 52, 65, 80, 0, 0), FB(PX_B_MOD, PX_MOD_CHORUS, 22, 40, 30, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 40, 50, 15, 0, 0)}},
+    {"EP PUSH",       32, {FB(PX_B_BST, PX_BST_EPBOOST, 40, 30, 0, 0, 0), FB(PX_B_MOD, PX_MOD_CHORUS, 28, 45, 35, 0, 0), FB(PX_B_REVERB, PX_REV_SPRING, 45, 50, 18, 50, 0)}},
+    {"EP FAT",        29, {FB(PX_B_BST, PX_BST_EPBOOST, 62, 92, 0, 0, 0), FB(PX_B_DELAY, PX_DLY_TAPE, 36, 32, 18, 50, 25), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 16, 0, 0)}},
+    {"BBE MAX",       42, {FB(PX_B_BST, PX_BST_MAXIMIZER, 45, 60, 0, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 55, 12, 0, 0)}},
+    {"WAH PARKED LO", 39, {FB(PX_B_BST, PX_BST_VOXWAH, 22, 55, 20, 0, 0), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 25, 15, 50, 0)}},
+    {"WAH PARKED HI", 35, {FB(PX_B_BST, PX_BST_VOXWAH, 72, 62, 20, 0, 0), FB(PX_B_REVERB, PX_REV_PLATE, 40, 50, 14, 0, 0)}},
+    {"ENHANCED",      38, {FB(PX_B_BST, PX_BST_ENHANCE, 55, 20, 0, 0, 0), FB(PX_B_COMP, PX_CMP_OPTO, 40, 50, 60, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 40, 55, 14, 0, 0)}},
+    /* 11..18 pitch */
+    {"POLY OCTAVES",  52, {FB(PX_B_PITCH, PX_PIT_POLYOCT_HQ, 55, 60, 45, 100, 40), FB(PX_B_REVERB, PX_REV_HALL, 45, 55, 22, 0, 0)}},
+    {"LOWEST OCT",    37, {FB(PX_B_PITCH, PX_PIT_LOWEST_HQ, 55, 70, 0, 100, 0), FB(PX_B_REVERB, PX_REV_ROOM, 28, 50, 12, 0, 0)}},
+    {"WHAMMY +12",    52, {FB(PX_B_PITCH, PX_PIT_WHAMMY, 75, 50, 35, 0, 0), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 30, 18, 50, 0)}},
+    {"HARMONY +3RD",  45, {FB(PX_B_PITCH, PX_PIT_HARMONY, 66, 60, 0, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 40, 55, 15, 0, 0)}},
+    {"HARMONY +5TH",  52, {FB(PX_B_PITCH, PX_PIT_HARMONY, 86, 55, 0, 0, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 32, 28, 15, 50, 0)}},
+    {"DETUNE",        47, {FB(PX_B_PITCH, PX_PIT_DETUNE, 45, 50, 0, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 12, 0, 0)}},
+    {"POLY SHIFT +7", 53, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 79, 50, 55, 50, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 20, 0, 0)}},
+    {"SHIFT -12 PAD", 60, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 0, 50, 70, 50, 0), FB(PX_B_MOD, PX_MOD_CHORUS, 22, 40, 30, 0, 0), FB(PX_B_REVERB, PX_REV_SHIMMER, 60, 50, 35, 40, 0)}},
+    /* 19..30 synths (the first ten as the synth showcase: docs/presets/synth-showcase.json) */
+    {"SQUARE LEAD",   32, {FB(PX_B_SFX, PX_SFX_SYNTH, 60, 40, 55, 100, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 45, 35, 25, 50, 0), FB(PX_B_REVERB, PX_REV_PLATE, 40, 50, 20, 0, 0)}},
+    {"SQ HQ BASS",    36, {FB(PX_B_COMP, PX_CMP_SQUASH, 60, 40, 50, 0, 0), FB(PX_B_SFX, PX_SFX_SYNTH_HQ, 35, 30, 70, 80, 0)}},
+    {"POLY FUZZ",     24, {FB(PX_B_SYN, PX_SYN_OCT_FUZZ, 60, 50, 60, 50, 100), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
+    {"MOOG BASS",     71, {FB(PX_B_SYN, PX_SYN_ANALOG, 60, 50, 55, 50, 50), FB(PX_B_DELAY, PX_DLY_TAPE, 40, 30, 20, 50, 30)}},
+    {"CHIP LEAD",     45, {FB(PX_B_SYN, PX_SYN_ARCADE, 10, 50, 50, 50, 100), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 30, 20, 60, 0)}},
+    {"STRING PAD",    67, {FB(PX_B_SYN, PX_SYN_INSTRUMENT, 15, 50, 50, 50, 50), FB(PX_B_MOD, PX_MOD_CHORUS, 30, 50, 35, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 60, 50, 30, 0, 0)}},
+    {"JAZZ ORGAN",    53, {FB(PX_B_SYN, PX_SYN_INSTRUMENT, 65, 50, 50, 50, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 40, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
+    {"STRING ENSEMB", 68, {FB(PX_B_SYN, PX_SYN_ENSEMBLE, 15, 15, 50, 50, 50), FB(PX_B_REVERB, PX_REV_HALL, 55, 50, 30, 0, 0)}},
+    {"CHOIR AAH",     47, {FB(PX_B_SYN, PX_SYN_CHOIR, 5, 50, 50, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
+    {"BRASS + SQ HQ", 88, {FB(PX_B_SYN, PX_SYN_ENSEMBLE, 25, 45, 50, 50, 50), FB(PX_B_SFX, PX_SFX_SYNTH_HQ, 40, 30, 60, 30, 0), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
+    {"ARCADE SPLIT",  62, {FB(PX_B_SYN, PX_SYN_ARCADE_SPLIT, 20, 70, 50, 50, 100), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 30, 20, 60, 0)}},
+    {"ANALOG LEAD",   53, {FB(PX_B_SYN, PX_SYN_ANALOG, 25, 60, 45, 50, 50), FB(PX_B_DELAY, PX_DLY_ANALOG, 40, 32, 22, 50, 0), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 15, 0, 0)}},
+    /* 31..43 modulation, delays, reverbs */
+    {"CE CHORUS",     46, {FB(PX_B_MOD, PX_MOD_CHORUS, 30, 50, 50, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 35, 55, 12, 0, 0)}},
+    {"DIMENSION",     48, {FB(PX_B_MOD, PX_MOD_DIMENSION, 40, 60, 0, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 10, 0, 0)}},
+    {"JET FLANGER",   51, {FB(PX_B_MOD, PX_MOD_FLANGER, 30, 60, 50, 45, 55)}},
+    {"PHASE 90",      47, {FB(PX_B_MOD, PX_MOD_PHASE90, 40, 65, 0, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 50, 10, 0, 0)}},
+    {"UNI-VIBE",      45, {FB(PX_B_MOD, PX_MOD_UNIVIBE, 45, 65, 70, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 50, 10, 0, 0)}},
+    {"OPTO TREM",     49, {FB(PX_B_MOD, PX_MOD_OPTOTREM, 45, 60, 0, 0, 0), FB(PX_B_REVERB, PX_REV_SPRING, 45, 50, 18, 40, 0)}},
+    {"ROTARY",        48, {FB(PX_B_MOD, PX_MOD_ROTARY, 40, 60, 55, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 50, 12, 0, 0)}},
+    {"SPRING SURF",   50, {FB(PX_B_MOD, PX_MOD_BIASTREM, 42, 55, 50, 0, 0), FB(PX_B_REVERB, PX_REV_SPRING, 55, 50, 35, 60, 0)}},
+    {"SHIMMER PAD",   52, {FB(PX_B_REVERB, PX_REV_SHIMMER, 72, 50, 45, 50, 0), FB(PX_B_DELAY, PX_DLY_DIGITAL, 40, 35, 25, 50, 0)}},
+    {"AMBIENT WASH",  52, {FB(PX_B_REVERB, PX_REV_AMBIENT, 72, 50, 40, 0, 0), FB(PX_B_DELAY, PX_DLY_DIGITAL, 45, 40, 25, 50, 0)}},
+    {"TAPE ECHO",     49, {FB(PX_B_DELAY, PX_DLY_TAPE, 40, 42, 32, 50, 30), FB(PX_B_REVERB, PX_REV_ROOM, 28, 50, 10, 0, 0)}},
+    {"SPACE ECHO",    47, {FB(PX_B_DELAY, PX_DLY_SPACE, 38, 45, 35, 50, 35), FB(PX_B_REVERB, PX_REV_SPRING, 40, 50, 14, 40, 0)}},
+    {"REVERSE",       47, {FB(PX_B_DELAY, PX_DLY_REVERSE, 50, 35, 55, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 55, 20, 0, 0)}},
+    /* 44..51 special effects, SLOW SWELL, the hum filter */
+    {"ENV WAH",       50, {FB(PX_B_COMP, PX_CMP_SQUASH, 40, 40, 50, 100, 0), FB(PX_B_SFX, PX_SFX_AUTOWAH, 60, 55, 60, 45, 0)}},
+    {"LFO WAH",       52, {FB(PX_B_SFX, PX_SFX_LFOWAH, 40, 60, 55, 50, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 35, 28, 15, 50, 0)}},
+    {"SLICER",        51, {FB(PX_B_SFX, PX_SFX_SLICER, 50, 75, 30, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 28, 50, 12, 0, 0)}},
+    {"RING MOD",      46, {FB(PX_B_SFX, PX_SFX_RING, 45, 50, 30, 0, 0), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 14, 0, 0)}},
+    {"LO-FI RADIO",   41, {FB(PX_B_SFX, PX_SFX_LOFI, 45, 45, 70, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 50, 12, 0, 0)}},
+    {"BIT CRUSH",     50, {FB(PX_B_SFX, PX_SFX_CRUSH, 45, 40, 50, 0, 0)}},
+    {"SLOW SWELL",    52, {FB(PX_B_COMP, PX_CMP_SWELL, 55, 50, 50, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 55, 50, 25, 0, 0)}},
+    {"NOISY ROOM",    48, {FB(PX_B_GATE, PX_GATE_SMART, 50, 45, 50, 50, 50), FB(PX_B_EQ, PX_EQ_HUM, 50, 65, 16, 50, 0), FB(PX_B_COMP, PX_CMP_STUDIO, 30, 35, 50, 50, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 55, 12, 0, 0)}},
+    /* 52 */
+    {"INIT",          0, {{0}}},
 };
 void px_preset_factory(px_preset_t *p, int idx)
 {
@@ -830,14 +955,17 @@ void px_preset_factory(px_preset_t *p, int idx)
     if (idx < 0 || idx >= NPRESETS) idx = 0;
     if (idx < (int)(sizeof FACT / sizeof FACT[0])) {
         setname(p, FACT[idx].name);
-        for (int j = 0; j < 3; j++) {
-            const int b = FACT[idx].b[j].blk; if (b < 0) continue;
-            p->on[b] = 1; p->type[b] = FACT[idx].b[j].type; memcpy(p->p[b], FACT[idx].b[j].p, 5);
+        for (int j = 0; j < 6; j++) {
+            if (!FACT[idx].b[j].b1) continue;
+            const int b = FACT[idx].b[j].b1 - 1;
+            if (b != PX_B_GATE) p->on[b] = 1;
+            p->type[b] = FACT[idx].b[j].type; memcpy(p->p[b], FACT[idx].b[j].p, 5);
         }
+        p->p[PX_B_GATE][PX_PATCH_LEVEL] = FACT[idx].lvl ? FACT[idx].lvl : 50;
         return;
     }
-    char n[14] = "PRESET ";
-    n[7] = (char)('0' + (idx + 1) / 10); n[8] = (char)('0' + (idx + 1) % 10); n[9] = 0;
+    char n[14] = "INIT ";
+    n[5] = (char)('0' + (idx + 1) / 10); n[6] = (char)('0' + (idx + 1) % 10); n[7] = 0;
     setname(p, n);
 }
 
@@ -877,6 +1005,7 @@ static void rc_dyn(px_engine *e)
     const int smart = p->type[PX_B_GATE] == PX_GATE_SMART && p->on[PX_B_GATE];
     if (smart && !e->smart_gate.active) memset(&e->smart_gate, 0, sizeof e->smart_gate);
     e->smart_gate.active = smart;
+    e->smart_gate.hush = (float)e->glob.hush * 0.01f;
     if (smart) {
         e->smart_gate.dc_k = onepole_k(sr, 0.0018f);   /* 88 Hz high-pass sidechain */
         e->smart_gate.split_k = onepole_k(sr, 0.00023f);
@@ -977,6 +1106,12 @@ static void rc_pitch(px_engine *e)
             e->ps_lvl[0] *= powf(100.0f / (float)q[3], PX_POLY_RANGE_MAKEUP) * powf(10.0f, PX_POLY_RANGE_LIFT * 0.05f * (fade > 1.0f ? 1.0f : fade));
         }
         break;
+    case PX_PIT_POLYSHIFT: {                           /* v75: the phase-vocoder shifter: a whole number of semitones and the cents */
+        if (!e->pv.inited) pv_init(&e->pv);
+        const int st = (int)(f01(q[0]) * 24.0f + 0.5f) - 12;
+        e->pv.rt = expf(((float)st + (f01(q[1]) - 0.5f)) * 0.05776227f);     /* 2^(st/12), the cents: +-50 of 100 per semitone */
+        e->pv.mix = f01(q[2]); e->pv.thr = 12.0f - 10.5f * f01(q[3]);
+    } break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
         e->ps_nv = 1; e->ps_dry = 1.0f - m; e->ps_lvl[0] = m;
@@ -1007,6 +1142,18 @@ static void synth_hq_filters(px_bq *first, px_bq *second, float rate)
     bq_lowpass(second, rate, 150.0f, 1.31f);
 }
 
+static void rc_bst(px_engine *e)
+{
+    const uint8_t *q = e->cur.p[PX_B_BST];
+    switch (e->cur.type[PX_B_BST] % PX_BST_COUNT) {
+    case PX_BST_MAXIMIZER: pxp_bbe_set(&e->bbe, (float)q[0], (float)q[1]); break;   /* LO CONTOUR, PROCESS */
+    case PX_BST_EPBOOST: pxp_ep_set(&e->ep, (float)q[0], (float)q[1], e->sr); break;   /* GAIN, VOICE */
+    case PX_BST_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOLUME, PICKUP, BODY: the state is kept on a knob move (the volume glides) */
+    case PX_BST_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER, LOUDER; the filter state is kept on a knob move (the mixes glide over 10 ms) */
+    case PX_BST_FUZZFACE: pxp_ff_set(&e->ff, (float)q[0], (float)q[1], (float)q[2], (float)q[3], (float)q[4]); break;   /* FUZZ, VOLUME, PICKUP, BIAS, TRANSISTOR (a new transistor, bias or pickup: the operating point again) */
+    default: pxp_vw_set(&e->vw, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOX FIXED WAH: POSITION, PEAK, LEVEL */
+    }
+}
 static void rc_sfx(px_engine *e)
 {
     const px_preset_t *p = &e->cur;
@@ -1052,10 +1199,7 @@ static void rc_sfx(px_engine *e)
         e->sfx_mix = f01(q[2]);
         break;
     case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
-    case PX_SFX_MAXIMIZER: pxp_bbe_set(&e->bbe, (float)q[0], (float)q[1]); break;   /* LO CONTOUR, PROCESS */
-    case PX_SFX_EPBOOST: pxp_ep_set(&e->ep, (float)q[0], (float)q[1], e->sr); break;   /* GAIN, VOICE */
-    case PX_SFX_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOLUME, PICKUP, BODY: the state is kept on a knob move (the volume glides) */
-    case PX_SFX_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER, LOUDER; the filter state is kept on a knob move (the mixes glide over 10 ms) */
+    case PX_SFX_MAXIMIZER: case PX_SFX_EPBOOST: case PX_SFX_RANGEMASTER: case PX_SFX_ENHANCE: break;   /* v75: moved to the BST block (tombstones here, px_sfx_to_bst) */
     default:                                           /* square synth: square + sub through a swept low-pass */
         if (t == PX_SFX_SYNTH_HQ) {
             if (!e->sfx_track_active) {
@@ -1111,6 +1255,31 @@ static __attribute__((noinline)) float lowest_pitch_run(px_engine *e, float x)
     return x * e->ps_dry + erb_octaves(e, &e->erb_pitch, x, e->ps_lvl[1], e->ps_lvl[0], e->erb_pitch_range);
 }
 
+/* v75 HUM FILTER, MAINS = AUTO: which mains is in the signal. Six resonators (Goertzel: 50 / 100 / 150 Hz and 60 / 120 / 180 Hz) run over the block's input
+ * (before the notches); at the end of each half-second window the 60 Hz family's power is compared with the 50 Hz family's. A guitar's own notes land on
+ * both families about alike, a hum lands on one, so a ratio over 4 (about 6 dB) two windows running switches the mains (about one second), and the notches
+ * are re-aimed. Costs 12 multiply-adds a sample while AUTO is chosen. */
+static void rc_eq(px_engine *e);
+static void hum_detect(px_engine *e, const float *x, int n)
+{
+    for (int r = 0; r < 6; r++) {
+        float s1 = e->hum_s1[r], s2 = e->hum_s2[r]; const float c = e->hum_c[r];
+        for (int k = 0; k < n; k++) { const float s0 = x[k] + c * s1 - s2; s2 = s1; s1 = s0; }
+        e->hum_s1[r] = s1; e->hum_s2[r] = s2;
+    }
+    e->hum_n += n;
+    if (e->hum_n < (int)(e->sr * 0.5f)) return;
+    float p[6];
+    for (int r = 0; r < 6; r++) { p[r] = e->hum_s1[r] * e->hum_s1[r] + e->hum_s2[r] * e->hum_s2[r] - e->hum_c[r] * e->hum_s1[r] * e->hum_s2[r]; e->hum_s1[r] = e->hum_s2[r] = 0.0f; }
+    e->hum_n = 0;
+    const float p50 = p[0] + p[1] + p[2] + 1e-12f, p60 = p[3] + p[4] + p[5] + 1e-12f;
+    const int want = p60 > 4.0f * p50 ? 60 : p50 > 4.0f * p60 ? 50 : e->hum_hz;
+    if (want == e->hum_hz) { e->hum_vote = 0; return; }
+    if (++e->hum_vote < 2) return;
+    e->hum_vote = 0; e->hum_hz = want;
+    rc_eq(e);
+}
+
 static void rc_eq(px_engine *e)
 {
     const px_preset_t *p = &e->cur;
@@ -1132,6 +1301,22 @@ static void rc_eq(px_engine *e)
         bq_peak(&e->eq[3], sr, 2200.0f, 1.4f, EQDB(3));
         bq_peak(&e->eq[4], sr, 6600.0f, 1.4f, EQDB(4));
         e->eq_n = 5;
+    } else if (t == PX_EQ_HUM) {
+        /* v75 HUM FILTER: narrow notches at the mains and its harmonics (50 Hz: Europe, Asia, Africa, Australia; 60 Hz: the Americas, Korea, Taiwan,
+         * parts of Japan and the Gulf); MAINS picks 50, 60 or AUTO (the detector below picks, and may re-aim the notches). DEPTH 3..40 dB, WIDTH 1..20 Hz
+         * (the grid drifts a few tenths of a hertz; the notch is as wide in hertz at every harmonic), HARMONICS 1..5 (a low E at 82 Hz sits between the
+         * 60 Hz hum's 1st and 2nd; at the default width it loses under 0.3 dB). */
+        const int mains = q[0] < 34 ? 50 : q[0] > 66 ? 60 : (e->hum_hz == 60 ? 60 : 50);
+        const int nh = 1 + (int)(f01(q[3]) * 4.99f);
+        const float depth = 3.0f + f01(q[1]) * 37.0f, width = 1.0f + f01(q[2]) * 19.0f;
+        for (int i = 0; i < nh; i++) {
+            const float f = (float)(mains * (i + 1));
+            bq_notch(&e->eq[i], sr, f, width, depth);
+        }
+        e->eq_n = nh;
+        e->hum_hz = mains;
+        { static const float F[6] = {50.0f, 100.0f, 150.0f, 60.0f, 120.0f, 180.0f};
+          for (int i = 0; i < 6; i++) e->hum_c[i] = 2.0f * cosf(2.0f * PI_F * F[i] / sr); }
     } else {
         bq_lowshelf(&e->eq[0], sr, 100.0f, EQDB(0));
         bq_peak(&e->eq[1], sr, 150.0f * powf(33.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
@@ -1406,23 +1591,75 @@ static void px_recalc(px_engine *e)
     rc_dyn(e);
     rc_pitch(e);
     rc_sfx(e);
+    rc_bst(e);
     (void)osr;                                         /* (v38: the half-band filters have fixed coefficients) */
     rc_eq(e);
     rc_mod(e);
-    rc_delay(e);
-    rc_reverb(e);
+    if (!e->spill[0]) rc_delay(e);                      /* v75: a tail playing out keeps the settings it had */
+    if (!e->spill[1]) rc_reverb(e);
     rc_syn(e);
     /* v36: each type's level at noon, measured (px_trim.h): switching a block on keeps the loudness */
     const px_preset_t *p = &e->cur;
-    static const float *const DB[PX_NBLK] = {0, CMP_DB, PIT_DB, SYN_DB, SFX_DB, 0, MOD_DB, DLY_DB, REV_DB};
+    static const float *const DB[PX_NBLK] = {0, CMP_DB, PIT_DB, SYN_DB, SFX_DB, 0, MOD_DB, DLY_DB, REV_DB, 0};   /* (BST: the circuits set their own level) */
     static const uint8_t NT[PX_NBLK] = {1, PX_CMP_COUNT, PX_PIT_COUNT, PX_SYN_COUNT, PX_SFX_COUNT, 1,
-                                        PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT};
+                                        PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT, 1};
     for (int b = 0; b < PX_NBLK; b++)
         e->btr[b] = DB[b] ? powf(10.0f, DB[b][p->type[b] % NT[b]] * 0.05f) : 1.0f;
     /* preset LEVEL (v36): -15..+15 dB, 0.3 dB a step, kept in the gate block's spare 5th setting */
     e->patch_g = powf(10.0f, ((float)p->p[PX_B_GATE][PX_PATCH_LEVEL] - 50.0f) * 0.3f * 0.05f);
 }
 
+/* ---- v75: the global settings ---- */
+void px_global_default(px_global_t *g) { memset(g, 0, sizeof *g); for (int i = 0; i < 5; i++) g->eq[i] = 24; }
+void px_engine_globals(px_engine *e, const px_global_t *g)
+{
+    const float sr = e->sr;
+    px_global_t q = *g;
+    if (q.hpf && q.hpf < 20u) q.hpf = 20u;
+    if (q.hpf > 140u) q.hpf = 140u;
+    for (int i = 0; i < 5; i++) if (q.eq[i] > 48u) q.eq[i] = 48u;
+    if (q.lim > 24u) q.lim = 24u;
+    if (q.hush > 100u) q.hush = 100u;
+    e->glob = q;
+    e->smart_gate.hush = (float)q.hush * 0.01f;
+    e->g_hp_on = q.hpf != 0;
+    if (e->g_hp_on) bq_highpass(&e->g_hp, sr, (float)q.hpf, 0.70710678f);
+    int any = 0;
+    for (int i = 0; i < 5; i++) any |= q.eq[i] != 24u;
+    if (any) {
+        static const float F[5] = {80.0f, 250.0f, 1000.0f, 3500.0f, 9000.0f};
+        const float db0 = ((float)q.eq[0] - 24.0f) * 0.5f, db4 = ((float)q.eq[4] - 24.0f) * 0.5f;
+        bq_lowshelf(&e->g_eq[0], sr, F[0], db0);
+        for (int i = 1; i < 4; i++) bq_peak(&e->g_eq[i], sr, F[i], 0.9f, ((float)q.eq[i] - 24.0f) * 0.5f);
+        bq_highshelf(&e->g_eq[4], sr, F[4], db4);
+    }
+    e->g_eq_n = any ? 5 : 0;
+    e->g_lim_c = q.lim ? powf(10.0f, -0.5f * (float)q.lim * 0.05f) : 0.0f;
+    e->g_lim_g = 1.0f;
+}
+
+/* v75 BST (RANGEMASTER, EP BOOST, MAXIMIZER, VOX FIXED WAH, ENHANCE): every pedal's state back to rest */
+static void bst_reset(px_engine *e)
+{
+    pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); pxp_ep_init(&e->ep, e->sr); pxp_bbe_init(&e->bbe, e->sr); pxp_vw_init(&e->vw, e->sr); pxp_ff_init(&e->ff, e->sr, 0);
+}
+/* v75: tails. A delay or reverb that was running and is now off (the user switched it, or the new preset has it off) plays out for a few seconds instead of
+ * stopping, if the global TAILS setting is on: its input is muted, its settings stay as they were, and the block ends after the time (px_tick). A block
+ * that is on in the new state is not spilling. was_on / was_type: the old state of the delay (0) and the reverb (1); p: the new preset. */
+static void px_spill_plan(px_engine *e, const px_preset_t *p, const uint8_t *was_on, const uint8_t *was_type, int full)
+{
+    for (int L = 0; L < 2; L++) {
+        const int b = L ? PX_B_REVERB : PX_B_DELAY;
+        if (p->on[b]) {
+            if (e->spill[L]) { e->spill[L] = 0; if (!full) { if (L) rc_reverb(e); else rc_delay(e); } }   /* back to the preset's own settings (px_recalc does it for a full set) */
+            continue;
+        }
+        if (e->glob.tails && was_on[L] && e->run.on[b] && e->bf[b] >= 1.0f && !e->spill[L]) {
+            e->spill[L] = (int16_t)((L ? 6.0f : 3.0f) * e->sr / 64.0f);
+            e->sp_type[L] = was_type[L];
+        }
+    }
+}
 void px_engine_init(px_engine *e, float sr)
 {
     memset(e, 0, sizeof(*e));
@@ -1430,24 +1667,30 @@ void px_engine_init(px_engine *e, float sr)
     e->oct_ff = 1.0f; e->oct_ff2 = 1.0f;
     e->dly_type = -1;
     e->syn_type = -1;
-    pxe_init(&e->enh, sr); pxp_rm_init(&e->rm, sr); pxp_ep_init(&e->ep, sr); pxp_bbe_init(&e->bbe, sr);
+    px_global_default(&e->glob); e->g_lim_g = 1.0f;
+    bst_reset(e);
     px_preset_t p; px_preset_factory(&p, 0);
     px_engine_set(e, &p);
 }
 static void wl_clear(px_engine *e);
 void px_engine_set(px_engine *e, const px_preset_t *p)
 {
-    if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) { pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); pxp_ep_init(&e->ep, e->sr); pxp_bbe_init(&e->bbe, e->sr); }   /* ENHANCE, RANGEMASTER, EP BOOST, MAXIMIZER: entering or leaving the effect starts it from unity with clean filters (no stale state, no click: the mix and level glide) */
+    e->shed = 0;                                       /* v75: a new preset: nothing shed */
+    memset(e->pfs, 0, sizeof e->pfs);
+    { const uint8_t wo[2] = {e->run.on[PX_B_DELAY], e->run.on[PX_B_REVERB]}, wt[2] = {e->run.type[PX_B_DELAY], e->run.type[PX_B_REVERB]}; px_spill_plan(e, p, wo, wt, 1); }
+    if (e->cur.type[PX_B_BST] != p->type[PX_B_BST] || e->cur.on[PX_B_BST] != p->on[PX_B_BST]) bst_reset(e);   /* a different pedal, or on/off: no old state */
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
     px_recalc(e);
     if (e->cur.on[PX_B_PITCH] && e->cur.type[PX_B_PITCH] == PX_PIT_LOWEST_HQ)
         lowest_pitch_reset(e);
+    if (e->cur.type[PX_B_PITCH] == PX_PIT_POLYSHIFT && e->pv.inited) pv_reset(&e->pv);   /* v75: a new preset: an empty frame buffer */
     e->run = e->cur;                                   /* v38: nothing gliding, nothing fading */
+    for (int L = 0; L < 2; L++) if (e->spill[L]) { const int b = L ? PX_B_REVERB : PX_B_DELAY; e->run.on[b] = 1; e->run.type[b] = e->sp_type[L]; }   /* v75: the tails play on */
     wl_clear(e);                                       /* v39: the lanes start empty (the output fades in) */
     e->gl_left = 0;
-    for (int b = 0; b < PX_NBLK; b++) { e->bf[b] = e->bfa[b] = p->on[b] ? 1.0f : 0.0f; e->bfd[b] = 0; }
+    for (int b = 0; b < PX_NBLK; b++) { e->bf[b] = e->bfa[b] = e->run.on[b] ? 1.0f : 0.0f; e->bfd[b] = 0; }
 }
 
 /* ---- v38: changes without clicks (px_dsp.h) ---- */
@@ -1498,16 +1741,20 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     const px_preset_t old = e->cur;
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
+    for (int b = 0; b < PX_NBLK; b++)                  /* v75: a shed block that is switched or given another type is the user's again */
+        if (old.on[b] != p->on[b] || old.type[b] != p->type[b]) e->shed &= (uint16_t)~(1u << b);
+    { const uint8_t wo[2] = {old.on[PX_B_DELAY], old.on[PX_B_REVERB]}, wt[2] = {e->run.type[PX_B_DELAY], e->run.type[PX_B_REVERB]}; px_spill_plan(e, p, wo, wt, 0); }   /* v75: a delay or reverb switched off plays out; one switched on is the user's again */
     for (int b = 0; b < PX_NBLK; b++) {
         if (!memcmp(old.p[b], p->p[b], PX_NPAR)) continue;
         switch (b) {
         case PX_B_GATE: case PX_B_COMP: rc_dyn(e); break;
         case PX_B_PITCH: rc_pitch(e); break;
         case PX_B_SFX: rc_sfx(e); break;
+        case PX_B_BST: rc_bst(e); break;
         case PX_B_EQ: rc_eq(e); break;
         case PX_B_MOD: rc_mod(e); break;
-        case PX_B_DELAY: rc_delay(e); break;
-        case PX_B_REVERB: rc_reverb(e); break;
+        case PX_B_DELAY: if (!e->spill[0]) rc_delay(e); break;
+        case PX_B_REVERB: if (!e->spill[1]) rc_reverb(e); break;
         default: rc_syn(e); break;
         }
     }
@@ -1521,17 +1768,19 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     }
     e->gl_left = any ? PX_GLIDE_TICKS : 0;
     if (!any) for (int i = 0; i < GL_N; i++) *GLP(e, i) = e->gl_t[i];
-    for (int b = 0; b < PX_NBLK; b++) {                /* blocks switched on or off: they fade */
-        if (p->on[b] && (e->bfd[b] < 0 || !e->run.on[b] || e->bf[b] < 1.0f)) e->bfd[b] = 1;
-        else if (!p->on[b] && e->run.on[b]) e->bfd[b] = -1;
+    for (int b = 0; b < PX_NBLK; b++) {                /* blocks switched on or off (or shed): they fade */
+        const int pon = (p->on[b] && !(e->shed >> b & 1)) || (b == PX_B_DELAY && e->spill[0]) || (b == PX_B_REVERB && e->spill[1]);
+        if (pon && (e->bfd[b] < 0 || !e->run.on[b] || e->bf[b] < 1.0f)) e->bfd[b] = 1;
+        else if (!pon && e->run.on[b]) e->bfd[b] = -1;
     }
     for (int b = 0; b < PX_NBLK; b++) {                /* run: cur, the blocks still fading out kept on */
-        uint8_t on = (uint8_t)(p->on[b] || e->bfd[b] < 0);
+        uint8_t on = (uint8_t)((p->on[b] && !(e->shed >> b & 1)) || e->bfd[b] < 0 || (b == PX_B_DELAY && e->spill[0]) || (b == PX_B_REVERB && e->spill[1]));
         if (on && !e->run.on[b]) {
             e->bf[b] = e->bfa[b] = 0.0f;
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
+            if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYSHIFT && e->pv.inited) pv_reset(&e->pv);   /* v75 */
             if (b == PX_B_SYN && p->type[b] == PX_SYN_OCT_FUZZ) {
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
                 syn_fuzz_reset(e);
@@ -1546,6 +1795,30 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     memcpy(e->run.p, p->p, sizeof p->p);
     memcpy(e->run.type, p->type, sizeof p->type);
     memcpy(e->run.order, p->order, sizeof p->order);
+    for (int L = 0; L < 2; L++) if (e->spill[L]) e->run.type[L ? PX_B_REVERB : PX_B_DELAY] = e->sp_type[L];   /* v75: a tail keeps the type it had */
+}
+/* ---- v75: load shedding ---- */
+int px_engine_heaviest(const px_engine *e)
+{
+    int best = -1; float bv = 0.5f;
+    for (int b = 0; b < PX_NBLK; b++) {
+        if (b == PX_B_GATE || !e->run.on[b] || (e->shed >> b & 1) || e->bf[b] < 1.0f) continue;
+        if (e->wl_on && (b == PX_B_DELAY || b == PX_B_REVERB)) continue;
+        if (e->pfs[b] > bv) { bv = e->pfs[b]; best = b; }
+    }
+    return best;
+}
+void px_engine_shed(px_engine *e, int b)
+{
+    if (b < 0 || b >= PX_NBLK || b == PX_B_GATE || (e->shed >> b & 1)) return;
+    e->shed |= (uint16_t)(1u << b);
+    px_engine_knobs(e, &e->cur);                       /* the same settings: the block fades out */
+}
+void px_engine_unshed(px_engine *e)
+{
+    if (!e->shed) return;
+    e->shed = 0;
+    px_engine_knobs(e, &e->cur);                       /* the blocks fade back in, from rest */
 }
 /* once per block, before it: the glides and the fades move on (called by the stage that runs first) */
 static void px_tick(px_engine *e)
@@ -1555,6 +1828,12 @@ static void px_tick(px_engine *e)
         for (int i = 0; i < GL_N; i++) { float *v = GLP(e, i); *v += (e->gl_t[i] - *v) * k; }
         if (--e->gl_left == 0) for (int i = 0; i < GL_N; i++) *GLP(e, i) = e->gl_t[i];
     }
+    for (int L = 0; L < 2; L++)                        /* v75: a tail's time is up: the block goes off for good, and takes the settings of the preset again */
+        if (e->spill[L] > 0 && --e->spill[L] == 0) {
+            const int b = L ? PX_B_REVERB : PX_B_DELAY;
+            if (L) rc_reverb(e); else rc_delay(e);
+            if (!e->cur.on[b]) e->bfd[b] = -1;
+        }
     for (int b = 0; b < PX_NBLK; b++) {
         e->bfa[b] = e->bf[b];
         if (!e->bfd[b]) continue;
@@ -2030,7 +2309,19 @@ static float smart_gate_sample(px_engine *e, float x)
     const float target = e->smart_gate.open ? 1.0f : e->smart_gate.range;
     const float coefficient = e->smart_gate.open ? e->smart_gate.attack : 1.0f - e->gate_rel;
     e->smart_gate.gain += (target - e->smart_gate.gain) * coefficient;
-    return x * e->smart_gate.gain;
+    float y = x * e->smart_gate.gain;
+    if (e->smart_gate.hush > 0.0f) {                   /* v75: the hiss filter. How far the note is above the gate's own threshold (its two bands' envelopes against
+                                                          the sensitivity) sets a low-pass: wide open from about 24 dB above it, closing to 700 Hz at the threshold; HUSH
+                                                          is how far it follows (0: not at all). The decay of a note loses its hiss, the note keeps its top. */
+        const float lvl = (e->smart_gate.band[0] + e->smart_gate.band[1]) / (e->smart_gate.sensitivity * 16.0f + 1e-9f);
+        float u = lvl > 1.0f ? 1.0f : lvl;             /* 0 .. 1 */
+        u *= u;
+        const float fc_open = 12000.0f, fc = 700.0f + (fc_open - 700.0f) * u, fe = fc_open + (fc - fc_open) * e->smart_gate.hush;
+        float k = 6.2831853f * fe / e->sr; if (k > 0.95f) k = 0.95f;
+        e->smart_gate.lp += k * (y - e->smart_gate.lp);
+        y = e->smart_gate.lp;
+    }
+    return y;
 }
 /* ---- v40.4: blocks over a run of samples, pass by pass ----
  * px_engine_part ran these blocks sample by sample inside its own loop: every sample went through the block switch and
@@ -2073,6 +2364,18 @@ static __attribute__((noinline)) void pitch_run(px_engine *e, int type, float *x
 {
     if (type == PX_PIT_LOWEST_HQ) {
         for (int k = 0; k < n0; ++k) xb[k] = lowest_pitch_run(e, xb[k]) * strim;
+        e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
+        return;
+    }
+    if (type == PX_PIT_POLYSHIFT) {                    /* v75: the dry and the wet voice both PV_LAT behind, mixed */
+        px_pv *const v = &e->pv;
+        if (!v->inited) pv_init(v);
+        const float m = v->mix;
+        for (int k = 0; k < n0; ++k) {
+            float d, w;
+            pv_tick(v, xb[k], &d, &w);
+            xb[k] = d * (1.0f - m) + w * m * strim;       /* (the level trim is the wet voice's: MIX 0 is the input, unchanged) */
+        }
         e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
         return;
     }
@@ -2390,17 +2693,20 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     const int pit_t = px_type_canonical(PX_B_PITCH, p->type[PX_B_PITCH] % PX_PIT_COUNT);
     const int sfx_t = p->type[PX_B_SFX] % PX_SFX_COUNT;
     const int mod_t = p->type[PX_B_MOD] % PX_MOD_COUNT;
+    const int eq_t = p->type[PX_B_EQ] % PX_EQ_COUNT;
+    const int bst_t = p->type[PX_B_BST] % PX_BST_COUNT;
     const int dly_t = p->type[PX_B_DELAY] % PX_DLY_COUNT;
     const int syn_t = p->type[PX_B_SYN];               /* (a retired or unknown type is not run: px_syn_runs) */
     /* the blocks to run, in this preset's order (GATE always: it carries the anti-denormal offset) */
     uint8_t st[PX_NBLK];
     float tr[PX_NBLK];                                 /* each block's level trim */
     int ns = 0;
+    const int sfx_gone = px_type_retired(PX_B_SFX, sfx_t);
     for (int i = 0; i < PX_NBLK; i++) {
         int b = e->ord[i];
         if (b != PX_B_GATE && !p->on[b]) continue;
         if (b == PX_B_SYN && !px_syn_runs(syn_t)) continue;   /* Synth2: a retired SYNTH type is bypassed (docs/research/synth2/SYNTH2-PLAN.md) */
-        if (b == PX_B_SFX && sfx_t == PX_SFX_APPLAUSE) continue;   /* APPLAUSE was removed: a stored one is bypassed, its settings kept */
+        if (b == PX_B_SFX && sfx_gone) continue;   /* APPLAUSE was removed, and v75 moved three pedals to BST: a stored one is bypassed, its settings kept */
         tr[ns] = e->btr[b];
         st[ns++] = (uint8_t)b;
     }
@@ -2416,6 +2722,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         { float y = x - e->dc_x1 + 0.9995f * e->dc_y1; e->dc_x1 = x; e->dc_y1 = y; x = y; }
         xb[k] = x;
     }
+    if (e->g_hp_on) bq_block(&e->g_hp, xb, n);         /* v75: the global input high-pass */
     /* Synth2: the mono synth follows the clean guitar, before the gate, the octave and every other effect (docs/research/synth2/SYNTH2-PLAN.md): its
      * output waits here and replaces the signal where the SYNTH block stands in the order */
     float sy[PX_MAX_BLOCK];
@@ -2432,26 +2739,29 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         if (fading) for (int k = 0; k < n; k++) dryb[k] = xb[k];
         if (sblk == PX_B_DELAY || sblk == PX_B_REVERB) {   /* v38: over the block, each type's own loop */
             if (p->on[sblk]) {
-                const int L = sblk == PX_B_REVERB;
+                const int L = sblk == PX_B_REVERB, sp = e->spill[L] > 0;   /* v75: a tail playing out: nothing is sent in, the dry stays whole */
                 if (e->wl_on && e->wl_p[L] + n <= PX_WL_N) {   /* v39: the lane: the send in, two blocks old wet out */
-                    const float dg = L ? 1.0f - 0.4f * e->rv_mix : 1.0f;
+                    const float dg = (L && !sp) ? 1.0f - 0.4f * e->rv_mix : 1.0f;
                     float *bw = px_wl[L][e->wl_b] + e->wl_p[L];
                     const int rd = (int)e->wl_rd[L] - (int)e->wl_p[L];
                     for (int k = 0; k < n; k++) {
                         const float x = xb[k], w = k < rd ? bw[k] : 0.0f;
-                        bw[k] = x;
+                        bw[k] = sp ? 0.0f : x;
                         xb[k] = x * dg + w;
                     }
                     e->wl_p[L] = (uint16_t)(e->wl_p[L] + n);
                     e->wl_n[L][e->wl_b] = e->wl_p[L];
                 } else {
                     float *const wb = px_wb[L];           /* (the lanes off: one core runs the whole chain) */
+                    float zb[PX_MAX_BLOCK];
+                    if (sp) for (int k = 0; k < n; k++) zb[k] = 0.0f;
+                    const float *const src = sp ? zb : xb;
                     if (L) {
-                        rv_block(e, xb, wb, n);
-                        const float dg = 1.0f - 0.4f * e->rv_mix;
+                        rv_block(e, src, wb, n);
+                        const float dg = sp ? 1.0f : 1.0f - 0.4f * e->rv_mix;
                         for (int k = 0; k < n; k++) xb[k] = xb[k] * dg + wb[k];
                     } else {
-                        dly_block(e, xb, wb, n, dly_t);
+                        dly_block(e, src, wb, n, dly_t);
                         for (int k = 0; k < n; k++) xb[k] = xb[k] + wb[k];
                     }
                 }
@@ -2463,7 +2773,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         if (sblk == PX_B_SYN && px_syn_mono(syn_t)) {
             float g0, g1; px_s2_dry(&g0, &g1);             /* ARCADE's guitar share: the signal that reaches this block (the blocks before it in the order have worked on it) */
             const float dg = (g1 - g0) / (float)n;
-            for (int k = 0; k < n; ++k) xb[k] = (sy[k] + xb[k] * (g0 + dg * (float)k)) * strim;
+            for (int k = 0; k < n; ++k) xb[k] = sy[k] * strim + xb[k] * (g0 + dg * (float)k);   /* (the type's level trim is the synth's: the guitar's own share stays as the MIX sets it) */
             goto faded;
         }
         if (sblk == PX_B_SYN && syn_t == PX_SYN_OCT_FUZZ) {
@@ -2487,6 +2797,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         if (sblk == PX_B_GATE) { gate_run(e, p->on[PX_B_GATE], xb, n, strim); goto faded; }
         if (sblk == PX_B_COMP && p->on[PX_B_COMP]) { comp_run(e, cmp_t == PX_CMP_SWELL, xb, n, strim); goto faded; }
         if (sblk == PX_B_EQ && p->on[PX_B_EQ]) {       /* its filters one after the other over the block, as the cabinet's */
+            if (eq_t == PX_EQ_HUM && p->p[PX_B_EQ][0] >= 34 && p->p[PX_B_EQ][0] <= 66) hum_detect(e, xb, n);   /* MAINS = AUTO */
             bq_chain(e->eq, e->eq_n, xb, n);
             for (int k = 0; k < n; k++) xb[k] *= strim;
             goto faded;
@@ -2615,18 +2926,6 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     if (e->sfx_g < 1e-6f) e->sfx_g = 0.0f;
                     x *= e->sfx_g;
                 } break;
-                case PX_SFX_ENHANCE:
-                    x = pxe_tick(&e->enh, x);
-                    break;
-                case PX_SFX_RANGEMASTER:
-                    x = pxp_rm_tick(&e->rm, x);
-                    break;
-                case PX_SFX_EPBOOST:
-                    x = pxp_ep_tick(&e->ep, x);
-                    break;
-                case PX_SFX_MAXIMIZER:
-                    x = pxp_bbe_tick(&e->bbe, x);
-                    break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));
                     y = px_tanh(y * e->sfx_c) * (1.5f / (1.0f + e->sfx_c * 0.2f));
@@ -2660,6 +2959,17 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     x = x * (1.0f - e->sfx_mix) + e->sfx_lo * 2.0f * e->sfx_mix;
                 } break;
                 }
+            }
+        break;
+        case PX_B_BST:
+            /* ---- v75: PRE / BOOST ---- */
+            switch (bst_t) {
+            case PX_BST_RANGEMASTER: x = pxp_rm_tick(&e->rm, x); break;
+            case PX_BST_EPBOOST: x = pxp_ep_tick(&e->ep, x); break;
+            case PX_BST_MAXIMIZER: x = pxp_bbe_tick(&e->bbe, x); break;
+            case PX_BST_ENHANCE: x = pxe_tick(&e->enh, x); break;
+            case PX_BST_FUZZFACE: x = pxp_ff_tick(&e->ff, x); break;
+            default: x = pxp_vw_tick(&e->vw, x); break;
             }
         break;
         case PX_B_EQ:
@@ -2753,12 +3063,18 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             float g = fa;
             for (int k = 0; k < n; k++) { g += dg; xb[k] = dryb[k] + (xb[k] - dryb[k]) * g; }
         }
-        if (px_clock) e->pf[sblk] += px_clock() - pt0;
+        if (px_clock) { const uint32_t d = px_clock() - pt0; e->pf[sblk] += d; e->pfs[sblk] += ((float)d - e->pfs[sblk]) * 0.0625f; }
     }
+    if (e->g_eq_n) bq_chain(e->g_eq, e->g_eq_n, xb, n);   /* v75: the global output EQ */
     for (int k = 0; k < n; k++) {
         float x = xb[k];
         { float y = x - e->odc_x1 + 0.9990f * e->odc_y1; e->odc_x1 = x; e->odc_y1 = y; x = y; }
         x *= pg;
+        if (e->g_lim_c > 0.0f) {                       /* v75: the global limiter: the gain falls to the ceiling at once (a third of the way a sample) and comes back over ~2 ms */
+            const float a = px_abs(x), tg = a > e->g_lim_c ? e->g_lim_c / a : 1.0f;
+            e->g_lim_g += (tg - e->g_lim_g) * (tg < e->g_lim_g ? 0.35f : 0.0004f);
+            x *= e->g_lim_g;
+        }
         {   /* v36: soft limiter instead of a hard clip: transparent up to 0.8, then rounds off smoothly to 1.2 */
             float a = px_abs(x);
             if (a > 0.8f) { float y = 0.8f + 0.4f * px_tanh((a - 0.8f) * 2.5f); x = x > 0.0f ? y : -y; }

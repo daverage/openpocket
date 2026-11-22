@@ -16,7 +16,7 @@ static void pluck(float *o, int n, const float *f, int nf)
 }
 static float level(int type, int range, const float *f, int nf)
 {
-    px_preset_t p; px_preset_factory(&p, 7); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0;
+    px_preset_t p; px_preset_base(&p); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0;
     p.on[PX_B_PITCH] = 1; p.type[PX_B_PITCH] = (uint8_t)type; p.p[PX_B_PITCH][0] = 0; p.p[PX_B_PITCH][1] = 50; p.p[PX_B_PITCH][2] = 0; p.p[PX_B_PITCH][3] = (uint8_t)range; p.p[PX_B_PITCH][4] = 0;
     static px_engine e; px_engine_init(&e, 44100.0f); px_engine_set(&e, &p); pluck(in, 88200, f, nf);
     for (int at = 0; at + 64 <= 88200; at += 64) px_engine_process(&e, in + at, out + at, 64);

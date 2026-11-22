@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score MONO SYNTH (tools/legacy-synth/mono_bench.c) on single-note playing (v60).
+"""Score MONO SYNTH (tools/archive/legacy-synth/mono_bench.c) on single-note playing (v60).
 
   PYTHONPATH=tools/research python3 tools/research/mono_eval.py BENCH [BENCH2 ...] [--solo N] [--offset K]
 

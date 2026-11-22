@@ -1,6 +1,6 @@
 # synth4: a quicker, cleaner response of the guitar synths
 
-Branch `synth4` (= `synth2-enhance` + `synth3-declick`). Goal: improve mono tracking use without clicks and pops, slurs, slow attacks and releases, and latency. Everything below was measured on the host with the FastTrack harness (`tests/fasttrack`, the real tracker + adapter + Felucca chain); **none of it is heard or measured on the pedal yet**.
+Branch `synth4` (= `synth2-enhance` + `synth3-declick`). Goal: improve mono tracking use without clicks and pops, slurs, slow attacks and releases, and latency. Everything below was measured on the host with the FastTrack harness (`tests/archive/fasttrack`, the real tracker + adapter + Felucca chain); **none of it is heard or measured on the pedal yet**.
 
 ## Baseline (before)
 * Tracker: a correct note is audible about 26 ms after a synthetic pluck (`patch_latency.py`); the tracker's confirmation wait is most of it (`FASTTRACK-BASELINE.md`: removing every wait gives about 1 ms but 4x the wrong starts).

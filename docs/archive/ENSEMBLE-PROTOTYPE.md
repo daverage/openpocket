@@ -37,7 +37,7 @@ window has 416 bytes free.
 
 ## Measurements
 
-`tools/legacy-synth/ensemble_bench.c` renders any SYN type of the test build and prints
+`tools/archive/legacy-synth/ensemble_bench.c` renders any SYN type of the test build and prints
 RMS and peak. On the lead loop plus arpeggio, every setting gives finite
 output. Peaks pass 1.0 only with DRY at 100, which adds the dry guitar, as
 on the existing acoustic voices.

@@ -83,7 +83,7 @@ mkdir -p /tmp/resonator-adapter
 cp tools/research/resonator_reference.rs /tmp/resonator-adapter/
 ln -s /tmp/resonator-upstream/src /tmp/resonator-adapter/upstream
 rustc -O --edition 2021 /tmp/resonator-adapter/resonator_reference.rs -o /tmp/resonator-adapter/bench
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
 SUFFIX=_review15 python3 tools/research/track_eval.py guitarset 24
 SUFFIX=_held15 python3 tools/research/track_eval.py guitarset 24 24
 python3 tools/research/resonator_track_eval.py /tmp/resonator-adapter/bench --decimate 4

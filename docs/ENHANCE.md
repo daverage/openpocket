@@ -21,7 +21,7 @@ A compander gain cell works at every level: its control is the rectified signal 
 The second harmonic is level independent (about -24 dB; v5 had -20 dB at the full depth). A chord (199 + 252 Hz, `tests/engine/enhance_test.c`): the energy that is not a harmonic, sum or difference of order <= 3 of the two notes is -27.8 / -27.4 / -27.0 dB re the notes at BETTER 70 / 85 / 100 (it was -22.8 dB at 100, rising steeply over the top of the knob), and the energy above 5 kHz fell from -70 to -85 dB. Loudness against bypass on the five guitar loops: -0.3 dB at BETTER 100.
 
 ## Tests
-`tests/engine/enhance_test.c` (in `tests/run_tests.sh`): catalogue, unity, silence, no knee (quiet notes processed), H2 range and dominance over H3, a falling gain, H2 rising with BETTER, no DC, LOUDER +12 dB, bounded on square / 3x / noise, no click on switching or a knob jump, stored APPLAUSE bypassed. Study tools: `tests/enhance_sim.mjs` + `tests/enhance_sim_measure.py` (the simulator's engine on the bundled loops), `tests/enhance_reamp.py` (re-amp A/B on the pedal).
+`tests/engine/enhance_test.c` (in `tests/run_tests.sh`): catalogue, unity, silence, no knee (quiet notes processed), H2 range and dominance over H3, a falling gain, H2 rising with BETTER, no DC, LOUDER +12 dB, bounded on square / 3x / noise, no click on switching or a knob jump, stored APPLAUSE bypassed. Study tools: `tests/archive/enhance/enhance_sim.mjs` + `tests/archive/enhance/enhance_sim_measure.py` (the simulator's engine on the bundled loops), `tests/archive/enhance/enhance_reamp.py` (re-amp A/B on the pedal).
 
 ## Open
 1. Everything is a guess: detector mix, times, ENV0, the 2:1 law, how BETTER maps. The only real Better Box audio is the owner's earlier clips (no clean on/off).

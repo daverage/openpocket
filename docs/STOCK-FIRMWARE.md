@@ -148,7 +148,7 @@ type plays Neural Amp Modeler A2-Lite captures, in fixed point, at 44.1 kHz like
 
 ## 5. What OpenPocket can take from it
 
-v38 has taken items 1, 3 and 5 ([WHATS-NEW-v38.md](WHATS-NEW-v38.md)). Item 2 was measured first and left out: MOD and
+v38 has taken items 1, 3 and 5 ([WHATS-NEW-v38.md](archive/whats-new/WHATS-NEW-v38.md)). Item 2 was measured first and left out: MOD and
 DELAY cost 1 to 3 % of the NAM network, so running them at half rate would free about 1 %.
 
 In order of value for the sound, with what it would cost.
@@ -331,7 +331,7 @@ radio interrupt is short and its work is done in tasks.
 ### 7.7 What OpenPocket can take from this
 
 1. **Take the delay and the reverb out of the critical path** (the largest gain for crackles; **done in v39**,
-   [WHATS-NEW-v39.md](WHATS-NEW-v39.md), with a lag of two 128-frame blocks that the delay's taps make up for). Today they run inside the
+   [WHATS-NEW-v39.md](archive/whats-new/WHATS-NEW-v39.md), with a lag of two 128-frame blocks that the delay's taps make up for). Today they run inside the
    block that must finish before the next interrupt, in series. As in the stock firmware: send a mono copy at their slot,
    return their wet output one block later, and let the dry path finish without them. A late wet block then costs an
    echo's 2.9 ms, not a crackle. With a NAM amp, CPU1 already runs everything after the amp; the wet part could go to

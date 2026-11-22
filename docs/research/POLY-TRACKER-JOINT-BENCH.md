@@ -53,9 +53,9 @@ pair penalty or adding more overlapping upper bands did not fix that in this ben
 ## Reproduce
 
 ```sh
-cc -O2 -Iengine -Ifirmware tools/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
+cc -O2 -Iengine -Ifirmware tools/archive/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench
 BENCH=build/track_bench SUFFIX=_review15 python3 tools/research/track_eval.py guitarset 24
-cc -O2 -DPXT_HOST_JOINT -Iengine -Ifirmware tools/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench_joint
+cc -O2 -DPXT_HOST_JOINT -Iengine -Ifirmware tools/archive/legacy-synth/track_bench.c firmware/px_math.c -lm -o build/track_bench_joint
 BENCH=build/track_bench_joint SUFFIX=_joint23 python3 tools/research/track_eval.py guitarset 24
 python tools/research/essentia_track_eval.py --takes 24 --frame 2048 --hop 512 --compare-suffix _review15 --compare-suffix _joint23
 ```

@@ -86,9 +86,9 @@ static inline void pxp_newton(const px_rm *r, float ab, float rbb, float rbc, fl
         float d1 = (-F1 * J22 + F2 * J12) * det, d2 = (-F2 * J11 + F1 * J21) * det;
         const float a1 = fabsf(d1), a2 = fabsf(d2), dj = a1 > a2 ? a1 : a2; if (dj > 0.1f) { const float k = 0.1f / dj; d1 *= k; d2 *= k; }
         vbe += d1; vbc += d2; ib += dib_be * d1 + dib_bc * d2; ic += dic_be * d1 + dic_bc * d2;
-        last = dj; if (dj < 2e-5f) break;
+        last = dj; if (dj < 1e-3f) break;   /* v75: was 2e-5 V; a step under 1 mV leaves about 2e-5 V (Newton is quadratic), 1.5-1.9 iterations per sample instead of 2.0-2.4 on the loops, the output within -93 dB of the tight solve */
     }
-    if (last > 1e-3f) pxp_bjt(r, vbe, vbc, &ic, &ib, &gbe, &gbc);      /* a large last step: the linearised currents are not good enough */
+    if (last > 1e-3f) pxp_bjt(r, vbe, vbc, &ic, &ib, &gbe, &gbc);      /* the iteration cap was reached on a large step: the linearised currents are not good enough */
     *pvbe = vbe; *pvbc = vbc; *pib = ib; *pic = ic;
 }
 static inline void pxp_rm_coeffs(px_rm *r, float sr2, float Rs, float L, float C1)      /* the circuit-rate constants (outside the sample loop) */
@@ -188,7 +188,7 @@ static inline float pxp_ep_solve(const px_ep *r, float vg, float vs0, float id0)
         if (F > 0.0f) hi = id; else lo = id;
         const float dF = 1.0f + dgs * r->invGe + dds * (r->Rd + r->invGe);
         float nid = id - F / dF; if (nid < lo || nid > hi) nid = 0.5f * (lo + hi);
-        if (fabsf(nid - id) < 1e-9f) { id = nid; break; } id = nid;
+        if (fabsf(nid - id) < 1e-6f) { id = nid; break; } id = nid;   /* v75: was 1e-9 A; 1 uA is 0.1 % of the bias current: 1.0-1.5 iterations per sample instead of 2.0-2.3, the output within -99 dB */
     }
     return id;
 }
@@ -288,5 +288,265 @@ static inline float pxp_bbe_tick(px_bbe *b, float x)
     const float dlow = b->dl[(b->il - (unsigned)b->nl) & 127], dmid = b->dm[(b->im - (unsigned)b->nm) & 63];
     const float proc = b->gl * dlow + b->gm * dmid + b->gh * high;
     return (x + b->mix * (proc - x)) * b->mk;
+}
+
+/* ---- BST VOX FIXED WAH: the Vox V847 wah's tone curve with the pedal parked (a "cocked wah" boost) ---------------------------------
+ * Figures from the ElectroSmash analysis of the V847 (https://electrosmash.mas-effects.com/vox-v847-analysis.html): an LC resonance (L1 500 mH
+ * with C2, the pot's wiper changing the apparent capacitance) swept from about 450 Hz (heel) to 1.6 kHz (toe), about 750 Hz at mid travel,
+ * boosting by up to 18 dB; R7 (33k) sets the sharpness of the peak. Modelled as one peaking biquad plus the pot network's low cut.
+ * Q (v75, researched): ElectroSmash gives none, but measurements of Vox-style wahs on the music-electronics-forum thread "a Vox wah project:
+ * some circuit analysis and measuring results" (Helmholtz, post 83) give the -3 dB Q as about 2.3..3.3 at the treble (toe) end and 8..11 at
+ * the bass (heel) end: the resonance is an LC with Q = Rp*sqrt(C/L), and the pot's effective C is about 25x larger at the heel, so Q rises as
+ * the peak goes down: Q ~ 1/fc. Here Q(-3 dB) = (2.4 + 0.9*PEAK) * 1600/fc: 2.4..3.3 at the toe, 8.5..11.7 at the heel (those figures are for
+ * one circuit, not a V847 on the bench). A peaking biquad's own Q is the width at half the gain in dB, which at 18 dB makes the -3 dB Q 2.8x
+ * larger; the design divides that out: Qbiquad = Q3 * A / sqrt(A^4 - 2), A = 10^(dB/40) (exact for the analogue prototype).
+ * The position law (fc = 450 * (1600/450)^(pos^1.3), which puts mid travel at 757 Hz) and the peak height range (8 .. 18 dB) are fits to the
+ * ElectroSmash figures, not measurements of a unit: check them against a recorded sweep. POSITION never moves while playing,
+ * so the coefficients are only recomputed (every 16 samples, glided) after a knob move. */
+typedef struct { float b0, b1, b2, a1, a2, z1, z2, hx, hy, hk, pos, tgt, peak, g, gt, sr; unsigned n, dirty; } px_vw;
+static inline float pxp_vw_hz(float pos) { return 450.0f * powf(1600.0f / 450.0f, powf(pos, 1.3f)); }
+static inline float pxp_vw_peak_db(float peak) { return 8.0f + 10.0f * peak; }
+static inline float pxp_vw_q3(float fc, float peak) { return (2.4f + 0.9f * peak) * (1600.0f / fc); }   /* the -3 dB Q of the peak: 1/fc */
+static inline float pxp_vw_makeup_db(float pos, float peak)      /* the loudness the wah adds to guitar loops, taken off, with 1 dB over unity: measured on the five bundled loops (tests/pedal_levels.mjs + pedal_levels_measure.py), a grid of POSITION 0 25 50 75 100 x PEAK 0 50 100, bilinear between */
+{
+    static const float G[3][5] = {{  0.2f,  -0.1f,   1.0f,   0.6f,   1.0f},
+                                  { -2.0f,  -2.3f,  -0.3f,  -0.8f,  -0.2f},
+                                  { -5.1f,  -5.2f,  -2.5f,  -2.9f,  -2.2f}};
+    float x = pxp_clamp(pos, 0.0f, 1.0f) * 4.0f, y = pxp_clamp(peak, 0.0f, 1.0f) * 2.0f;
+    int i = (int)x, j = (int)y; if (i > 3) i = 3; if (j > 1) j = 1;
+    const float fx = x - (float)i, fy = y - (float)j;
+    const float a = G[j][i] + (G[j][i + 1] - G[j][i]) * fx, b = G[j + 1][i] + (G[j + 1][i + 1] - G[j + 1][i]) * fx;
+    return a + (b - a) * fy;
+}
+static inline void pxp_vw_design(px_vw *v)
+{
+    const float fc = pxp_vw_hz(v->pos), w0 = 6.2831853f * fc / v->sr;
+    const float A = powf(10.0f, pxp_vw_peak_db(v->peak) * 0.025f), A2 = A * A;
+    const float Q = pxp_vw_q3(fc, v->peak) * A / sqrtf(A2 * A2 - 2.0f);   /* the biquad's Q for that -3 dB Q (A^4 >= 6.3 for 8 dB) */
+    const float al = sinf(w0) / (2.0f * Q), c = cosf(w0);
+    const float a0 = 1.0f + al / A, r = 1.0f / a0;
+    v->b0 = (1.0f + al * A) * r; v->b1 = -2.0f * c * r; v->b2 = (1.0f - al * A) * r;
+    v->a1 = -2.0f * c * r; v->a2 = (1.0f - al / A) * r;
+}
+static inline void pxp_vw_init(px_vw *v, float sr)
+{
+    *v = (px_vw){0};
+    v->sr = sr; v->pos = v->tgt = 0.5f; v->peak = 0.5f; v->g = v->gt = 1.0f;
+    v->hk = expf(-6.2831853f * 80.0f / sr);                       /* the low cut: a one-pole high-pass at 80 Hz */
+    pxp_vw_design(v);
+}
+static inline void pxp_vw_set(px_vw *v, float pos, float peak, float level)
+{
+    v->tgt = pxp_clamp(pos, 0.0f, 100.0f) * 0.01f;
+    v->peak = pxp_clamp(peak, 0.0f, 100.0f) * 0.01f;
+    v->gt = powf(10.0f, (pxp_vw_makeup_db(v->tgt, v->peak) + pxp_clamp(level, 0.0f, 100.0f) * 0.12f) * 0.05f);   /* LEVEL 0 = the same loudness, 100 = +12 dB */
+    v->dirty = 1;
+}
+static inline float pxp_vw_tick(px_vw *v, float x)
+{
+    if (v->dirty && (++v->n & 15u) == 0) {
+        v->pos += (v->tgt - v->pos) * 0.1f;
+        if (fabsf(v->tgt - v->pos) < 1e-4f) { v->pos = v->tgt; v->dirty = 0; }
+        pxp_vw_design(v);
+    }
+    const float h = v->hk * (v->hy + x - v->hx); v->hx = x; v->hy = h;
+    const float y = v->b0 * h + v->z1;
+    v->z1 = v->b1 * h - v->a1 * y + v->z2; v->z2 = v->b2 * h - v->a2 * y;
+    v->g += (v->gt - v->g) * 0.002f;
+    return y * v->g;
+}
+
+/* ---- FUZZ FACE (v75): the Dallas Arbiter circuit, solved per sample ----
+ * The topology and values are the ElectroSmash analysis of the first (germanium PNP) Fuzz Face (https://electrosmash.com/fuzz-face; the text is read, its schematic image is not): the guitar
+ * through C1 2.2 uF into Q1's base; Q1's collector feeds Q2's base directly and sits on R1 33k; Q2's emitter goes to ground through the 1k FUZZ pot (its wiper, with C2 20 uF to ground, takes the
+ * emitter resistance away for the signal: more fuzz = less AC degeneration) and, through R4 100k, back to Q1's base (the global shunt-series feedback: it sets Q1's bias and the low input
+ * impedance, about 5k, that makes the pedal load the pickup and clean up with the guitar's volume); Q2's collector load is R3 8.2k then R2 470 to the supply, and the output is taken at that
+ * junction (a -25 dB divider) through C3 10 nF into the 500k VOLUME. 9 V. The real pedal is a PNP on a positive ground: here everything is its mirror, an NPN with the emitters at ground, which is
+ * the same equations. Each transistor is Ebers-Moll (forward and reverse junction) with a collector-base leakage (germanium) or none (silicon); the unknowns are the four node voltages (Q1 base,
+ * Q1 collector = Q2 base, Q2 emitter, Q2 collector) and one Newton step solves them from the previous sample's, the capacitors and the pickup (Rs, L, C1) as trapezoid companions.
+ * The germanium numbers (Is, beta 85 and 120 as the analysis simulates, a leakage of 10 uA over 9 V) are chosen to land on the analysis's bias (Q1 collector about 0.6 V and Q2 collector 4.5 V
+ * from the emitter side at FUZZ 50), not measured on a unit; the silicon is a BC108-like NPN (the usual silicon Fuzz Face). Nothing here is measured on a pedal. */
+#ifndef PXP_FF_OS
+#define PXP_FF_OS 2                 /* circuit-rate factor: 2 (half-band in and out): a fuzz makes harmonics far above what the boosts do */
+#endif
+#ifndef PXP_FF_MAXIT
+#define PXP_FF_MAXIT 8              /* Newton steps at most per circuit step */
+#endif
+#ifndef PXP_FF_TOL
+#define PXP_FF_TOL 1e-3f            /* stop when a step is under this many volts */
+#endif
+#ifndef PXP_FF_OUT
+#define PXP_FF_OUT 0.125f             /* the tap's AC volts -> engine units, before the VOLUME taper (set so that FUZZ 50 / VOLUME 50 is about the guitar's loudness: tests/pedal_levels.mjs) */
+#endif
+typedef struct {
+    float Is, bf1, bf2, br, lim;                             /* the transistors (lim: where the junction exponential goes straight) */
+    float Isbf1, Isbf2, Isbr, ibf1, ibf2, ibr, gR1, gR4, gRc;   /* Is / beta, 1 / beta, 1 / R: no division in the sample loop */
+    float igL, igC1, iRt, kD;
+    float R1, R4, R2, Rc, Rt, Rb, Vcc;                       /* the circuit */
+    float gL, gC1, gW, Rtot, gsrc, ge2, khw, ge2dc;          /* trapezoid companions (the circuit rate) and the emitter network's (D / Rt, 1 / Rt ...) */
+    float x[4], xp[4];                                       /* node voltages now and the sample before */
+    float i, vL, vC, vW, iW;                                 /* the pickup branch (loop current, L, C1) and C2's state */
+    float hp_k, hp_z, vol, vol_t, kv, fz, fz_t, bias, sr2, Rs, L;
+    int trans, tick;
+    pxp_os os;
+} px_ff;
+#ifdef PXP_FF_COUNT
+static long pxp_ff_iters;
+#endif
+/* a junction's exponential, straight-lined above x = lim (the germanium's 18 = 0.465 V, the silicon's 30 = 0.78 V): finite, so Newton cannot run away, and never a false root */
+static inline float pxp_explim(float x, float lim, float *d)
+{
+    if (x <= lim) { const float e = pxp_exp(x); *d = e; return e; }
+    const float e = pxp_exp(lim); *d = e; return e * (1.0f + (x - lim));
+}
+/* the junction currents and slopes of one transistor: be, bc = the junction voltages; Isbf = Is / beta_f, Isbr = Is / beta_r, ibr = 1 / beta_r */
+static inline void pxp_ff_bjt(float Is, float Isbf, float Isbr, float ibr, float lim, float be, float bc, float *ic, float *ib, float *gbe, float *gbc, float *dicbc)
+{
+    float d1, d2 = 0.0f; const float eb = pxp_explim(be * (1.0f / PXP_VT), lim, &d1);
+    float ec = 0.0f; if (bc > -0.30f) ec = pxp_explim(bc * (1.0f / PXP_VT), lim, &d2);   /* (a junction far in reverse is nothing: no second exponential) */
+    *ic = Is * (eb - ec) - Isbr * (ec - 1.0f);
+    *ib = Isbf * (eb - 1.0f) + Isbr * (ec - 1.0f);
+    *gbe = Is * d1 * (1.0f / PXP_VT); *gbc = Is * d2 * (1.0f / PXP_VT);
+    *dicbc = -*gbc * (1.0f + ibr);
+}
+/* Newton on the four node voltages (maxit at most; stops when a step is under tol volts). src = e + Ah, the pickup branch's Thevenin voltage, gsrc its conductance; ge2 / he2 the emitter
+ * network's current i = ge2 * v - he2. While Q2's collector is more than 0.3 V above its base (it is, bar the loudest swings) Q2's collector current does not depend on its collector, which is then just
+ * the supply less Rc times that current: three unknowns, a 3x3 system, one exponential less. Otherwise (Q2 saturating) the whole 4x4. (No leakage: the germanium numbers are fitted without it.) */
+static inline float pxp_ff_solve(const px_ff *r, float src, float gsrc, float ge2, float he2, float *x, int maxit, float tol)
+{
+    const float Is = r->Is, gR1 = r->gR1, gR4 = r->gR4, gRc = r->gRc, Vcc = r->Vcc, ibf1 = r->ibf1, ibf2 = r->ibf2, ibr = r->ibr;
+    float worst = 0.0f;
+    for (int it = 0; it < maxit; it++) {
+#ifdef PXP_FF_COUNT
+        pxp_ff_iters++;
+#endif
+        float ic1, ib1, g1e, g1c, d1c, ic2, ib2, g2e, g2c, d2c;
+        pxp_ff_bjt(Is, r->Isbf1, r->Isbr, ibr, r->lim, x[0], x[0] - x[1], &ic1, &ib1, &g1e, &g1c, &d1c);
+        pxp_ff_bjt(Is, r->Isbf2, r->Isbr, ibr, r->lim, x[1] - x[2], x[1] - x[3], &ic2, &ib2, &g2e, &g2c, &d2c);
+        const float b1e = g1e * ibf1, b1c = g1c * ibr, b2e = g2e * ibf2, b2c = g2c * ibr;                /* dIb / dvbe, dIb / dvbc */
+        const float F0 = (src - x[0]) * gsrc + (x[2] - x[0]) * gR4 - ib1;
+        const float F1 = (Vcc - x[1]) * gR1 - ic1 - ib2;
+        const float F2 = ic2 + ib2 - (x[2] - x[0]) * gR4 - ge2 * x[2] + he2;
+        float dx[4];
+        if (g2c == 0.0f) {                                                                              /* Q2 forward: x3 follows from its current */
+            const float a00 = -gsrc - gR4 - b1e - b1c, a01 = b1c, a02 = gR4;
+            const float a10 = -(g1e + d1c), a11 = -gR1 + d1c - b2e, a12 = b2e;
+            const float a20 = gR4, a21 = g2e + b2e, a22 = -g2e - b2e - gR4 - ge2;
+            const float p0 = 1.0f / a00, f1 = a10 * p0, f2 = a20 * p0;                                 /* eliminate dx0 */
+            const float a11p = a11 - f1 * a01, a12p = a12 - f1 * a02, r1 = -F1 + f1 * F0;
+            const float a21p = a21 - f2 * a01, a22p = a22 - f2 * a02, r2 = -F2 + f2 * F0;
+            const float p1 = 1.0f / a11p, f3 = a21p * p1;                                              /* eliminate dx1 */
+            const float a22q = a22p - f3 * a12p, r2q = r2 - f3 * r1;
+            dx[2] = r2q / a22q;
+            dx[1] = (r1 - a12p * dx[2]) * p1;
+            dx[0] = (-F0 - a01 * dx[1] - a02 * dx[2]) * p0;
+            dx[3] = (Vcc - ic2 * r->Rc) - x[3] - 0.0f;                                                 /* the collector goes to where its current puts it (this step's, not the next) */
+            dx[3] = (Vcc - (ic2 + g2e * (dx[1] - dx[2])) * r->Rc) - x[3];
+        } else {                                                                                       /* Q2 saturating: the four together */
+            float a[4][5];
+            const float F3 = (Vcc - x[3]) * gRc - ic2;
+            a[0][0] = -gsrc - gR4 - b1e - b1c; a[0][1] = b1c; a[0][2] = gR4; a[0][3] = 0.0f; a[0][4] = -F0;
+            a[1][0] = -(g1e + d1c); a[1][1] = -gR1 + d1c - (b2e + b2c); a[1][2] = b2e; a[1][3] = b2c; a[1][4] = -F1;
+            a[2][0] = gR4; a[2][1] = (g2e + d2c) + (b2e + b2c); a[2][2] = -g2e - b2e - gR4 - ge2; a[2][3] = -d2c - b2c; a[2][4] = -F2;
+            a[3][0] = 0.0f; a[3][1] = -(g2e + d2c); a[3][2] = g2e; a[3][3] = -gRc + d2c; a[3][4] = -F3;
+            for (int k = 0; k < 3; k++) {
+                const float piv = 1.0f / a[k][k];
+                for (int i = k + 1; i < 4; i++) { const float f = a[i][k] * piv; if (f == 0.0f) continue; for (int j = k + 1; j < 5; j++) a[i][j] -= f * a[k][j]; }
+            }
+            dx[3] = a[3][4] / a[3][3];
+            dx[2] = (a[2][4] - a[2][3] * dx[3]) / a[2][2];
+            dx[1] = (a[1][4] - a[1][2] * dx[2] - a[1][3] * dx[3]) / a[1][1];
+            dx[0] = (a[0][4] - a[0][1] * dx[1] - a[0][2] * dx[2]) / a[0][0];
+        }
+        float m = 0.0f; for (int k = 0; k < 4; k++) { const float v = dx[k] < 0.0f ? -dx[k] : dx[k]; if (v > m) m = v; }
+        if (m > 0.12f) { const float s = 0.12f / m; for (int k = 0; k < 4; k++) dx[k] *= s; }          /* a step over 120 mV is cut: the exponentials do not run away */
+        for (int k = 0; k < 4; k++) x[k] += dx[k];
+        worst = m;
+        if (m < tol) break;
+    }
+    return worst;
+}
+static inline void pxp_ff_coeffs(px_ff *r)                      /* the circuit-rate constants for the present FUZZ (Rt, Rb) and the pickup (Rs, L) */
+{
+    const float dt = 1.0f / r->sr2;
+    r->gL = dt / (2.0f * r->L); r->gC1 = 2.0f * 2.2e-6f / dt; r->gW = 2.0f * 20e-6f / dt;
+    r->igL = 1.0f / r->gL; r->igC1 = 1.0f / r->gC1;
+    r->Rtot = r->Rs + r->igL + r->igC1; r->gsrc = 1.0f / r->Rtot;
+    r->gR1 = 1.0f / r->R1; r->gR4 = 1.0f / r->R4; r->gRc = 1.0f / r->Rc;
+    r->Isbf1 = r->Is / r->bf1; r->Isbf2 = r->Is / r->bf2; r->Isbr = r->Is / r->br; r->ibf1 = 1.0f / r->bf1; r->ibf2 = 1.0f / r->bf2; r->ibr = 1.0f / r->br;
+    const float Rt = r->Rt, Rb = r->Rb; r->iRt = 1.0f / Rt;
+    const float D = 1.0f / (r->iRt + 1.0f / Rb + r->gW); r->kD = D;                             /* the wiper node: Rt from the emitter, Rb to ground, C2 to ground */
+    r->ge2 = r->iRt * (1.0f - D * r->iRt); r->khw = D * r->iRt; r->ge2dc = 1.0f / (Rt + Rb);
+}
+static inline void pxp_ff_dc(px_ff *r)                          /* the quiescent point: the capacitors open, no signal */
+{
+    float *x = r->x;
+    if (r->trans) { x[0] = 0.62f; x[1] = 1.3f; x[2] = 0.6f; x[3] = 4.5f; } else { x[0] = 0.2f; x[1] = 0.6f; x[2] = 0.35f; x[3] = 4.5f; }
+    pxp_ff_solve(r, 0.0f, 0.0f, r->ge2dc, 0.0f, x, 200, 1e-7f);
+    r->i = 0.0f; r->vL = 0.0f; r->vC = -x[0]; r->vW = x[2] * r->Rb / (r->Rt + r->Rb); r->iW = 0.0f;
+    for (int k = 0; k < 4; k++) r->xp[k] = x[k];
+    r->hp_z = r->R2 * (r->Vcc - x[3]) / r->Rc;
+}
+static inline void pxp_ff_params(px_ff *r, int trans, float fuzz01, float bias01, float pickup01)
+{
+    const int tchg = trans != r->trans;
+    r->trans = trans;
+    if (trans) { r->Is = 2.0e-14f; r->bf1 = 200.0f; r->bf2 = 260.0f; r->br = 3.0f; r->lim = 30.0f; }
+    else { r->Is = 3.08e-7f; r->bf1 = 70.0f; r->bf2 = 120.0f; r->br = 5.0f; r->lim = 18.0f; }   /* (Q1 collector 0.71 V, Q2 collector 4.52 V at BIAS 50) */
+    r->fz_t = fuzz01;
+    r->Rs = 6000.0f + 3000.0f * pickup01; r->L = 2.5f + 3.0f * pickup01;
+    r->Rc = 8200.0f * expf((0.5f - bias01) * 1.0f - (trans ? 0.33f : 0.0f)) + r->R2;   /* the Q2 collector load (R3, 8.2k at BIAS 50; a silicon pair draws more, so its stock is a little lower) */
+    if (tchg || r->tick == 0) { r->fz = fuzz01; r->Rt = 1000.0f * (1.0f - r->fz) + 1.0f; r->Rb = 1000.0f * r->fz + 1.0f; pxp_ff_coeffs(r); pxp_ff_dc(r); r->tick = 1; }
+    else pxp_ff_coeffs(r);
+}
+static inline void pxp_ff_init(px_ff *r, float sr, int trans)
+{
+    *r = (px_ff){0};
+    r->sr2 = (float)PXP_FF_OS * sr; r->R1 = 33000.0f; r->R4 = 100000.0f; r->R2 = 470.0f; r->Vcc = 9.0f; r->trans = -1;
+    r->hp_k = 1.0f - expf(-6.2831853f * 31.8f / sr); r->vol = r->vol_t = 1.0f; r->kv = 1.0f - expf(-1.0f / (sr * 0.010f));
+    pxp_ff_params(r, trans, 0.5f, 0.5f, 0.0f);
+    pxp_os_reset(&r->os);
+}
+/* one circuit-rate step: the guitar's EMF volts in, the tap's AC volts out */
+static inline float pxp_ff_core(px_ff *r, float e)
+{
+    const float hL = r->i + r->gL * r->vL, hC = r->gC1 * r->vC + r->i, Ah = hL * r->igL - hC * r->igC1, hW = r->gW * r->vW + r->iW;
+    float x[4];
+    for (int k = 0; k < 4; k++) { float v = 2.0f * r->x[k] - r->xp[k]; const float d = v - r->x[k]; v = r->x[k] + (d > 0.4f ? 0.4f : d < -0.4f ? -0.4f : d); x[k] = v; }   /* the predictor: a line through the last two */
+    pxp_ff_solve(r, e + Ah, r->gsrc, r->ge2, hW * r->khw, x, PXP_FF_MAXIT, PXP_FF_TOL);
+    for (int k = 0; k < 4; k++) { r->xp[k] = r->x[k]; r->x[k] = x[k]; }
+    const float i = (e + Ah - x[0]) * r->gsrc;
+    r->vL = (i - hL) * r->igL; r->vC = (i + hC) * r->igC1; r->i = i;
+    r->vW = (x[2] * r->iRt + hW) * r->kD; r->iW = r->gW * r->vW - hW;
+    return r->R2 * r->gRc * (r->Vcc - x[3]);
+}
+static inline void pxp_ff_set(px_ff *r, float fuzz, float vol, float pickup, float bias, float trans)
+{
+    const float v = pxp_clamp(vol, 0.0f, 100.0f), db = v >= 50.0f ? (v - 50.0f) * 0.24f : (v - 50.0f) * 0.8f;
+    r->vol_t = v < 1.0f ? 0.0f : powf(10.0f, db * 0.05f) * PXP_FF_OUT;
+    const float f = pxp_clamp(fuzz, 0.0f, 100.0f) * 0.01f, p = pxp_clamp(pickup, 0.0f, 100.0f) * 0.01f, b = pxp_clamp(bias, 0.0f, 100.0f) * 0.01f;
+    const int t = trans > 50.0f;                                     /* TRANSISTOR: germanium up to 50, silicon above */
+    if (t != r->trans || fabsf(b - r->bias) > 1e-4f || fabsf(p - (r->Rs - 6000.0f) / 3000.0f) > 1e-4f) {
+        const float keep = r->fz; pxp_ff_params(r, t, f, b, p); r->bias = b; r->fz = keep;        /* (a new transistor set, bias or pickup: the operating point is found again) */
+        if (t != r->trans) {}
+    }
+    r->fz_t = f;
+}
+static inline float pxp_ff_tick(px_ff *r, float in)
+{
+    r->vol += r->kv * (r->vol_t - r->vol);
+    if (r->fz != r->fz_t && (++r->tick & 7) == 0) {            /* FUZZ glides: the emitter network again every 8 samples while it moves */
+        r->fz += (r->fz_t - r->fz) * 0.15f; if (fabsf(r->fz_t - r->fz) < 1e-4f) r->fz = r->fz_t;
+        r->Rt = 1000.0f * (1.0f - r->fz) + 1.0f; r->Rb = 1000.0f * r->fz + 1.0f; pxp_ff_coeffs(r);
+    }
+#if PXP_FF_OS == 2
+    float e0, e1; pxp_up(&r->os, in * PXP_EMF_PER_UNIT, &e0, &e1);
+    pxp_push(&r->os, pxp_ff_core(r, e0)); pxp_push(&r->os, pxp_ff_core(r, e1));
+    const float y = pxp_down(&r->os);
+#else
+    const float y = pxp_ff_core(r, in * PXP_EMF_PER_UNIT);
+#endif
+    r->hp_z += r->hp_k * (y - r->hp_z);                        /* C3 and the volume pot: the output DC block (and the pedal's bass cut) */
+    return (y - r->hp_z) * r->vol;
 }
 #endif

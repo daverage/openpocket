@@ -20,7 +20,7 @@ static void notes(float f1, float f2)
 static float ratio(int patch, float base, int semis)
 {
     const float f2 = base * powf(2.0f, (float)semis / 12.0f);
-    px_preset_t p; px_preset_factory(&p, 7); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0; p.on[PX_B_SYN] = 1; p.type[PX_B_SYN] = PX_SYN_CHOIR; for (int k = 0; k < 5; k++) p.p[PX_B_SYN][k] = 50; p.p[PX_B_SYN][0] = (uint8_t)patch;
+    px_preset_t p; px_preset_base(&p); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0; p.on[PX_B_SYN] = 1; p.type[PX_B_SYN] = PX_SYN_CHOIR; for (int k = 0; k < 5; k++) p.p[PX_B_SYN][k] = 50; p.p[PX_B_SYN][0] = (uint8_t)patch;
     static px_engine e; px_engine_init(&e, 44100.0f); px_engine_set(&e, &p); notes(base, f2); for (int at = 0; at + 64 <= N; at += 64) px_engine_process(&e, in + at, out + at, 64);
     int nd = 0; for (int i = (int)((1.3 + 0.40) * 44100); i < (int)((1.3 + 0.90) * 44100); i++) d[nd++] = fabsf(out[i + 1] - out[i]);
     for (int x = 0; x < nd; x++) for (int y = x + 1; y < nd; y++) if (d[y] < d[x]) { const float t = d[x]; d[x] = d[y]; d[y] = t; }

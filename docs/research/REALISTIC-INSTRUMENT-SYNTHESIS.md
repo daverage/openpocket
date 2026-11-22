@@ -2,7 +2,7 @@
 
 The current BRASS and STRINGS modes reshape the guitar waveform. To get an acoustic instrument sound, use the guitar as a controller for an independent voice. Prototype a **cello-range bowed voice and solo trumpet** first. A cello starts at C2, so it covers the guitar's low E at its original pitch, while a violin starts at G3. Give trumpet an octave offset so the guitarist can drive samples inside their intended register. Keep chord detection as a separate experiment so recognition mistakes and instrument timbre can be evaluated independently. [Yamaha cello and violin ranges](https://hub.europe.yamaha.com/articles/the-essential-cello) · [Current voicing research](SYNTH-VOICING-RESEARCH.md) · [Current engine](../../engine/px_dsp.c)
 
-**Host prototype results:** [REALISTIC-INSTRUMENT-PROTOTYPE.md](REALISTIC-INSTRUMENT-PROTOTYPE.md) (`tools/legacy-synth/acoustic_voice.sh`).
+**Host prototype results:** [REALISTIC-INSTRUMENT-PROTOTYPE.md](REALISTIC-INSTRUMENT-PROTOTYPE.md) (`tools/archive/legacy-synth/acoustic_voice.sh`).
 
 ## Instrument voice options
 
