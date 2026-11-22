@@ -38,27 +38,28 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 
 ### Signal chain, controls and presets
 
-- **Nine reorderable blocks** run in the order stored with each preset. The default is GATE → COMP → OCTAVE →
-  SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB. The synth firmware drops DRIVE, AMP, CAB, NAM and user cabinet
+- **Ten reorderable blocks** run in the order stored with each preset. The default is GATE → BST (PRE / BOOST) → COMP →
+  OCTAVE → SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB. The synth firmware drops DRIVE, AMP, CAB, NAM and user cabinet
   IRs, along with their editor controls. POLY OCT FUZZ retains the Fuzz Face sound inside SYNTH.
 - **Pedal layout** shows the SYNTH and OCTAVE types under the preset number. The physical AMP and CAB buttons
   open SYNTH and OCTAVE, respectively. FX cycles through the utility blocks.
 - **STOMP mode** gives each footswitch a per-preset assignment. Hold CAB to switch between STOMP and PATCH.
-  In STOMP, hold a footswitch and press a block button to assign it directly, or press FX to cycle through all nine
+  In STOMP, hold a footswitch and press a block button to assign it directly, or press FX to cycle through all ten
   blocks, global bypass and unassigned. Hold PUSH to save the assignments. Block lights follow bypass state.
 - **Preset compatibility** uses 52 slots in the synth bank. Updating from the original multi-effects preset format
   retains global settings and starts with the synth factory slots. Back up your presets before switching firmware.
   Existing synth-format presets with a retired SYNTH type keep their stored type and settings and load that block
-  bypassed. The pedal and editor show RETIRED TYPE, and MIDI model selection skips retired types.
+  bypassed. The pedal and editor skip retired types, and MIDI model selection skips them. The first save on v75 or later
+  converts the preset store to format 7, which older firmware cannot read: back up your presets first.
 - **USB MIDI and USB audio** carry over from upstream. USB MIDI handles preset selection, block controls and delay
   clock. Enable USB AUDIO to record and play back stereo 16-bit audio at 44.1 kHz. See [MIDI](docs/MIDI.md) and
   [USB audio](docs/USB-AUDIO.md).
 
 ## Install
 
-Build 915 packages are in `docs/firmware/synth2/`. Use `PocketX_915.fwsc` for the Donner Pocket X or
-`BlackBox_915.fwsc` for the M-VAVE BlackBox. The [hardware test guide](docs/SYNTH2-HARDWARE-TEST.md)
-describes the package and dry-run workflow using build 901 as its example. Select the 915 file for your pedal.
+Build 976 packages are in `docs/firmware/` (built by `make package`). Use `PocketX_976.fwsc` for the Donner Pocket X or
+`BlackBox_976.fwsc` for the M-VAVE BlackBox. The [hardware test guide](docs/SYNTH2-HARDWARE-TEST.md)
+describes the package and dry-run workflow using build 901 as its example. Select the 976 file for your pedal.
 
 Run `make serve` to open the local installer and editor in Chrome or Edge. The installer also accepts the
 manufacturer's official `.fwsc` for restoring stock firmware. See the [recovery guide](docs/RESCUE.md)
@@ -67,7 +68,7 @@ if the pedal restarts in a loop.
 ## Preset editor
 
 Open [the preset editor](docs/editor.html) from the local installer in Chrome or Edge and connect the pedal
-over USB. The editor uses Synth2's nine-block layout and model catalogue.
+over USB. The editor uses the ten-block layout and the pedal's own model catalogue, and has a Stage view and a Global settings panel.
 
 - **Presets** browses, loads, renames, copies and moves the 52 slots. Export or import JSON to back up and restore
   presets.

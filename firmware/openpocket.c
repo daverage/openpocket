@@ -314,7 +314,7 @@ static void fm1_fault(const fm1_crash_t *c)
 #define PH_DIR  (*(volatile uint32_t *)0x501C8u)
 #define ENC_MASK 0x3u      /* PC0=A, PC1=B */
 #ifndef OP_VERSION_NUM                  /* a test channel build (firmware/build.sh, OP_CHANNEL) sets its own number and tag */
-#define OP_VERSION_NUM "73"   /* OpenPocket Synth (v70: the synth layout; v71: tracker floor 38 Hz, minimal poly allocator; v72: both reverted; v73: octave-down follows the lowest sounding band) */
+#define OP_VERSION_NUM "76"   /* OpenPocket Synth (v75: the BST block, FIXED WAH, FUZZ FACE, POLY SHIFTER, tuner, global settings, load shedding, tails, gestures; v76: ACOUSTIC PRE and DRIVE; v70: the synth layout; v71: tracker floor 38 Hz, minimal poly allocator; v72: both reverted; v73: octave-down follows the lowest sounding band) */
 #endif
 #ifndef OP_TAG
 #define OP_TAG ""
