@@ -56,6 +56,16 @@ Controls: FUZZ (the 1k emitter pot: more fuzz, less AC degeneration), VOLUME, PI
 
 The germanium values (Is 3.1e-7, beta 70 and 120) were fitted to land on the analysis's bias (Q2 collector 4.5 V, Q1 collector about 0.7 V at BIAS 50): **not measured on a unit**; silicon is a BC108-like pair. Host: about 4.8 ms/s of audio (RANGEMASTER 1.9, which is 12 % on the pedal), so expect roughly 25 to 35 % of a core; the cost table says 66 % (the scaled host figure, an overestimate). Not read on a pedal yet. Level: FUZZ 25..50 within 0 to +1.5 dB of the guitar, FUZZ 100 about +4 dB (`tools/research/ff_levels.c`). Tests: `tests/engine/fuzzface_test.c`.
 
+## ACOUSTIC PRE (BST) and ACOUSTIC DRIVE (SFX), v76
+
+For a piezo pickup into a PA or a recorder; the research and its sources are in [research/ACOUSTIC-BOOSTS-RESEARCH.md](research/ACOUSTIC-BOOSTS-RESEARCH.md). They sit in different blocks so they can be used together. Starting points were set from that research and a synthetic test, **not tuned on a real piezo**: set them by ear.
+
+**ACOUSTIC PRE** (seven biquads, no solver): LOW CUT 20 to 200 Hz (second-order high-pass); DEQUACK = a dip at 2.6 kHz (up to -6 dB), a high shelf at 6.5 kHz (up to -5 dB) and a further dip at 2.9 kHz that is blended in only on the pick attack (a fast level over a slow one; at DEQUACK 100 the attack at 2.9 kHz is about 0.5 of its sustained level, and a held note is not touched); BODY (below 50 a bell at 300 Hz cuts the box up to -8 dB; above 50 a low shelf at 160 Hz gives up to +5 dB and a high shelf at 8 kHz up to +3 dB); NOTCH (0 = off, else 80 Hz to 4 kHz, Q 8, 24 dB deep, for feedback); LEVEL -12 to +12 dB (unity at 50 with +0.8 dB of make-up for the default dips). It has no limiter of its own: the global limiter is after it.
+
+**ACOUSTIC DRIVE**: before the clipper a high-pass (90 to 260 Hz with PIEZO), a one-pole low-pass (9 to 3.8 kHz) and a quack dip; a soft, slightly asymmetric tanh clipper (gain 1 to 15) run at twice the rate with half-band filters; after it a DC block and the TONE low-pass (2.5 to 10 kHz); then the dry guitar is blended back, **delayed by the 18.5 samples the half-band filters take** and the low-passes kept one-pole, so the blend does not comb (at BLEND 50 and DRIVE 0 the response is within -2 to +0.6 dB from 200 Hz to 6 kHz; with a plain, undelayed dry it had a 10 dB hole above 5 kHz). Measured aliasing of a hard-driven 5 kHz sine: -77 dB with the 2x oversampling, -38 dB without, so the 2x stays. Trim -0.4 dB at noon (`engine/px_trim.h`).
+
+Host cost 0.45 ms/s (PRE) and 0.56 ms/s (DRIVE) against RANGEMASTER's 1.9 (12 % on the pedal), so a few per cent each is expected; **not read on a pedal yet** (the cost table's 6 to 8 % is the scaled estimate). Tests: `tests/engine/acoustic_test.c`.
+
 ## Not done / open
 * None of this has been **heard or measured on the pedal**. Level matching between the types and the factory presets is not done (their SFX trim is 0).
 * EP BOOST's circuit is a guess for the family; a real schematic, or a clean DI A/B of the Xotic, would replace it.

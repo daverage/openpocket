@@ -9,7 +9,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 TRIM = os.path.join(ROOT, "engine", "px_trim.h")
 ARR = {"CMP": "CMP_DB", "OCT": "PIT_DB", "SFX": "SFX_DB", "MOD": "MOD_DB", "DLY": "DLY_DB", "REV": "REV_DB", "SYN": "SYN_DB"}
 CNT = {"CMP_DB": "PX_CMP_COUNT", "PIT_DB": "PX_PIT_COUNT", "SFX_DB": "PX_SFX_COUNT", "MOD_DB": "PX_MOD_COUNT", "DLY_DB": "PX_DLY_COUNT", "REV_DB": "PX_REV_COUNT", "SYN_DB": "PX_SYN_COUNT"}
-N = {"CMP_DB": 4, "PIT_DB": 7, "SFX_DB": 13, "MOD_DB": 11, "DLY_DB": 8, "REV_DB": 8, "SYN_DB": 34}
+N = {"CMP_DB": 4, "PIT_DB": 7, "SFX_DB": 14, "MOD_DB": 11, "DLY_DB": 8, "REV_DB": 8, "SYN_DB": 34}
 TOMB = {"SFX_DB": [8, 9, 10, 11, 12]}   # APPLAUSE, and ENHANCE, RANGEMASTER, EP BOOST, MAXIMIZER (BST types since v75): tombstones, never trimmed
 NOTE = {"SFX_DB": "   /* ids 8 (APPLAUSE) and 9..12 (ENHANCE, RANGEMASTER, EP BOOST, MAXIMIZER, now BST types) are tombstones: 0 */",
         "SYN_DB": "   /* indexed by the SYNTH type id: the tombstones 0 */",

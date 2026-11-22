@@ -52,7 +52,7 @@ int main(void)
     /* ---- the catalogue ---- */
     CHECK(PX_NBLK == 10 && PX_B_BST == 9, "ten blocks, BST the last (%d, %d)", PX_NBLK, PX_B_BST);
     CHECK(!strcmp(px_block_label(PX_B_BST), "BST") && !strcmp(px_block_name(PX_B_BST), "PRE / BOOST"), "BST is named PRE / BOOST");
-    CHECK(px_ntypes(PX_B_BST) == 6 && px_nlive(PX_B_BST) == 6, "six live types");
+    CHECK(px_ntypes(PX_B_BST) == 7 && px_nlive(PX_B_BST) == 7, "seven live types");
     CHECK(!strcmp(px_type_name(PX_B_BST, PX_BST_VOXWAH), "FIXED WAH") && px_nparams(PX_B_BST, PX_BST_VOXWAH) == 3 &&
           !strcmp(px_param_name(PX_B_BST, PX_BST_VOXWAH, 0), "POSITION") && !strcmp(px_param_name(PX_B_BST, PX_BST_VOXWAH, 1), "PEAK") && !strcmp(px_param_name(PX_B_BST, PX_BST_VOXWAH, 2), "LEVEL"), "VOX FIXED WAH: POSITION, PEAK, LEVEL");
     CHECK(px_param_text(PX_B_BST, PX_BST_VOXWAH, 0, 0, b) == 1 && !strcmp(b, "450") && px_param_text(PX_B_BST, PX_BST_VOXWAH, 0, 100, b) == 1 && !strcmp(b, "1600"), "POSITION reads the peak's frequency: 450 .. 1600 Hz ('%s')", b);

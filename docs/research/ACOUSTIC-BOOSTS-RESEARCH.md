@@ -29,7 +29,9 @@ Question: what do pedals, preamps, EQs, VSTs and DSPs do for a real acoustic wit
 | Reverb | HALL, PLATE, SPRING, AMBIENT... (a damped small-room AMBIENT is the Preverb idea) |
 | What is missing | one block that does the **piezo-specific shaping** together (low cut + pickup compensation + boxiness cut + feedback notch + boost) with sensible ranges, and an **acoustic-voiced overdrive with a dry blend**. |
 
-## 4. Proposal (my synthesis; nothing built yet)
+## 4. Proposal (my synthesis) — built in v76 as ACOUSTIC PRE (BST) and ACOUSTIC DRIVE (SFX); see PEDALS.md
+
+Changes after review of the code: only one BST type is active per preset, so the drive went to SFX and the two can be stacked; the preamp has no limiter of its own (the global limiter follows it) and its BOOST became a plain LEVEL; DEQUACK has a static part and an attack-following part; the drive's PIEZO control replaced COMP. The text below is the original proposal.
 
 Two new BST types, both cheap (no Newton solver):
 

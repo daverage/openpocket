@@ -10,7 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SCALE_PCT_PER_MS = 44.0 / 3.2           # per cent of an audio block per host ms/s (POLY OCT FUZZ: 44 % on the pedal, BlackBox_973, 3.2 ms/s here)
 # read on a BlackBox running 973 (editor PING, per block, a few seconds each, no guitar: the figures do not depend on the input): they replace the scaled host
 # figures, which are good to a factor of two (a Newton solver costs less on the pedal's FPU than its host time says: RANGEMASTER 12 %, not 26)
-MEASURED = {"BST:RANGEMASTER": 12, "BST:EP BOOST": 5, "BST:MAXIMIZER": 6, "BST:FIXED WAH": 1, "EQ:HUM FILTER": 2, "OCT:POLY SHIFTER": 26, "OCT:POLY OCTAVE HQ": 26,
+MEASURED = {"BST:RANGEMASTER": 12, "BST:EP BOOST": 5, "BST:MAXIMIZER": 6, "BST:FIXED WAH": 1, "BST:FUZZ FACE": 35, "EQ:HUM FILTER": 2, "OCT:POLY SHIFTER": 26, "OCT:POLY OCTAVE HQ": 26,
             "SYN:POLY OCT FUZZ": 44, "SYN:CHOIR": 20, "SYN:ENSEMBLE": 20, "REV:HALL": 9, "DLY:DIGITAL": 3}
 exe = os.path.join(ROOT, "build", "level_audit"); os.makedirs(os.path.dirname(exe), exist_ok=True)
 subprocess.run(["cc", "-O2", "-w", "-Iengine", "tools/research/level_audit.c", "engine/px_dsp.c", "firmware/px_math.c", "-lm", "-o", exe], cwd=ROOT, check=True)
