@@ -3,16 +3,16 @@
 // Request / reply, one at a time; STATE frames the pedal pushes while watched go to onState.
 
 import { PORT_RE } from "./pxota.js";
-import { pack7, SLOT_BYTES } from "./pxnam.js";
-import { IR_BYTES, IR_CHUNK } from "./pxir.js";
 
 const H = [0x7D, 0x4F, 0x50];
 export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 6, ORDER: 7, NAME: 8, PUT: 9, SELECT: 10,
   FOCUS: 11, LIST: 12, SLOT_GET: 13, SLOT_PUT: 14, COMMIT: 15, SAVE: 16, WATCH: 17, PING: 18,
-  NAM_LIST: 19, NAM_WRITE: 20, NAM_COMMIT: 21, NAM_ERASE: 22, DIAG: 23, IR_LIST: 24, IR_WRITE: 25, IR_COMMIT: 26, IR_ERASE: 27,
-  USB_AUDIO: 28 };
-export const NAM_CHUNK = 112;     // bytes per NAM_WRITE (firmware/px_models.h NM_CHUNK)
-export const P_SIZE = 110;
+  DIAG: 23, USB_AUDIO: 28, FOOTSWITCH: 29, SHED: 30, GLOBAL: 31, TUNER: 32 };   // (19..22 and 24..27, the NAM models and IRs, retired in v70)
+// px_preset_t: a 14-byte name, then on, type, 5 settings and the order for each block (v75: 10 blocks, 94 bytes; v70: 9, 86)
+export const presetSize = (nblk = 10, npar = 5, valve = false) => 14 + nblk * (3 + npar) + (valve ? 2 : 0);
+export const VALVE_ACTION = 10;
+export const VALVE_DEFAULT = 71;
+const valveValue = (v) => Math.max(0, Math.min(100, Math.round(Number(v)) || 0));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function fail(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
@@ -24,8 +24,8 @@ class Reader {
   bytes(n) { const r = this.a.slice(this.i, this.i + n); if (r.length < n) throw fail("short", "reply too short"); this.i += n; return r; }
 }
 
-// preset <-> the 110 bytes of px_preset_t
-export function decodePreset(b, nblk = 12, npar = 5) {
+// preset <-> the bytes of px_preset_t
+export function decodePreset(b, nblk = 10, npar = 5) {
   let i = 0;
   const name = String.fromCharCode(...b.slice(0, 14)).replace(/\0.*$/s, "");
   i = 14;
@@ -33,9 +33,10 @@ export function decodePreset(b, nblk = 12, npar = 5) {
   const type = [...b.slice(i, i + nblk)]; i += nblk;
   const p = []; for (let k = 0; k < nblk; k++) { p.push([...b.slice(i, i + npar)]); i += npar; }
   const order = [...b.slice(i, i + nblk)];
-  return { name, on, type, p, order };
+  i += nblk;
+  return { name, on, type, p, order, ...(b.length >= i + 2 && { valveOn: !!b[i], valveDrive: b[i + 1] }) };
 }
-export function encodePreset(q, nblk = 12, npar = 5) {
+export function encodePreset(q, nblk = 10, npar = 5, valve = false) {
   const out = [];
   const nm = cleanName(q.name);
   for (let i = 0; i < 14; i++) out.push(i < nm.length ? nm.charCodeAt(i) : 0);
@@ -43,12 +44,13 @@ export function encodePreset(q, nblk = 12, npar = 5) {
   for (let k = 0; k < nblk; k++) out.push(q.type[k] & 0x7F);
   for (let k = 0; k < nblk; k++) for (let j = 0; j < npar; j++) out.push(Math.max(0, Math.min(100, q.p[k][j] | 0)));
   for (let k = 0; k < nblk; k++) out.push(q.order[k] & 0x7F);
+  if (valve) out.push(q.valveOn ? 1 : 0, valveValue(q.valveDrive ?? VALVE_DEFAULT));
   return out;
 }
 export function cleanName(s, max = 13) {
   return String(s || "").replace(/[^\x20-\x7E]/g, "?").slice(0, max);
 }
-export const clonePreset = (q) => ({ name: q.name, on: [...q.on], type: [...q.type], p: q.p.map((r) => [...r]), order: [...q.order] });
+export const clonePreset = (q) => ({ ...q, on: [...q.on], type: [...q.type], p: q.p.map((r) => [...r]), order: [...q.order] });
 
 export class Editor {
   constructor(access, opts = {}) {
@@ -135,8 +137,9 @@ export class Editor {
 
   // ---- the catalogue: blocks, types, parameter names and value texts (cached per firmware) ----
   async catalog(progress = () => {}) {
-    const key = `openpocket-cat-${this.info.identity}-${this.info.version}`;
-    try { const c = JSON.parse(localStorage.getItem(key) || "null"); if (c && c.blocks && c.blocks.length === this.info.nblk) { this.cat = c; if (this.hasNam) await this.namTexts(); if (this.hasIr) await this.irTexts(); return c; } } catch (_) { }
+    const key = `openpocket-cat-${this.info.identity}-${this.info.version}-${this.info.proto}`;
+    let cached;
+    try { cached = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) { }
     const blocks = [];
     for (let b = 0; b < this.info.nblk; b++) {
       const r = new Reader(await this.request(C.CAT_BLOCK, [b]));
@@ -145,6 +148,14 @@ export class Editor {
       const c = r.b() | r.b() << 7 | r.b() << 14;
       const rgb = `#${(((c >> 11) & 31) * 255 / 31 | 0).toString(16).padStart(2, "0")}${(((c >> 5) & 63) * 255 / 63 | 0).toString(16).padStart(2, "0")}${((c & 31) * 255 / 31 | 0).toString(16).padStart(2, "0")}`;
       blocks.push({ label, name, color: rgb, types: new Array(ntypes) });
+    }
+    // Development builds can share an identity even when a block gains a type.
+    if (cached?.blocks?.length === blocks.length && blocks.every((b, i) => {
+      const old = cached.blocks[i];
+      return old?.label === b.label && old.name === b.name && old.color === b.color && old.types?.length === b.types.length;
+    })) {
+      this.cat = cached;
+      return cached;
     }
     const total = blocks.reduce((s, b) => s + b.types.length, 0);
     let done = 0;
@@ -168,27 +179,15 @@ export class Editor {
     }
     this.cat = { blocks };
     try { localStorage.setItem(key, JSON.stringify(this.cat)); } catch (_) { }
-    if (this.hasNam) await this.namTexts();
-    if (this.hasIr) await this.irTexts();
     return this.cat;
   }
-  // v37: the AMP NAM type's MODEL texts name the user models, which change: always asked again (not cached)
-  async namTexts() {
-    const b = this.cat.blocks.findIndex((x) => x.label === "AMP");
-    const t = b < 0 ? -1 : this.cat.blocks[b].types.findIndex((x) => x && x.name === "NAM");
-    if (t < 0) return;
-    const q = new Reader(await this.request(C.TEXTS, [b, t, 0]));
-    q.b(); q.b(); q.b();
-    const texts = []; for (let v = 0; v <= 100; v++) texts.push(q.s());
-    this.cat.blocks[b].types[t].params[0].texts = texts;
-  }
-
   // ---- the current sound ----
   _state(args) {
     const r = new Reader(args);
     const slot = r.b(), flags = r.b(), focus = r.b();
-    return { slot, dirty: !!(flags & 1), saved: !!(flags & 2), focus, preset: decodePreset(r.bytes(P_SIZE), this.info.nblk, this.info.npar) };
+    return { slot, dirty: !!(flags & 1), saved: !!(flags & 2), focus, preset: decodePreset(r.bytes(presetSize(this.info.nblk, this.info.npar, this.hasValve)), this.info.nblk, this.info.npar) };
   }
+  get hasValve() { return !!(this.info && this.info.proto >= 10); }
   async state() { return this._state(await this.request(C.STATE)); }
   async set(block, what, k, v) { const r = await this.request(C.SET, [block, what, k, v]); return r[3]; }
   setParam(block, k, v) { return this.set(block, 0, k, v); }
@@ -196,7 +195,7 @@ export class Editor {
   setType(block, t) { return this.set(block, 2, 0, t); }
   async order(order) { return (await this.request(C.ORDER, order))[0]; }
   async name(s) { return new Reader(await this.request(C.NAME, [...cleanName(s, this.info.nameMax)].map((c) => c.charCodeAt(0)).concat([0]))).s(); }
-  async put(q) { return (await this.request(C.PUT, encodePreset(q, this.info.nblk, this.info.npar)))[0]; }
+  async put(q) { return (await this.request(C.PUT, encodePreset(q, this.info.nblk, this.info.npar, this.hasValve)))[0]; }
   async select(slot) { return (await this.request(C.SELECT, [slot]))[1]; }
   async focus(block) { await this.request(C.FOCUS, [block]); }
 
@@ -213,80 +212,31 @@ export class Editor {
   async slotGet(slot) {
     const r = new Reader(await this.request(C.SLOT_GET, [slot]));
     r.b(); const saved = !!r.b();
-    return { slot, saved, preset: decodePreset(r.bytes(P_SIZE), this.info.nblk, this.info.npar) };
+    return { slot, saved, preset: decodePreset(r.bytes(presetSize(this.info.nblk, this.info.npar, this.hasValve)), this.info.nblk, this.info.npar) };
   }
   // q null: back to the factory preset. commit: write the flash now
   async slotPut(slot, q, commit) {
     const args = [slot, (q ? 1 : 0) | (commit ? 2 : 0)];
-    if (q) args.push(...encodePreset(q, this.info.nblk, this.info.npar));
+    if (q) args.push(...encodePreset(q, this.info.nblk, this.info.npar, this.hasValve));
     return (await this.request(C.SLOT_PUT, args, commit ? 4000 : this.timeout))[1];
   }
   async commit() { return (await this.request(C.COMMIT, [], 4000))[0]; }
   async save(slot) { return (await this.request(C.SAVE, [slot], 4000))[1]; }
   async watch(on) { return (await this.request(C.WATCH, [on ? 1 : 0]))[0]; }
   async ping() {
-    const r = await this.request(C.PING), p = { load: r[0], bypass: !!(r[1] & 1), c1: !!(r[1] & 2) };
+    const r = await this.request(C.PING), p = { load: r[0], bypass: !!(r[1] & 1), c1: !!(r[1] & 2), shed: !!(r[1] & 4) };   // (bit 2, v75: a block is switched off for the load)
     if (r.length >= 8) Object.assign(p, { peak: r[2], peakAll: r[3], xrun: r[4] | r[5] << 7, clip: r[6] | r[7] << 7 });   // v40.1
     if (r.length >= 12) Object.assign(p, { stackFree: (r[8] | r[9] << 7) * 4, irqStackFree: (r[10] | r[11] << 7) * 4 });
     // v40.2: then a count and that many 2-byte figures (the DSP profile, tools/dsp.mjs): the stack figures end before it
     const base = [12, 16].find((b) => r.length > b && r.length === b + 1 + 2 * r[b]);
     if ((base ?? r.length) >= 16) Object.assign(p, { bleHeapFree: (r[12] | r[13] << 7) * 4, bleTaskStackFree: (r[14] | r[15] << 7) * 4 });
-    if (base) {                   // each block's share of an audio block's time (%), in the block order, then the NAM network's
-      const f = [], n = this.info ? this.info.nblk : 12;
+    if (base) {                   // each block's share of an audio block's time (%), in the block order
+      const f = [], n = this.info ? this.info.nblk : 10;
       for (let i = base + 1; i + 1 < r.length; i += 2) f.push(r[i] | r[i + 1] << 7);
-      p.prof = f.slice(0, n); p.profNam = f[n];
+      p.prof = f.slice(0, n);
     }
     return p;
   }
-  // v37 (protocol 2): NAM models. list -> { nfact, nuser, models: [{ index, user, slot, used, name }] }
-  get hasNam() { return !!(this.info && this.info.proto >= 2); }
-  async namList() {
-    const r = new Reader(await this.request(C.NAM_LIST));
-    const nfact = r.b(), nuser = r.b(), models = [];
-    for (let i = 0; i < nfact + nuser; i++) {
-      const used = !!r.b(), name = r.s();
-      models.push({ index: i, user: i >= nfact, slot: i - nfact, used, name });
-    }
-    return { nfact, nuser, models };
-  }
-  // a packed model (pxnam.js packModel) into user slot `slot`: pieces, then the flash write. rc 0 ok, 1 invalid, 2 flash
-  async namUpload(slot, bytes, progress = () => {}) {
-    if (bytes.length !== SLOT_BYTES) throw new Error("model: wrong size");
-    const n = Math.ceil(bytes.length / NAM_CHUNK);
-    for (let i = 0; i < n; i++) {
-      const piece = bytes.slice(i * NAM_CHUNK, (i + 1) * NAM_CHUNK);
-      const r = await this.request(C.NAM_WRITE, [i & 0x7F, i >> 7, ...pack7(piece)]);
-      if (r[2]) throw new Error(`model: piece ${i} refused`);
-      progress((i + 1) / (n + 1));
-    }
-    const rc = (await this.request(C.NAM_COMMIT, [slot], 6000))[1];
-    progress(1);
-    return rc;
-  }
-  async namErase(slot) { return (await this.request(C.NAM_ERASE, [slot], 6000))[1]; }
-  // v38 (protocol 3): cabinet IRs. list -> [{ slot, used, name }]
-  get hasIr() { return !!(this.info && this.info.proto >= 3); }
-  async irList() {
-    const r = new Reader(await this.request(C.IR_LIST));
-    const n = r.b(), out = [];
-    for (let i = 0; i < n; i++) { const used = !!r.b(), name = r.s(); out.push({ slot: i, used, name }); }
-    return out;
-  }
-  // a packed IR (pxir.js packIr) into slot `slot`: pieces, then the flash write. rc 0 ok, 1 invalid, 2 flash
-  async irUpload(slot, bytes, progress = () => {}) {
-    if (bytes.length !== IR_BYTES) throw new Error("IR: wrong size");
-    const n = Math.ceil(bytes.length / IR_CHUNK);
-    for (let i = 0; i < n; i++) {
-      const piece = bytes.slice(i * IR_CHUNK, (i + 1) * IR_CHUNK);
-      const r = await this.request(C.IR_WRITE, [i & 0x7F, i >> 7, ...pack7(piece)]);
-      if (r[2]) throw new Error(`IR: piece ${i} refused`);
-      progress((i + 1) / (n + 1));
-    }
-    const rc = (await this.request(C.IR_COMMIT, [slot], 6000))[1];
-    progress(1);
-    return rc;
-  }
-  async irErase(slot) { return (await this.request(C.IR_ERASE, [slot], 6000))[1]; }
   // v42 (protocol 4): USB AUDIO, the pedal as a USB sound card (docs/USB-AUDIO.md). usbAudio() reads the setting and
   // the streams; usbAudio(true / false) sets it first: the pedal then leaves USB for a second and comes back as a
   // device with or without the audio streams, so this connection ends (connect again after about 3 s).
@@ -301,15 +251,44 @@ export class Editor {
     return { on: !!r[0], rc: r[1], recording: !!(r[2] & 1), flowing: !!(r[2] & 2), playing: !!(r[2] & 4), sounding: !!(r[2] & 8),
       counts: Object.fromEntries(names.map((k, i) => [k, v[i] ?? 0])) };
   }
-  // the CAB USER IR type's IR texts name the slots, which change: always asked again (not cached)
-  async irTexts() {
-    const b = this.cat.blocks.findIndex((x) => x.label === "CAB");
-    const t = b < 0 ? -1 : this.cat.blocks[b].types.findIndex((x) => x && x.name === "USER IR");
-    if (t < 0) return;
-    const q = new Reader(await this.request(C.TEXTS, [b, t, 0]));
-    q.b(); q.b(); q.b();
-    const texts = []; for (let v = 0; v <= 100; v++) texts.push(q.s());
-    this.cat.blocks[b].types[t].params[0].texts = texts;
+  // v48 (protocol 5): the current preset's footswitches in STOMP mode, and the mode. footswitch() reads; footswitch({ left,
+  // right, stomp }) sets what is given first. A footswitch: a block index 0..9 (v75: BST is 9), 12 BYPASS, 15 nothing. The assignment
+  // is part of the preset (it marks it edited; SAVE keeps it); STOMP goes to the flash with the next save.
+  // -> { left, right, stomp, bypass }
+  get hasFootswitch() { return !!(this.info && this.info.proto >= 5); }
+  async footswitch(set) {
+    const v = (x) => (x === undefined ? 127 : x);
+    const args = set ? [v(set.left), v(set.right), set.stomp === undefined ? 127 : set.stomp ? 1 : 0] : [];
+    if (set && set.gestures) args.push(...set.gestures.map(v));         // v75 (protocol 9): [left double tap, left hold, right double tap, right hold]; 15: nothing, undefined: leave it
+    const r = await this.request(C.FOOTSWITCH, args);
+    const o = { left: r[0], right: r[1], stomp: !!r[2], bypass: !!r[3] };
+    if (r.length >= 8) o.gestures = [r[4], r[5], r[6], r[7]];             // each an action: 0..9 a block on/off, 12 BYPASS, 16 the tuner, 17 next preset, 18 previous preset, 19 STOMP/PATCH, 15 nothing
+    return o;
+  }
+  // v75 (protocol 8): the blocks the pedal's load safeguard switched off. shed() reads them; shed(true) brings them back (they fade in).
+  // -> { mask, blocks: [block indices], count (times since power-on) }
+  get hasShed() { return !!(this.info && this.info.proto >= 8); }
+  // v75 (protocol 9): the global settings, outside the presets. global() reads them; global(v) sets them (in the pedal's memory: commit() writes them with the store).
+  // { tuner: the reference A in Hz (415..466), hpf: input high-pass Hz (0 off, 20..140), eq: five bands in dB (-12..12, 0.5 steps), lim: the limiter's ceiling in dB
+  //   (0 off, else -0.5..-12), tails (a delay or reverb plays out when switched off), hush: the smart gate's hiss filter 0..100,
+//   tunerLights: how the button lights show the tuner (0 HOME blinks, 1 needle, 2 strobe), lightsOff: the lights are dark outside the tuner }
+  get hasGlobal() { return !!(this.info && this.info.proto >= 9); }
+  async global(v) {
+    const args = v ? [v.tuner === 440 ? 0 : Math.max(1, Math.min(52, Math.round(v.tuner) - 414)), Math.round(v.hpf / 5), ...v.eq.map((d) => Math.max(0, Math.min(48, Math.round(d * 2) + 24))),
+      Math.max(0, Math.min(24, Math.round(-v.lim * 2) || 0)), v.tails ? 1 : 0, Math.max(0, Math.min(100, Math.round(v.hush))), (Math.max(0, Math.min(2, v.tunerLights | 0))) | (v.lightsOff ? 4 : 0)] : [];
+    const r = await this.request(C.GLOBAL, args);
+    return { tuner: r[0] ? 414 + r[0] : 440, hpf: r[1] * 5, eq: Array.from(r.slice(2, 7), (c) => (c - 24) / 2), lim: r[7] ? -r[7] / 2 : 0, tails: !!r[8], hush: r[9], tunerLights: r[10] & 3, lightsOff: !!(r[10] & 4) };
+  }
+  // what the pedal's tuner hears now: { hz (0 none), open (its tuner page is open), ref (the reference A) }
+  // tuner(true) opens the pedal's tuner page (its output is muted, as when the player opens it), tuner(false) closes it
+  async tuner(open) {
+    const r = await this.request(C.TUNER, open === undefined ? [] : [open ? 1 : 0]);
+    return { hz: (r[0] | r[1] << 7 | r[2] << 14) / 100, open: !!r[3], ref: r[4] ? 414 + r[4] : 440 };
+  }
+  async shed(restore) {
+    const r = await this.request(C.SHED, restore ? [1] : []);
+    const mask = r[0] | r[1] << 7, n = this.info ? this.info.nblk : 10;
+    return { mask, blocks: Array.from({ length: n }, (_, b) => b).filter((b) => mask >> b & 1), count: r[2] | r[3] << 7 };
   }
 }
 
@@ -321,48 +300,49 @@ export function presetToJSON(q, cat, slot) {
     name: q.name,
     blocks: cat.blocks.map((b, i) => ({ block: b.label, on: !!q.on[i], type: b.types[q.type[i]] ? b.types[q.type[i]].name : q.type[i], params: [...q.p[i]] })),
     order: q.order.map((i) => cat.blocks[i] ? cat.blocks[i].label : i),
+    ...(q.valveOn !== undefined && { valve: { on: q.valveOn, drive: q.valveDrive } }),
   };
 }
 export function filePresets(presets) { return { format: "openpocket-presets", version: 1, presets }; }
-
-// v34: amps, drives and cabs were replaced by fitted models (docs/FITTED-MODELS.md); a preset file from v32 / v33
-// names the old types: each one -> the nearest new type, the same choice the pedal makes for its saved presets (px_type_v34)
-export const V33_TYPES = {"AMP": {"TWIN CLEAN": "TWIN", "DELUXE 65": "TWIN", "PRINCETONE": "TWIN", "TWEED 59": "SHIRLEY", "TWEED CHAMP": "AC15 TB", "AC 30 TB": "AC15 TB", "AC 15": "AC15 TB", "JTM 45": "SHIRLEY", "PLEXI 68": "SHIRLEY", "BRIT 800": "JCM900", "BRIT JVM": "JCM2000", "HIWATT DR": "JCM900", "ORANGE 120": "JCM2000", "CHIME 30": "AC15 TB", "ODS LEAD": "MARK IV", "SLO 100": "PRO MOD", "MARK IIC+": "MARK IV", "RECTIFIED": "5150", "5150 LEAD": "5150", "5150 III": "5150", "ECSTASY": "PRO MOD", "BE LEAD": "PRO MOD", "UBER VH4": "5150", "EURO BALL": "5150", "REVV GEN": "5150", "JC CLEAN": "TWIN", "SUPRO 64": "AC15 TB", "TWO-ROCK": "TWIN", "SVT BASS": "TWIN"}, "DRV": {"TS 808": "TS9", "TS 9": "TS9", "SD-1 OD": "TS9", "KLONE": "KLON", "BD BLUES": "KLON", "OCD DRIVE": "M77 OD", "RAT DIST": "SWEDE HM-2", "DS-1 DIST": "SWEDE HM-2", "DIST PLUS": "M77 OD", "BLUESBREAKER": "KLON", "KING OF TONE": "KLON", "TIMMY": "KLON", "ZEN DRIVE": "TS9", "MUFF PI": "M77 OD", "RAMS HEAD": "M77 OD", "GREEN RUSSIAN": "M77 OD", "FACE GERMAN.": "M77 OD", "FACE SILICON": "M77 OD", "BENDER MK2": "M77 OD", "OCTAFUZZ": "M77 OD", "FUZZ FACTORY": "M77 OD", "TREBLE BOOST": "M77 OD", "EP BOOST": "KLON", "METAL ZONE": "SWEDE HM-2", "PRECISION": "TS9", "BASS DI 7K": "KLON"}, "CAB": {"1x10 OPEN": "1x12 US OPEN", "2x10 VIBRO": "1x12 US OPEN", "2x12 BRIT": "4x12 GREEN", "4x10 TWEED": "1x12 US OPEN", "4x12 H30": "4x12 V30", "1x15 OPEN": "1x12 US OPEN", "8x10 BASS": "4x12 V30", "4x10 HORN": "1x12 US OPEN"}};
-
-// v35: delay TIME 20..1000 ms in 100 steps became 20..1000 ms in 80 steps, then up to 2 s (px_dly_time_v35)
-export const dlyTimeV35 = (v) => Math.min(80, Math.floor(v * (9.8 / 12.25) + 0.5));
 
 // a preset from its JSON; problems (unknown block or type) are listed, the rest still comes through
 export function presetFromJSON(o, cat, base) {
   const q = clonePreset(base), warn = [];
   q.name = cleanName(o.name || q.name);
+  if (q.valveOn !== undefined) {
+    q.valveOn = !!o.valve?.on;
+    q.valveDrive = valveValue(o.valve?.drive ?? VALVE_DEFAULT);
+  }
   const byLabel = new Map(cat.blocks.map((b, i) => [b.label, i]));
-  for (const ob of Array.isArray(o.blocks) ? o.blocks : []) {
+  const MOVED = ["RANGEMASTER", "EP BOOST", "MAXIMIZER", "ENHANCE"];     // v75: SFX types that live in the BST (PRE / BOOST) block now
+  for (let ob of Array.isArray(o.blocks) ? o.blocks : []) {
+    if (ob.block === "SFX" && MOVED.includes(ob.type) && byLabel.has("BST")) ob = { ...ob, block: "BST" };
     const i = byLabel.get(ob.block);
     if (i === undefined) { warn.push(`unknown block ${ob.block}`); continue; }
+    if (q.valveOn !== undefined && ob.block === "CMP" && (ob.type === "VALVE" || ob.type === 4)) {
+      q.valveOn = !!ob.on;
+      q.valveDrive = valveValue(ob.params?.[0] ?? VALVE_DEFAULT);
+      q.on[i] = 0;
+      q.type[i] = 0;
+      continue;
+    }
     q.on[i] = ob.on ? 1 : 0;
     let t = typeof ob.type === "number" ? ob.type : cat.blocks[i].types.findIndex((x) => x.name === ob.type);
-    const moved = typeof ob.type === "string" && t < 0 && V33_TYPES[ob.block] && V33_TYPES[ob.block][ob.type];
-    if (moved) {
-      t = cat.blocks[i].types.findIndex((x) => x.name === moved);
-      if (t >= 0) warn.push(`${ob.block}: ${ob.type} (before v34) -> ${moved}`);
-    }
     if (t < 0 || t >= cat.blocks[i].types.length) { warn.push(`${ob.block}: unknown type ${ob.type}`); t = q.type[i]; }
     q.type[i] = t;
     if (Array.isArray(ob.params)) for (let k = 0; k < q.p[i].length; k++) {
       const v = Number(ob.params[k]);
       if (Number.isFinite(v)) q.p[i][k] = Math.max(0, Math.min(100, Math.round(v)));
     }
-    if (!(o.v >= 36) && ob.block === "GT") q.p[i][2] = 50;           // before v36: no preset LEVEL (0 dB)
-    if (!(o.v >= 35) && ob.block === "DLY" && cat.blocks[i].types[q.type[i]] && cat.blocks[i].types[q.type[i]].name !== "REVERSE") {
-      const old = q.p[i][0], now = dlyTimeV35(old);                // a file from before v35: TIME was 20..1000 ms
-      if (now !== old) { q.p[i][0] = now; warn.push(`DLY: TIME ${old} (before v35) -> ${now}, same delay`); }
-    }
   }
   if (Array.isArray(o.order)) {
     const ord = o.order.map((l) => typeof l === "number" ? l : byLabel.get(l));
     if (ord.length === q.order.length && new Set(ord).size === ord.length && ord.every((x) => x !== undefined && x >= 0 && x < q.order.length)) q.order = ord;
-    else warn.push("block order not usable: default order kept");
+    else if (ord.length < q.order.length && new Set(ord).size === ord.length && ord.every((x) => x !== undefined && x >= 0 && x < q.order.length)) {
+      // a file from before a block existed (v75: BST): the new blocks come in after GT (BST's place in the default order), else at the end
+      for (let m = 0; m < q.order.length; m++) if (!ord.includes(m)) { const g = cat.blocks[m].label === "BST" ? ord.indexOf(byLabel.get("GT")) : -1; ord.splice(g >= 0 ? g + 1 : ord.length, 0, m); }
+      q.order = ord;
+    } else warn.push("block order not usable: default order kept");
   }
   return { preset: q, warn };
 }

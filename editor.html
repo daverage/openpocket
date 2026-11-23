@@ -1,9 +1,9 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only
-     OpenPocket web editor: the pedal's presets, its current sound, its NAM models and cabinet IRs, and MIDI control,
+     OpenPocket web editor: the pedal's presets, its current sound and MIDI control,
      live over USB-MIDI (Chrome / Edge). Protocol: EDITOR-PROTOCOL.md; transport: pxedit.js. No library, no build step:
      editor.css, editor.js (start, connection, sections) and one module per section (edsound.js, edpresets.js,
-     edmodels.js, edmidi.js) on edcore.js. -->
+     edmidi.js) on edcore.js. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -24,20 +24,24 @@
   <nav class="tabs" id="tabs" aria-label="Sections">
     <button type="button" data-go="presets" class="narrow-only"><svg class="ic"><use href="#i-list"/></svg><span>Presets</span></button>
     <button type="button" data-go="sound"><svg class="ic"><use href="#i-sliders"/></svg><span>Sound</span></button>
-    <button type="button" data-go="models"><svg class="ic"><use href="#i-wave"/></svg><span>Models</span></button>
     <button type="button" data-go="midi"><svg class="ic"><use href="#i-midi"/></svg><span>MIDI</span></button>
   </nav>
   <div class="bar-end">
     <button type="button" class="meter" id="load" popovertarget="loadpop" hidden aria-label="DSP load">
       <span class="meter-l">DSP</span><span class="meter-bar"><i id="loadbar"></i><b id="loadpeak"></b></span><span class="meter-v" id="loadv">–</span>
     </button>
+    <button type="button" class="conn" id="stagebtn" hidden aria-label="Stage view: a big display for playing live"><svg class="ic"><use href="#i-sliders"/></svg><span>Stage</span></button>
+    <button type="button" class="conn" id="glob" popovertarget="globpop" hidden aria-label="Global settings"><svg class="ic"><use href="#i-sliders"/></svg><span>Global</span></button>
     <button type="button" class="conn" id="conn" popovertarget="connpop" hidden><i class="dot"></i><span id="status">Not connected</span></button>
   </div>
 </header>
 
 <div class="pop" id="loadpop" popover aria-label="DSP load details"></div>
 <div class="pop" id="connpop" popover aria-label="Connection"></div>
+<div class="pop gl" id="globpop" popover aria-label="Global settings"></div>
 <div class="pop menu" id="menu" popover role="menu"></div>
+
+<section class="stage" id="stage" hidden tabindex="-1" aria-label="Stage view"></section>
 
 <div class="lostbar" id="lostbar" hidden role="alert">
   <svg class="ic"><use href="#i-alert"/></svg>
@@ -85,11 +89,44 @@
         </div>
       </div>
 
+      <details class="fscard patch-options" id="valverow" hidden>
+        <summary>Valve <span class="patch-value" id="valvesummary"></span></summary>
+        <div class="valve-controls" id="valvecontrols">
+          <button type="button" class="switch" id="valveon" role="switch" aria-label="Valve on" aria-checked="false"><i></i><span>Off</span></button>
+          <label class="valve-drive">Drive <input id="valvedrive" type="range" min="0" max="100" step="1" value="71"><output id="valvedb" for="valvedrive">+12 dB</output></label>
+        </div>
+      </details>
       <div class="chain-wrap">
         <span class="cap-io" aria-hidden="true">IN</span>
         <div class="chain" id="tiles" role="group" aria-label="Signal chain, in the order the sound passes through"></div>
         <span class="cap-io" aria-hidden="true">OUT</span>
       </div>
+      <details class="fscard patch-options" id="fsrow" hidden>
+        <summary>Footswitches <span class="patch-value" id="fsmode"></span></summary>
+        <header class="fshead">
+          <button type="button" class="switch" id="stomp" role="switch" aria-checked="false" aria-describedby="fshelp"><i></i><span>Stomp</span></button>
+          <span class="fsstate" id="fsstate" role="status"></span>
+          <p class="fshelp" id="fshelp"></p>
+        </header>
+        <div class="fsgrid">
+          <div class="fscol">
+            <h4>Left</h4>
+            <label class="fsel"><span>Press</span><select id="fsl"></select></label>
+            <label class="fsel" data-gest><span>Double tap</span><select id="ldbl"></select></label>
+            <label class="fsel" data-gest><span>Hold</span><select id="lhold"></select></label>
+          </div>
+          <div class="fscol">
+            <h4>Right</h4>
+            <label class="fsel"><span>Press</span><select id="fsr"></select></label>
+            <label class="fsel" data-gest><span>Double tap</span><select id="rdbl"></select></label>
+            <label class="fsel" data-gest><span>Hold</span><select id="rhold"></select></label>
+          </div>
+        </div>
+        <details class="fsmore" id="fsgest">
+          <summary>How the footswitches work</summary>
+          <p>In Stomp mode a press toggles its assignment. Press both switches together to open the tuner. A hold (0.7 s) reverses the press before running its action. A double tap runs its action in Stomp mode. In Patch mode a press changes the preset. Save the preset to keep its assignments.</p>
+        </details>
+      </details>
       <p class="hint" id="hint">Drag a block to move it. Arrow keys choose a block, Space switches it, Alt + arrows move it.</p>
 
       <div class="block" id="block">
@@ -112,19 +149,6 @@
         <div class="params" id="params"></div>
         <div class="blocknote" id="blocknote" hidden></div>
       </div>
-    </section>
-
-    <section class="view" id="view-models" aria-labelledby="models-h">
-      <h1 class="vh" id="models-h">Models and cabinets</h1>
-      <div class="mgrid">
-        <div class="mcol">
-          <section class="card bank" id="nam" data-kind="nam"></section>
-          <section class="card bank" id="ir" data-kind="ir"></section>
-        </div>
-        <section class="card t3k" id="t3k" aria-label="TONE3000"></section>
-      </div>
-      <input type="file" id="namfile" accept=".nam,application/json" multiple hidden>
-      <input type="file" id="irfile" accept=".wav,audio/wav,audio/x-wav,audio/wave" multiple hidden>
     </section>
 
     <section class="view" id="view-midi" aria-labelledby="midi-h">

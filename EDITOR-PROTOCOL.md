@@ -1,7 +1,7 @@
 # OpenPocket editor protocol (SysEx over USB-MIDI)
 
 The web editor (`docs/editor.html`, `docs/pxedit.js`) talks to the pedal with this protocol. The firmware side is
-`firmware/px_editor.h`; `tests/edsim.c` runs the same code on a PC for the tests. Protocol version 4 (OpenPocket v42: `USB_AUDIO`, command 28; version 3: v38, the cabinet IR commands 24..27; version 2: v37, without them;
+`firmware/px_editor.h`; `tests/edsim.c` runs the same code on a PC for the tests. Protocol version 5 (OpenPocket v48: `FOOTSWITCH`, command 29; version 4: v42, `USB_AUDIO`, command 28; version 3: v38, the cabinet IR commands 24..27; version 2: v37, without them;
 version 1: v32 to v36, also without the NAM commands 19..22). A later version only adds commands: an editor written for
 an earlier one works unchanged.
 
@@ -17,12 +17,15 @@ one incoming frame at a time). While the editor watches (`WATCH`), the pedal als
 | byte | one 7-bit byte |
 | string | ASCII 32..126, ended by a 0 byte |
 | color | an RGB565 color in 3 bytes: bits 0-6, 7-13, 14-15 |
-| preset `P` | 110 bytes, the firmware's `px_preset_t` as is (every byte is below 128): `name` 14 (ASCII, 0-padded, at most 13 characters), `on` 12 (0/1), `type` 12, `p` 12 x 5 (0..100), `order` 12 (a permutation of 0..11) |
+| preset `P` | 96 bytes in protocol 10, 94 in protocols 7–9, 86 with the 9 blocks of protocol 6. The layout is `name` 14 (ASCII, 0-padded, at most 13 characters), `on` 10 (0/1), `type` 10, `p` 10 x 5 (0..100), `order` 10 (a permutation of 0..9), followed in protocol 10 by `valve_on` (0/1) and `valve_drive` (0..100, 71 for +12 dB). Protocol 10 accepts 94-byte presets and migrates the old COMP type 4 into the Valve fields. Other old presets get Valve off at +12 dB. |
 
-The 12 blocks, by index: 0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 7 EQ, 8 MOD, 9 DELAY, 10 REVERB,
-11 SYN (`CAT_BLOCK` gives their labels and names). `order` is the processing and display order.
+The 10 blocks (protocol 7), by index: 0 GATE, 1 COMP, 2 OCTAVE, 3 SYNTH, 4 SFX, 5 EQ, 6 MOD, 7 DELAY,
+8 REVERB, 9 BST, PRE / BOOST (`CAT_BLOCK` gives their labels and names; `INFO` gives the count, so read it: protocol 6 has 9). BST is last in the index and sits right after the gate in the default order. A preset sent with a RANGEMASTER, EP BOOST or MAXIMIZER in SFX (types 10..12, which are tombstones now) has it moved to BST. `order` is the processing and display order.
 
 ## Commands
+
+Protocol 6 (v70, OpenPocket Synth) retires the NAM model and cabinet IR commands (19 to 22 and 24 to 27): the pedal gives
+them no reply. The other numbers are unchanged.
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
@@ -31,7 +34,7 @@ The 12 blocks, by index: 0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 
 | 3 CAT_TYPE | block, type | block, type, name string, parameters n, text mask (bit k: parameter k has its own value texts, see `TEXTS`), then n parameter-name strings |
 | 4 TEXTS | block, type, k | block, type, k, then 101 strings: the text the pedal shows for values 0..100 ("" = the number itself) |
 | 5 STATE | — | slot (0..51), flags (bit 0: the sound differs from the slot's, bit 1: the slot holds a saved preset), focused block, `P` (the current sound) |
-| 6 SET | block, what, k, v | block, what, k, v (after clamping). what 0: parameter k = v (0..100); 1: on = v (0/1); 2: type = v |
+| 6 SET | block, what, k, v | block, what, k, v (after clamping). what 0: parameter k = v (0..100); 1: on = v (0/1); 2: type = v. Protocol 10 uses index 10 for Valve with parameter k = 0 (Drive) and on/off. |
 | 7 ORDER | 12 bytes | rc (0 ok, 1 not a permutation) |
 | 8 NAME | string | the name as stored (13 characters at most, other characters become "?") |
 | 9 PUT | `P` | rc (0 ok, 1 invalid). Replaces the current sound (not saved) |
@@ -43,44 +46,13 @@ The 12 blocks, by index: 0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 
 | 15 COMMIT | — | rc (0 ok, 2 flash). Writes every slot to the flash (one write, about 0.3 s) |
 | 16 SAVE | slot | slot, rc. Saves the current sound into the slot, writes the flash, the slot becomes the current one (as the pedal's SAVE) |
 | 17 WATCH | on (0/1) | on. While on, the pedal pushes `STATE` (cmd 5) when the sound, the slot or the focused block changes on the pedal; it stops by itself 5 s after the last request |
-| 18 PING | — | DSP load % (0..127), flags (bit 0: bypass, bit 1: second core); since v40.1 also the peak load % since the preset was set and since boot (0..127 each), the late blocks and the blocks at the soft clipper since boot (2 bytes each: bits 0-6, 7-13, wrapping), the bytes of the main stack and of the interrupt stack never used since boot (2 bytes each, in units of 4 bytes); the Bluetooth test image adds the lowest free bytes of its heap and of its deepest task's stack (the same coding). Since v40.2 then a count n and n figures of 2 bytes each (bits 0-6, 7-13): each block's share of an audio block's time over the last second in %, in the engine's block order, then the NAM network's; the network's way of running (its mode); its start-up timing of each way of running (11, in 0.1 % of real time, 0 = not available); and where one core's time goes in that timing (9 parts, 0.1 %: input, layers, rests, post, rings and output, the whole, the head's groups and rest, the tap tables); then the layer split (0 off, else 1 + the last layer CPU0 runs), then CPU0's and CPU1's load and their peaks since the preset was set (%, with the layer split; else 0; since v40.4 these peaks and the peak load above start again two blocks after a change, when the split is first set for the new sound: CPU0 runs the two blocks before at up to 80 % on purpose). Since v40.3 then the last change of type, order or NAM model: from the change to the sound back after it (0.1 ms; 0 while it still fades in), the engine's set in it (0.1 ms), how long the last LOADING was shown (ms; 0 = never) and how many were shown since boot. `node tools/op.mjs dsp` reads them per preset |
-| 19 NAM_LIST | — | factory models (12), user slots (16), then per model (factory first, then the user slots): present (0/1), name string (11 characters at most; an empty user slot reads "U5 EMPTY") |
-| 20 NAM_WRITE | piece (2 bytes: bits 0-6, 7-13), 128 packed bytes | the 2 piece bytes, rc (0 ok, 1 invalid). Piece i holds bytes 112 i .. 112 i + 111 of a model (the last piece fewer), packed 7 bit: groups of a byte of high bits (bit j = bit 7 of byte j) then 7 bytes. Stored in RAM only |
-| 21 NAM_COMMIT | slot (0..15) | slot, rc (0 ok, 1 invalid: header, a weight that is not a number, CRC; 2 flash). Checks the pieces received and writes them to the user slot |
-| 22 NAM_ERASE | slot (0..15) | slot, rc (0 ok, 1 invalid, 2 flash). Empties the user slot |
+| 18 PING | — | DSP load % (0..127), flags (bit 0: bypass, bit 1: second core, bit 2: a block is switched off for the load, protocol 8); since v40.1 also the peak load % since the preset was set and since boot (0..127 each), the late blocks and the blocks at the soft clipper since boot (2 bytes each: bits 0-6, 7-13, wrapping), the bytes of the main stack and of the interrupt stack never used since boot (2 bytes each, in units of 4 bytes); the Bluetooth test image adds the lowest free bytes of its heap and of its deepest task's stack (the same coding). Since v40.2 then a count n and n figures of 2 bytes each (bits 0-6, 7-13): v70 sends one per block, its share of an audio block's time over the last second in %, in the engine's block order (the NAM, layer-split and LOADING figures of v40.2 to v67 are gone). `node tools/op.mjs dsp` reads them per preset |
 | 23 DIAG | — | n (5), then n strings: this boot, the last boot, the status line, the link, the trace. Read only. Only the Bluetooth test image answers: other firmware gives no reply. `docs/BLE-TEST.md`, "Reading the pedal from a computer" |
-| 24 IR_LIST | — | slots (8), then per slot: present (0/1), name string (11 characters at most; an empty slot reads "IR3 EMPTY") |
-| 25 IR_WRITE | piece (2 bytes), 128 packed bytes | the 2 piece bytes, rc (0 ok, 1 invalid). As `NAM_WRITE`: piece i holds bytes 112 i .. 112 i + 111 of an IR (2112 bytes, 19 pieces). Stored in RAM only (the same buffer as `NAM_WRITE`: one upload at a time) |
-| 26 IR_COMMIT | slot (0..7) | slot, rc (0 ok, 1 invalid: header, CRC; 2 flash). Checks the pieces received and writes them to the slot |
-| 27 IR_ERASE | slot (0..7) | slot, rc (0 ok, 1 invalid, 2 flash). Empties the slot |
 | 28 USB_AUDIO | nothing, or on (0/1) | on (0/1), rc (0 ok, 1 this firmware has no USB audio, 2 flash), state, n (20), then n counts of 4 bytes each (bits 0-6, 7-13, 14-20, 21-27). Without an argument it only reads. With one it sets the USB AUDIO setting and, if it changed, writes it to the flash; see "USB audio" below |
-
-### NAM models (protocol 2)
-
-The AMP block's ninth type, `NAM`, plays a neural amp model (NAM A2, its 3-channel "Lite" size, 1871 weights:
-`engine/px_nam.h`). Its first parameter, MODEL, picks one of 28 models: 0..11 the factory ones (in the firmware),
-12..27 the 16 user slots in the pedal's flash (`firmware/px_models.h`, 0xC0000..0xE0000, kept by firmware updates).
-`TEXTS` of AMP type 8, parameter 0 gives each value's model name; the editor asks for it again after a change of
-the user slots.
-
-A user model is 7548 bytes, little endian: a 64-byte header, then the 1871 weights as float32 in the `.nam`
-file's order.
-
-| Offset | Size | Field |
-| --- | --- | --- |
-| 0 | 4 | magic `0x4D4E504F` ("OPNM") |
-| 4 | 2 | version, 1 |
-| 6 | 2 | weights, 1871 |
-| 8 | 12 | name, ASCII, 0-ended (11 characters at most) |
-| 20 | 2 | level trim, int16, 0.01 dB (added to the model's output) |
-| 22 | 2 | CRC16 of the weights (polynomial 0x1021, initial value 0) |
-| 24 | 40 | 0 |
-
-The editor (`docs/pxnam.js`) reads a `.nam` file, takes its A2-Lite part (an A2 file is a "SlimmableContainer"
-with several sizes; a plain A2-Lite WaveNet also works), measures its loudness on `docs/nam_di.wav` and sets the
-level trim so that every model plays at -20 LUFS on that clip, then sends 68 `NAM_WRITE` and one `NAM_COMMIT`.
-A1 models (the older "standard" / "lite" / "feather" WaveNets) and other architectures are refused: the pedal's CPU
-runs A2-Lite only.
+| 29 FOOTSWITCH | nothing, or left, right, stomp (each 127: leave it) | left, right, stomp (0/1), bypass (0/1). In STOMP mode a press can toggle a block (0..9), Valve (10, protocol 10), or BYPASS (12). Unassigned is 15. Protocol 9 adds four **gestures** to set and read in this order: left double tap, left hold, right double tap, right hold. Gestures support the same toggle actions as well as 16 tuner, 17 next preset, 18 previous preset and 19 STOMP/PATCH. Use 127 to leave an action unchanged. The four gestures occupy slot bytes 95..98 in flash. `SAVE` stores the assignments with the preset. STOMP mode (hold CAB on the pedal) is written to flash with the next save. |
+| 30 SHED | nothing, or 1 (bring the blocks back) | block mask low 7 bits, block mask bits 7..13, count low 7 bits, count bits 7..13. The blocks the load safeguard switched off (bit b = block b; protocol 8, v75: it switches the heaviest block off for 4 blocks over 85 % in a row, up to 3 per preset, before it bypasses everything), and how many times it has since power-on. Request 1 sets them all to come back at the next audio block (they fade in). A change on the pedal that switches such a block or changes its type, or another preset, clears it too |
+| 31 GLOBAL | nothing to read, or 11 values to set | tuner A (0: 440, else 414 + n Hz), input high-pass Hz / 5, five output EQ gains (half-dB steps, 24 flat), limiter (0 off, else -n / 2 dB), tails (0/1), smart gate hush (0..100), lights (bits 0..1: the tuner's lights, 0 blink 1 needle 2 strobe; bit 2: lights off). The global settings (protocol 9, v75), outside the presets. Set in the pedal's memory (the engine takes them at its next block); `COMMIT` writes them with the store (sector 0's spare 16 bytes) |
+| 32 TUNER | nothing, or 1 (open the pedal's tuner page: the output is muted) / 0 (close it) | frequency in 0.01 Hz (3 x 7 bits, 0: no note), 1 if the pedal's tuner page is open, the reference A (0: 440, else 414 + n). What the tuner hears now, steadied (the editor's stage view) |
 
 ### USB audio (protocol 4)
 
@@ -111,35 +83,6 @@ The 20 counts, since the pedal started (they wrap at 2^28), in this order (a cli
 | 20 | audio blocks whose output was asked for before their input (`firmware/px_aorder.h`). They are sent in the right order since v42; before, each was a block sent twice and one lost. It rises about twice a second while a stream is open, and with MIDI traffic, with or without USB audio |
 
 The Bluetooth test image has no USB audio: it answers `0, 1, 0, 0`.
-
-### Cabinet IRs (protocol 3)
-
-The CAB block's eighth type, `USER IR`, plays a cabinet impulse response (`engine/px_dsp.c`: uniform partitioned FFT
-convolution, 1024 taps at 44.1 kHz). Its settings: IR (the slot, 0..7), LOW CUT (20..400 Hz), HIGH CUT (20 kHz..2 kHz).
-The 8 slots are in the pedal's flash (`firmware/px_irs.h`, 0xF4000..0xFC000, kept by firmware updates). `TEXTS` of CAB
-type 7, parameter 0 gives each value's IR name.
-
-An IR is 2112 bytes, little endian: a 64-byte header, then 1024 samples as int16 (sample k = s[k] / 32767 x scale).
-
-| Offset | Size | Field |
-| --- | --- | --- |
-| 0 | 4 | magic `0x5249504F` ("OPIR") |
-| 4 | 2 | version, 1 |
-| 6 | 2 | samples, 1024 |
-| 8 | 12 | name, ASCII, 0-ended (11 characters at most) |
-| 20 | 4 | scale, float32 (the samples' full scale; above 0) |
-| 24 | 2 | CRC16 of the samples (polynomial 0x1021, initial value 0) |
-| 26 | 38 | 0 |
-
-The editor (`docs/pxir.js`) reads a WAV file (PCM 8 / 16 / 24 / 32-bit or float, any rate, mono or stereo: the first
-channel), drops the silence before its onset, resamples it to 44.1 kHz (windowed sinc), keeps 1024 samples (a 64-sample
-fade at the end when the response is longer), then sends 19 `IR_WRITE` and one `IR_COMMIT`. The pedal sets the level
-itself: every IR plays at the energy of the modelled cabinets.
-
-Writing the flash (`SLOT_PUT` with bit 1, `COMMIT`, `SAVE`, `NAM_COMMIT`, `NAM_ERASE`, `IR_COMMIT`, `IR_ERASE`) mutes
-the sound for a moment, as
-saving on the pedal does. A whole import sends `SLOT_PUT` without
-bit 1 for every slot, then one `COMMIT`.
 
 ## Preset files
 

@@ -35,7 +35,7 @@ const srcName = (s) => `CC ${s.cc} · ch ${s.ch}`;
 function pedalMeaning(m) {
   if (m.type === "pc") return m.program < app.slots.length ? `preset ${slotName(m.program)} ${app.slots[m.program].name}` : "no such preset";
   if (m.type !== "cc") return "";
-  const t = ccTarget(m.cc);
+  const t = ccTarget(m.cc, app.cat?.blocks?.length || undefined);
   if (!t) return "not in the pedal's map";
   if (t.kind === "master") return "MASTER volume";
   if (t.kind === "toggle") return `${blk(t.b).label} flips (on value 0)`;
@@ -75,7 +75,7 @@ function fromController(input, data) {
   const hits = resolve(cfg.mappings, m, app.st.slot);
   if (!hits.length) { note(from, m, "not learned: click a control below, then move this one"); return; }
   for (const map of hits) {
-    const a = action(map, m.value, { on: (b) => app.st.preset.on[b], ntypes: (b) => blk(b).types.length });
+    const a = action(map, m.value, { on: (b) => app.st.preset.on[b], ntypes: (b) => blk(b).types.length, live: (b) => blk(b).types.flatMap((x, i) => x && x.name ? [i] : []) });
     note(from, m, a ? `→ ${tgtName(map.tgt)}${a.do === "param" ? ` ${a.v}` : a.do === "on" ? (a.v ? ": on" : ": off") : ""}` : `${tgtName(map.tgt)}: the switch released, nothing to do`, a ? "hit" : "");
     if (!a) continue;
     if (a.do === "param") { sendParam(a.b, a.k, a.v); redrawSoon(); }
@@ -93,7 +93,7 @@ function fromPedal(data) {
   if (!m || m.type === "clock") return;
   note("Pedal", m, pedalMeaning(m), "pedal");
   if (m.type === "cc" && app.view === "midi") {
-    const t = ccTarget(m.cc);
+    const t = ccTarget(m.cc, app.cat?.blocks?.length || undefined);
     const cell = t && t.b !== undefined && document.querySelector(`.cc-cell[data-t="${t.kind === "toggle" ? "on" : t.kind}:${t.b}:${t.k ?? 0}"]`);
     if (cell) { cell.classList.remove("flash"); void cell.offsetWidth; cell.classList.add("flash"); }
   }

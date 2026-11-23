@@ -14,11 +14,9 @@ export const app = {
   st: null,                 // { slot, dirty, saved, focus, preset }: the current sound
   slots: [],                // [{ slot, saved, name }]
   bank: [],                 // [{ saved, preset }] per slot, read in the background after the connection
-  focus: 5,                 // the block the block editor shows
+  focus: 3,                 // the block the block editor shows (v70: SYNTH)
   ping: null,               // the last PING
-  nam: null, irs: null,     // NAM_LIST, IR_LIST
-  refs: { nam: null, ir: null },                  // where a preset names a model / IR slot (pxlib.js slotRef)
-  held: { nam: new Map(), ir: new Map() },        // slot -> the library's entry for what the pedal holds there
+  shed: null,               // v75: { mask, blocks, count }: the blocks the pedal switched off for the load, or null
   view: "sound",
 };
 

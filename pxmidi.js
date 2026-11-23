@@ -3,7 +3,7 @@
 // numbers and the same scaling), a decoder for the messages a port delivers, and the editor's learned mappings: a control
 // of another MIDI device (a foot controller plugged into the computer) -> something on the pedal. No DOM, no port here.
 
-export const NBLK = 12, NPAR = 5;
+export const NBLK = 10, NPAR = 5;                // v75: 10 blocks (v70: 9; BST, PRE / BOOST, is the last)
 export const CC_MASTER = 7, CC_TOGGLE0 = 8, CC_ON0 = 20, CC_TYPE0 = 52;
 
 // 60 settings over three runs of free numbers (px_cc_param)
@@ -16,12 +16,13 @@ export const ccToggle = (b) => CC_TOGGLE0 + b;
 export const ccType = (b) => CC_TYPE0 + b;
 
 // what a Control Change number means to the pedal: { kind: "master" | "toggle" | "on" | "type" | "param", b, k } or null
-export function ccTarget(cc) {
+// nblk: the pedal's own block count (an older pedal has nine: the numbers of the tenth block mean nothing there)
+export function ccTarget(cc, nblk = NBLK) {
   if (cc === CC_MASTER) return { kind: "master" };
-  if (cc >= CC_TOGGLE0 && cc < CC_TOGGLE0 + NBLK) return { kind: "toggle", b: cc - CC_TOGGLE0 };
-  if (cc >= CC_ON0 && cc < CC_ON0 + NBLK) return { kind: "on", b: cc - CC_ON0 };
-  if (cc >= CC_TYPE0 && cc < CC_TYPE0 + NBLK) return { kind: "type", b: cc - CC_TYPE0 };
-  for (let b = 0; b < NBLK; b++) for (let k = 0; k < NPAR; k++) if (ccParam(b, k) === cc) return { kind: "param", b, k };
+  if (cc >= CC_TOGGLE0 && cc < CC_TOGGLE0 + nblk) return { kind: "toggle", b: cc - CC_TOGGLE0 };
+  if (cc >= CC_ON0 && cc < CC_ON0 + nblk) return { kind: "on", b: cc - CC_ON0 };
+  if (cc >= CC_TYPE0 && cc < CC_TYPE0 + nblk) return { kind: "type", b: cc - CC_TYPE0 };
+  for (let b = 0; b < nblk; b++) for (let k = 0; k < NPAR; k++) if (ccParam(b, k) === cc) return { kind: "param", b, k };
   return null;
 }
 
@@ -65,7 +66,8 @@ export function resolve(mappings, msg, slot) {
 }
 
 // what a mapping does with a value: { do: "param", b, k, v } | { do: "on", b, v } | { do: "type", b, t } |
-// { do: "preset", step } | null (nothing: a pedal released, a toggle's 0). ctx: { on(b), ntypes(b) }
+// { do: "preset", step } | null (nothing: a pedal released, a toggle's 0). ctx: { on(b), ntypes(b), live?(b) }; live(b): the ids of the
+// block's types that are not retired (Synth2): the model slices count only these, as the firmware's do (px_midi.h)
 export function action(m, value, ctx) {
   const t = m.tgt, press = value >= 64;
   if (t.kind === "param") return { do: "param", b: t.b, k: t.k, v: fromCc(value) };
@@ -73,7 +75,10 @@ export function action(m, value, ctx) {
     if (t.mode === "toggle") return press ? { do: "on", b: t.b, v: ctx.on(t.b) ? 0 : 1 } : null;
     return { do: "on", b: t.b, v: press ? 1 : 0 };
   }
-  if (t.kind === "type") return { do: "type", b: t.b, t: typeFromCc(value, ctx.ntypes(t.b)) };
+  if (t.kind === "type") {
+    const live = ctx.live ? ctx.live(t.b) : null;
+    return { do: "type", b: t.b, t: live ? live[typeFromCc(value, live.length)] : typeFromCc(value, ctx.ntypes(t.b)) };
+  }
   if (t.kind === "preset") return press ? { do: "preset", step: t.step } : null;
   return null;
 }

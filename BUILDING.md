@@ -57,6 +57,15 @@ then `tools/mk_nam_factory.py LIST.txt DIR docs/nam_di.wav` writes the header wi
 The `.bat` files `makeimage.bat` and `render.bat` only check that Node is installed and call `tools/op.mjs`. `build.bat` does the same when Node and Docker are there, and otherwise builds in WSL (`build.bat docker` or `build.bat wsl` forces one way). `INSTALL-OFFLINE.bat` needs nothing installed: it serves `docs\` with PowerShell (`tools/serve_offline.ps1`), and falls back to Python (`tools/serve.py`) or WSL only if PowerShell cannot open a port. `tests/test_op.mjs` (part of `make test`) checks the Docker command lines, the friendly errors and `make clean` without Docker, using a fake `docker`. `PUBLISH-GITHUB.bat` and `PUBLISH-SOURCE.bat` (PowerShell
 `tools/publish_github.ps1`) are the maintainer's release tool and still need Windows; nothing else does.
 
+## Installing from the browser
+
+1. Run `make package` to build the two model-specific packages and their manifest in `docs/firmware/`. For v81 they are `PocketX_981.fwsc` and `BlackBox_981.fwsc`.
+2. Run `make serve` and open the localhost address it prints in desktop Chrome or Edge. The default is [localhost:8765](http://localhost:8765/). On Windows, `INSTALL-OFFLINE.bat` can serve the same files.
+3. Power on your pedal, connect it with a USB data cable, close other MIDI apps, and click **Connect**. Allow MIDI access. The page shows the detected model and the firmware it currently reports.
+4. Check the **Available firmware** version and click **Install**. The installer picks the package for the detected model. Keep the pedal powered and connected while it writes and restarts. Confirm the reported identity ends in `_981` for v81.
+
+If the installer reports **update mode** after a disconnect, use **Resume the update**. The same page can restore the manufacturer’s official `.fwsc`. [Recovery guide](RESCUE.md)
+
 ## Flashing from the command line
 
 `make flash ARGS="--dry-run"` (or `node tools/op.mjs flash --dry-run`) finds the pedal over USB MIDI and checks the built package without writing; `--confirm-flash` instead of `--dry-run` writes it. It runs on the host (not in the container), speaks the same update protocol as the installer page (`docs/pxota.js`, shared with the page), and checks the package against `docs/firmware/manifest.json` (size, SHA-256, identity), refuses the wrong model, and verifies the version the pedal reports afterwards. `--package FILE --manifest FILE` flash a package built elsewhere. Install its one dependency once with `npm ci --prefix tools`. The rules for agents (dry run first, never flash without the captain's explicit instruction, recovery) are in `.claude/skills/openpocket-flash/SKILL.md`. On failure the command prints the SD-card recovery pointer (README, `flash/`). `tests/test_flash.mjs` runs it against the simulated pedal; no test touches real hardware.

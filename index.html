@@ -39,12 +39,18 @@ button:disabled{opacity:.45;cursor:default}
 .steps span.done{background:transparent;color:var(--ok);outline:1px solid currentColor}
 .note{font-size:13.5px;color:var(--dim);margin:0;max-width:68ch}
 .note strong{color:var(--ink)}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,185px),1fr));gap:16px;margin:0}
+.features dt{font-weight:800;margin-bottom:4px}
+.features dd{margin:0;color:var(--dim);font-size:13.5px}
+.links a{color:var(--ink);font-weight:600;text-underline-offset:3px}
 .warnbox{border-left:3px solid var(--warn);padding:2px 0 2px 12px}
-.msg{font-weight:600;min-height:1.5em}
+.msg{font-weight:600;margin:0}
+.msg:empty{display:none}
 .msg.ok{color:var(--ok)}.msg.err{color:var(--err)}
 input[type=file]{font:inherit;color:var(--dim);max-width:100%}
 label.chk{display:flex;gap:8px;align-items:flex-start;font-size:13.5px}
 details summary{cursor:pointer;color:var(--dim);font-size:13px}
+#pkgdownloads{margin-top:8px}
 pre#log{margin:10px 0 0;background:var(--code);border-radius:10px;padding:12px;font:12px/1.5 "JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 code{font:12.5px "JetBrains Mono",ui-monospace,monospace;background:var(--code);padding:1px 5px;border-radius:5px}
 footer{color:var(--dim);font-size:12.5px;display:flex;flex-direction:column;gap:6px}
@@ -83,8 +89,9 @@ footer a,.note a{color:inherit}
   <section class="card" id="installCard">
     <h2><b>2</b><span data-t="s2"></span></h2>
     <p class="note"><span data-t="s2note"></span> <strong id="pkgver">…</strong></p>
+    <p class="note" id="pkgmissing" hidden>The firmware packages are unavailable. For a local checkout, run <code>make package</code>, then reload this page.</p>
+    <p class="note" data-t="s2how"></p>
     <p class="note warnbox" data-t="s2warn"></p>
-    <p class="note warnbox" id="bbwarn" hidden data-t="bbwarn"></p>
     <p class="note warnbox" id="testchan" hidden data-t="testchan"></p>
     <div class="row">
       <button class="go" id="install" disabled data-t="install"></button>
@@ -94,10 +101,24 @@ footer a,.note a{color:inherit}
     <div class="steps" id="steps"></div>
     <p class="msg" id="msg"></p>
     <p class="note" id="next" hidden><a href="editor.html" data-t="nexteditor"></a> · <a id="notes" data-t="nextnotes"></a></p>
+    <details id="pkgfiles" hidden>
+      <summary>Download firmware files</summary>
+      <div class="row links" id="pkgdownloads"></div>
+    </details>
+  </section>
+
+  <section class="card" id="build981">
+    <h2>What’s new in build 981</h2>
+    <dl class="features">
+      <div><dt>Valve input stage</dt><dd>A 12AX7 model with up to +24 dB of Drive, saved per preset. Use it alongside your compressor. Tap FX until VALVE INPUT appears.</dd></div>
+      <div><dt>Footswitch control</dt><dd>Assign Valve to a footswitch in STOMP mode. In the preset editor, expand Valve or Footswitches in the Sound tab. Stage view shows the assignment.</dd></div>
+      <div><dt>Global settings on the pedal</dt><dd>Hold HOME for the tuner, release it, then hold HOME again. Adjust the five-band output EQ, input high-pass, limiter, Smart Gate Hush, tails, and lights.</dd></div>
+    </dl>
+    <div class="row links"><a href="WHATS-NEW-v81.md">Build 981 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
   </section>
 
   <section class="card">
-    <h2><b>3</b><span data-t="s3"></span></h2>
+    <h2 data-t="s3"></h2>
     <p class="note" data-t="s3note"></p>
     <input type="file" id="offfile" accept=".fwsc">
     <p class="msg" id="offmsg"></p>
@@ -146,12 +167,13 @@ const T = {
     connect: "Connect", idle: "waiting", searching: "searching…", found: "pedal found", none: "no pedal", busy: "working…",
     pedal: "Pedal", firmware: "Firmware", port: "MIDI port",
     official: "official", opfw: "OpenPocket", loader: "update mode (loader)",
-    s2: "Install OpenPocket", s2note: "Available version:",
-    s2warn: "During the install (about 1 to 2 minutes): do not unplug or switch the pedal off, keep this tab open. Nothing is written before the pedal has checked the package. First install over the official firmware: keep your backup (SD card / fm1buddy) at hand.",
+    s2: "Install OpenPocket", s2note: "Available firmware",
+    s2how: "Click Install to transfer the package for the detected pedal over USB. Wait for the pedal to restart and for the installer to show the version it reports.",
+    s2warn: "Keep the pedal powered and connected, and leave this tab open during the install. It usually takes 1 to 2 minutes. Back up your presets before switching firmware, and keep your stock firmware backup for a first install.",
     install: "Install", resume: "Resume the update",
     st_start: "start", st_verify: "check", st_loader: "loader", st_write: "write", st_reboot: "restart", st_done: "done",
     done: "Done: the pedal now runs ", nexteditor: "Open the preset editor", nextnotes: "What is new in this version", sameok: "OpenPocket is up to date.",
-    s3: "Back to the official firmware", s3note: "Pick your pedal's official file (.fwsc), downloaded from Donner / M-VAVE. It is checked here, in your browser, and sent to no server.",
+    s3: "Restore stock firmware", s3note: "Choose the official .fwsc file for your pedal from Donner or M-VAVE. The browser checks it locally.",
     backoff: "Return to the official firmware", offknown: "Official file verified: ", offunknown: "Well-formed official file, unknown to this page: ",
     unknownok: "I understand: this file has not been tested with this page. Install it anyway.",
     rescue: "Rescue and advanced options",
@@ -162,9 +184,8 @@ const T = {
     foot2: "Update protocol and loader from Felucca and felucca-bsp (Hügelton Instruments, GPL-3.0 / MPL-2.0). JieLi AC79 SDK files: Apache-2.0. Inter typeface: SIL OFL 1.1.",
     e_notfound: "Pedal not found. Check the cable (data), close other MIDI apps, then try again.",
     testchan: "TEST CHANNEL: this installs a test build, not the release. It is for people who agreed to try it, and it is not the version the normal installer page offers. To go back, open this page without ?channel=… and press Install.",
-    bbwarn: "M-VAVE BlackBox: v31 is the fix for issue #1 (OpenPocket restarted every 4 s after the pedal was switched off and on), still being tested on the BlackBox. Please report how it goes on GitHub. If your BlackBox restarts in a loop, use the rescue mode below.",
 toeditor: "Preset editor →",
-        rescueon: "Rescue mode, for a pedal that restarts in a loop: tick this, press Connect, then plug the pedal in (or let it restart). The install starts by itself as soon as the pedal answers; it stops the pedal's sound processing at once, so the restarts stop. It installs the official file chosen in step 3 if there is one for this pedal, otherwise OpenPocket.",
+    rescueon: "For a pedal that restarts in a loop, enable rescue mode, click Connect, then plug the pedal in or let it restart. The installer starts as soon as the pedal answers and pauses sound processing. It uses the selected official file if it matches your pedal, or the OpenPocket package for your model.",
     e_model: "This package is not for this pedal: ", e_lost: "The pedal was disconnected. Plug it back in and press Resume.",
     e_stopped: "The pedal stopped answering. ", e_noloader: "The update loader did not appear. Replug the cable, then Resume.",
     e_noreturn: "The pedal did not come back: switch it off and on.", e_mismatch: "Written, but the pedal reports: ",
@@ -200,13 +221,26 @@ let sawV21 = false;
 
 if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
 $("testchan").hidden = !CHANNEL;
+$("build981").hidden = !!CHANNEL;
 
 async function loadManifest() {
   try {
     const r = await fetch(FW + "manifest.json", { cache: "no-store" });
-    manifest = await r.json();
-    $("pkgver").textContent = "v" + manifest.version + (CHANNEL ? " (" + CHANNEL + ")" : "");
-  } catch (e) { $("pkgver").textContent = "—"; log("manifest: " + e.message); }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const m = await r.json();
+    if (!Number.isInteger(m.version) || !Array.isArray(m.packages) || !m.packages.length) throw new Error("Invalid firmware manifest");
+    manifest = m;
+    $("pkgver").textContent = `v${m.version} · build ${900 + m.version}` + (CHANNEL ? ` (${CHANNEL})` : "");
+    if (m.version < 81) $("build981").hidden = true;
+    for (const p of m.packages) {
+      const link = document.createElement("a");
+      link.href = FW + p.file;
+      link.download = p.file;
+      link.textContent = p.file;
+      $("pkgdownloads").append(link);
+    }
+    $("pkgfiles").hidden = false;
+  } catch (e) { $("pkgver").textContent = "—"; $("pkgmissing").hidden = false; log("manifest: " + e.message); }
 }
 
 function showDev(d) {
@@ -229,8 +263,6 @@ function showDev(d) {
   $("d-model").textContent = ota ? "—" : (id.model === "PocketX" ? "Donner Pocket X" : "M-VAVE BlackBox");
   $("d-fw").textContent = ota ? `${t("loader")} (${id.text})` : IS_OPENPOCKET(id) ? `${t("opfw")} v${id.version - 900} (${id.text})` : `${t("official")} ${String(id.version).padStart(3, "0")} (${id.text})`;
   $("d-port").textContent = d.name;
-  const bb = id.model === "BlackBox";               /* not supported yet: boot loop (issue #1) */
-  $("bbwarn").hidden = !bb;
 }
 
 async function connect() {
@@ -289,7 +321,7 @@ async function run(job, resultMessage) {
     const firmwareOnly = !resultMessage && res === BLACKBOX_V21;
     const v = !resultMessage && /^(?:PocketX|BlackBox)_9(\d\d)$/.exec(res);
     const message = resultMessage || (firmwareOnly
-      ? "V21 firmware booted. Verify or restore the factory sounds in step 3."
+      ? "V21 firmware booted. Verify or restore the factory sounds in the Restore stock firmware section."
       : t("done") + (v ? `${t("opfw")} v${+v[1]} (${res})` : res));
     setMsg($("msg"), message, firmwareOnly ? "" : "ok");
     if (v) { $("notes").href = `WHATS-NEW-v${+v[1]}.md`; $("next").hidden = false; }
