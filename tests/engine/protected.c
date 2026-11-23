@@ -123,8 +123,11 @@ int main(int argc, char **argv)
         px_preset_t p; px_preset_factory(&p, c % 24);
         for (int z = 0; z < PX_NBLK; z++) {
             p.on[z] = (rnd() & 3) != 0;
-            if (z != PX_B_SYN) p.type[z] = (uint8_t)(rnd() % (z == PX_B_SFX ? 8u : (unsigned)px_ntypes(z))); else   /* (SFX: the eight types of the reference build: APPLAUSE, appended later, must not change the random stream) */
-                (void)rnd();
+            unsigned types = (unsigned)px_ntypes(z);
+            if (z == PX_B_SFX) types = 8;   /* the reference build predates APPLAUSE */
+            if (z == PX_B_COMP) types = 4;  /* the reference build predates VALVE */
+            const uint32_t choice = rnd();
+            if (z != PX_B_SYN) p.type[z] = (uint8_t)(choice % types);
             if (z == PX_B_PITCH && p.type[z] == PX_PIT_LOWEST_HQ) p.type[z] = PX_PIT_DETUNE;   /* (LOWEST OCTAVE HQ's gain changed on purpose: fix pass 1) */
             for (int k = 0; k < 5; k++) p.p[z][k] = (uint8_t)(rnd() % 101);
         }

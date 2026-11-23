@@ -58,6 +58,23 @@ check("bypass passes the dry input, at MASTER", () => {
   const out = run(e, IN);
   out.forEach((v, i) => assert.ok(Math.abs(v - IN[i] * 0.64) < 1e-6));
 });
+check("COMP VALVE: DRIVE adds harmonics, keeps quiet notes near unity, and obeys bypass", () => {
+  const e = engine(), dry = engine(), low = engine();
+  const preset = (on, drive) => presetBytes({ name: "VALVE", on: [0, on, 0, 0, 0, 0, 0, 0, 0, 0],
+    type: [0, 4, 0, 0, 0, 0, 0, 0, 0, 0], p: Array.from({ length: 10 }, (_, i) => i === 1 ? [drive, 50, 50, 50, 50] : [0, 0, 50, 0, 0]),
+    order: Array.from({ length: 10 }, (_, i) => i) });
+  dry.preset(preset(0, 0)); low.preset(preset(1, 0)); e.preset(preset(1, 100));
+  const soft = tone(400, 1, 0.00625), input = tone(400, 1, 0.035);
+  const quietGain = 10 * Math.log10(power(tail(run(e, soft)), 400) / power(tail(run(dry, soft)), 400));
+  assert.ok(Math.abs(quietGain) < 0.5, `quiet gain ${quietGain.toFixed(2)} dB`);
+  const mellow = tail(run(low, input)), wet = tail(run(e, input));
+  assert.ok(finite(wet) && finite(run(e, tone(400, 1, 1.5))));
+  const nonlinear = (out) => (power(out, 800) + power(out, 1200)) / power(out, 400);
+  assert.ok(nonlinear(wet) > 4 * nonlinear(mellow));
+  assert.ok(peak(wet) < 0.9 * peak(mellow), "the valve rounds off strong peaks at higher drive");
+  e.bypass(true);
+  assert.deepEqual(run(e, input), input);
+});
 check("a preset change changes the spectrum", () => {
   // v70: the factory slots are placeholders (the gate only); the other sound is POLY OCT FUZZ on the SYNTH block
   const fuzz = engine(0), on = [1, 0, 0, 1, 0, 0, 0, 0, 0], type = [0, 0, 0, 16, 0, 0, 0, 0, 0];

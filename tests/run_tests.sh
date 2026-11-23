@@ -52,6 +52,8 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hum_test.c firmw
 $CC -O2 -w tests/tunersim.c -lm -o build/tunersim && build/tunersim | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pv_test.c firmware/px_math.c -lm -o build/pv_test && build/pv_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/global_test.c firmware/px_math.c -lm -o build/global_test && build/global_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/triode_test.c firmware/px_math.c -lm -o build/triode_test
+build/triode_test
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/tails_test.c firmware/px_math.c -lm -o build/tails_test && build/tails_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hush_test.c firmware/px_math.c -lm -o build/hush_test && build/hush_test | tail -1
 $CC -O2 -w -Iengine tests/engine/factory_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/factory_test && build/factory_test | tail -1

@@ -41,6 +41,8 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 - **Ten reorderable blocks** run in the order stored with each preset. The default is GATE → BST (PRE / BOOST) → COMP →
   OCTAVE → SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB. The synth firmware drops DRIVE, AMP, CAB, NAM and user cabinet
   IRs, along with their editor controls. POLY OCT FUZZ retains the Fuzz Face sound inside SYNTH.
+- **VALVE** in the compressor panel models a single 12AX7 stage. DRIVE adds up to 24 dB of internal gain with automatic
+  output compensation. It saves with the preset and follows the compressor block's position in the chain.
 - **Pedal layout** shows the SYNTH and OCTAVE types under the preset number. The physical AMP and CAB buttons
   open SYNTH and OCTAVE, respectively. FX cycles through the utility blocks.
 - **STOMP mode** gives each footswitch a per-preset assignment. Hold CAB to switch between STOMP and PATCH.

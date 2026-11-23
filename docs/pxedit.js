@@ -133,7 +133,8 @@ export class Editor {
   // ---- the catalogue: blocks, types, parameter names and value texts (cached per firmware) ----
   async catalog(progress = () => {}) {
     const key = `openpocket-cat-${this.info.identity}-${this.info.version}`;
-    try { const c = JSON.parse(localStorage.getItem(key) || "null"); if (c && c.blocks && c.blocks.length === this.info.nblk) { this.cat = c; return c; } } catch (_) { }
+    let cached;
+    try { cached = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) { }
     const blocks = [];
     for (let b = 0; b < this.info.nblk; b++) {
       const r = new Reader(await this.request(C.CAT_BLOCK, [b]));
@@ -142,6 +143,14 @@ export class Editor {
       const c = r.b() | r.b() << 7 | r.b() << 14;
       const rgb = `#${(((c >> 11) & 31) * 255 / 31 | 0).toString(16).padStart(2, "0")}${(((c >> 5) & 63) * 255 / 63 | 0).toString(16).padStart(2, "0")}${((c & 31) * 255 / 31 | 0).toString(16).padStart(2, "0")}`;
       blocks.push({ label, name, color: rgb, types: new Array(ntypes) });
+    }
+    // Development builds can share an identity even when a block gains a type.
+    if (cached?.blocks?.length === blocks.length && blocks.every((b, i) => {
+      const old = cached.blocks[i];
+      return old?.label === b.label && old.name === b.name && old.color === b.color && old.types?.length === b.types.length;
+    })) {
+      this.cat = cached;
+      return cached;
     }
     const total = blocks.reduce((s, b) => s + b.types.length, 0);
     let done = 0;

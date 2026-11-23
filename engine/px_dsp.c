@@ -12,6 +12,7 @@
  * stacks), Celestion / Jensen / EV / JBL speaker curves, Roland/Boss/Ampeg/Electro-Harmonix manuals.
  */
 #include "px_dsp.h"
+#include "px_triode_table.h"
 /* v40: on the pedal the audio path runs from RAM, as the stock firmware's does: firmware/build.sh compiles this file with
  * -ffunction-sections and tools/ramcode.py moves the per-block functions (px_engine_part, the delay and reverb loops,
  * the NAM network, the oversampling, the IR...) and the hand-written routines into the RAM code window, which sits
@@ -484,8 +485,12 @@ static const tdef T_GATE[] = {{"NOISE GATE", 3, PN_GATE}, {"SMART GATE", 5, PN_S
 static const char *const PN_CMP[] = {"SUSTAIN", "ATTACK", "LEVEL", "MIX"};
 static const char *const PN_OPTO[] = {"COMPRESS", "LEVEL", "MIX"};
 static const char *const PN_SWELL[] = {"RISE", "SENS", "LEVEL"};
+static const char *const PN_VALVE[] = {"DRIVE"};
+static float valve_drive_db(float control) { return 24.0f * control * control; }  /* +6 dB at noon, +24 dB at full */
 static const tdef T_COMP[PX_CMP_COUNT] = {
-    {"SQUASH", 3, PN_CMP}, {"STUDIO", 4, PN_CMP}, {"OPTO LA-2", 3, PN_OPTO}, {"SLOW SWELL", 3, PN_SWELL}};
+    {"SQUASH", 3, PN_CMP}, {"STUDIO", 4, PN_CMP}, {"OPTO LA-2", 3, PN_OPTO}, {"SLOW SWELL", 3, PN_SWELL},
+    {"VALVE", 1, PN_VALVE}};
+static int cmp_type(uint8_t t) { return t < PX_CMP_COUNT ? t : t % PX_CMP_VALVE; }
 
 static const char *const PN_OCT[] = {"DRY", "SUB -1", "SUB -2", "UP +1", "TONE"};
 static const char *const PN_POLY[] = {"DRY", "OCT -1", "OCT +1"};
@@ -778,6 +783,15 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             return 1;
         }
         break;
+    case PX_B_COMP:
+        if (t == PX_CMP_VALVE && k == 0) {
+            put_int(buf, (int)(valve_drive_db(x) + 0.5f), 1);
+            char *end = buf;
+            while (*end) ++end;
+            put_str(end, " dB");
+            return 1;
+        }
+        break;
     case PX_B_PITCH:
         if ((t == PX_PIT_POLYOCT_HQ || t == PX_PIT_LOWEST_HQ) && k == 3) {
             if (v == 0) put_str(buf, "FULL");
@@ -1000,6 +1014,16 @@ static const rv_def RVD[PX_REV_COUNT] = {
     {1.35f, 30, 0.0f,   0, 28, 6.0f, 14.0f, 0.10f, 0.50f, 0.368f}};  /* AMBIENT */
 static const uint16_t SLICE_PAT[8] = {0xAAAA, 0xCCCC, 0xF0F0, 0xB6B6, 0x9249, 0xEEEE, 0xDB6D, 0x8888};
 
+static void triode_reset(px_engine *e)
+{
+    memset(&e->triode.up, 0, sizeof e->triode.up);
+    memset(&e->triode.down, 0, sizeof e->triode.down);
+    e->triode.cathode_v = PXT_BIAS;
+    e->triode.output_dc = 0.0f;
+    e->triode.cathode_step = onepole_k(2.0f * e->sr, 0.0022f * PXT_CATHODE_KOHM);
+    e->triode.dc_step = onepole_k(2.0f * e->sr, 0.022f);
+}
+
 static void rc_dyn(px_engine *e)
 {
     const px_preset_t *p = &e->cur;
@@ -1026,7 +1050,11 @@ static void rc_dyn(px_engine *e)
     }
 
     q = p->p[PX_B_COMP];
-    int t = p->type[PX_B_COMP] % PX_CMP_COUNT;
+    const int t = cmp_type(p->type[PX_B_COMP]);
+    if (t == PX_CMP_VALVE) {
+        e->triode.drive = 4.0f * db2lin(valve_drive_db(f01(q[0])));
+        return;
+    }
     e->cmp_rel = expf(-1.0f / (0.15f * sr));
     e->cmp_mix = 1.0f;
     switch (t) {
@@ -1704,8 +1732,10 @@ static void px_recalc(px_engine *e)
     static const float *const DB[PX_NBLK] = {0, CMP_DB, PIT_DB, SYN_DB, SFX_DB, 0, MOD_DB, DLY_DB, REV_DB, 0};   /* (BST: the circuits set their own level) */
     static const uint8_t NT[PX_NBLK] = {1, PX_CMP_COUNT, PX_PIT_COUNT, PX_SYN_COUNT, PX_SFX_COUNT, 1,
                                         PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT, 1};
-    for (int b = 0; b < PX_NBLK; b++)
-        e->btr[b] = DB[b] ? powf(10.0f, DB[b][p->type[b] % NT[b]] * 0.05f) : 1.0f;
+    for (int b = 0; b < PX_NBLK; b++) {
+        const int type = b == PX_B_COMP ? cmp_type(p->type[b]) : p->type[b] % NT[b];
+        e->btr[b] = DB[b] ? powf(10.0f, DB[b][type] * 0.05f) : 1.0f;
+    }
     /* preset LEVEL (v36): -15..+15 dB, 0.3 dB a step, kept in the gate block's spare 5th setting */
     e->patch_g = powf(10.0f, ((float)p->p[PX_B_GATE][PX_PATCH_LEVEL] - 50.0f) * 0.3f * 0.05f);
 }
@@ -1779,6 +1809,8 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     e->shed = 0;                                       /* v75: a new preset: nothing shed */
     memset(e->pfs, 0, sizeof e->pfs);
     { const uint8_t wo[2] = {e->run.on[PX_B_DELAY], e->run.on[PX_B_REVERB]}, wt[2] = {e->run.type[PX_B_DELAY], e->run.type[PX_B_REVERB]}; px_spill_plan(e, p, wo, wt, 1); }
+    if (p->type[PX_B_COMP] == PX_CMP_VALVE && (e->cur.type[PX_B_COMP] != PX_CMP_VALVE || !e->run.on[PX_B_COMP]))
+        triode_reset(e);
     if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) memset(&e->ad, 0, sizeof e->ad);   /* v76: ACOUSTIC DRIVE: no old state */
     if (e->cur.type[PX_B_BST] != p->type[PX_B_BST] || e->cur.on[PX_B_BST] != p->on[PX_B_BST]) bst_reset(e);   /* a different pedal, or on/off: no old state */
     e->cur = *p;
@@ -1802,7 +1834,7 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
  * filters' coefficients change at once, as they always did: a small step in a filter does not click) */
 #define GLF_(f) (uint32_t)offsetof(px_engine, f)
 static const uint32_t GL_F[] = {
-    GLF_(cmp_make), GLF_(cmp_mix), GLF_(cmp_k),
+    GLF_(cmp_make), GLF_(cmp_mix), GLF_(cmp_k), GLF_(triode.drive),
     GLF_(oct_dry), GLF_(oct_s1), GLF_(oct_s2), GLF_(oct_up), GLF_(ps_dry), GLF_(ps_lvl[0]), GLF_(ps_lvl[1]), GLF_(erb_pitch_range),
     GLF_(sfx_mix), GLF_(sfx_c), GLF_(sfx_d),
     GLF_(syn_out), GLF_(syn_lvl[0]), GLF_(syn_lvl[1]), GLF_(syn_lvl[2]),
@@ -1879,6 +1911,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         uint8_t on = (uint8_t)((p->on[b] && !(e->shed >> b & 1)) || e->bfd[b] < 0 || (b == PX_B_DELAY && e->spill[0]) || (b == PX_B_REVERB && e->spill[1]));
         if (on && !e->run.on[b]) {
             e->bf[b] = e->bfa[b] = 0.0f;
+            if (b == PX_B_COMP && p->type[b] == PX_CMP_VALVE) triode_reset(e);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
@@ -2076,6 +2109,74 @@ static float px_os_t[PX_OVERSAMPLE * PX_MAX_BLOCK] PX_LO(px_os_t),
 /* v40.4: the delay's and the reverb's wet output when they run in the chain: not on px_engine_part's stack (the second
  * core's is 2.8 KB) */
 static float px_wb[2][PX_MAX_BLOCK] PX_LO(px_wb);
+
+static inline float triode_lookup(const float *table, unsigned last, float minimum, float steps, float volts)
+{
+    const float index = (volts - minimum) * steps;
+    if (!(index > 0.0f)) return table[0];
+    if (index >= (float)last) return table[last];
+    const unsigned i = (unsigned)index;
+    return table[i] + (index - (float)i) * (table[i + 1] - table[i]);
+}
+
+static inline float triode_grid_current(float volts)
+{
+    if (volts <= PXT_GRID_TAIL_MIN)
+        return triode_lookup(PXT_GRID, sizeof PXT_GRID / sizeof *PXT_GRID - 1, PXT_GRID_MIN, PXT_TABLE_STEPS, volts);
+    const unsigned last = sizeof PXT_GRID_TAIL / sizeof *PXT_GRID_TAIL - 1;
+    if (volts > PXT_GRID_TAIL_MAX)
+        return PXT_GRID_TAIL[last] + (volts - PXT_GRID_TAIL_MAX) * PXT_GRID_TAIL_SLOPE;
+    return triode_lookup(PXT_GRID_TAIL, last, PXT_GRID_TAIL_MIN, PXT_GRID_TAIL_STEPS, volts);
+}
+
+typedef struct { float plate, cathode; } triode_currents;
+
+static inline triode_currents triode_load_line(float vin, float vk)
+{
+    const float ig = triode_grid_current(vin - vk);
+    const float vg = vin - PXT_STOPPER * ig;
+    const float effective = vg - PXT_GRID_FACTOR * vk + PXT_SUPPLY_TERM + PXT_PLATE_FEEDBACK * ig;
+    const float ik = triode_lookup(PXT_CATHODE, sizeof PXT_CATHODE / sizeof *PXT_CATHODE - 1,
+                                   PXT_CATHODE_MIN, PXT_TABLE_STEPS, effective);
+    const float ia = ik - ig;
+    /* The measured fit loses accuracy below 20 V plate-to-cathode. From that point,
+     * roll off excess current with a continuous slope toward the available load-line
+     * current. Charge the cathode with the corrected plate current plus grid current.
+     */
+    const float knee_v = 20.0f;
+    const float knee_current = (PXT_SUPPLY - vk - knee_v) / PXT_PLATE_KOHM;
+    if (ia > knee_current) {
+        const float excess = ia - knee_current;
+        const float plate = knee_current + excess / (1.0f + (PXT_PLATE_KOHM / knee_v) * excess);
+        return (triode_currents){plate, plate + ig};
+    }
+    return (triode_currents){ia, ik};
+}
+
+/* Common-cathode 12AX7, 250 V / 100k plate, 1.5k || 2.2uF cathode and 33k grid stopper.
+ * The tables solve the plate and grid load lines from Dempwolf & Zölzer (DAFx 2011).
+ * Integrate the cathode capacitor with current held over each 2x sample. A 22 ms output
+ * coupling time constant represents a high-impedance load. DRIVE raises the 4 V per
+ * engine unit input scale by up to 24 dB. Reciprocal makeup matches small-signal
+ * gain and the output polarity is corrected. The half-band pair filters the stage's
+ * correction to the dry signal.
+ */
+static __attribute__((noinline)) void triode_block(px_engine *e, float *samples, int n, float trim)
+{
+    const float drive = e->triode.drive, makeup = PXT_PLATE_SCALE / drive;
+    hb1_up(&e->triode.up, samples, px_os_u, n, px_os_d);
+    for (int i = 0; i < 2 * n; ++i) {
+        const float x = px_os_u[i], vin = drive * x, vk = e->triode.cathode_v;
+        const triode_currents current = triode_load_line(vin, vk);
+        e->triode.cathode_v += e->triode.cathode_step * (PXT_CATHODE_KOHM * current.cathode - vk);
+        const float wet = (current.plate - PXT_PLATE_IDLE) * makeup;
+        e->triode.output_dc += e->triode.dc_step * (wet - e->triode.output_dc);
+        px_os_u[i] = wet - e->triode.output_dc - x;
+    }
+    hb1_down(&e->triode.down, px_os_u, px_os_t, n, px_os_d);
+    for (int i = 0; i < n; ++i) samples[i] = (samples[i] + px_os_t[i]) * trim;
+}
+
 static void drive_block(px_drive_state *state, float *u, int n, int os, float *t, float *h)   /* (static buffers: off the interrupt's stack) */
 {
     for (int i = 0; i < n; i++) {
@@ -2095,7 +2196,7 @@ static void drive_block(px_drive_state *state, float *u, int n, int os, float *t
     if (state->np & 4) bq_block(&state->t3, t, n);
     for (int i = 0; i < n; i++) u[i] = t[i] * state->level + u[i] * state->blend;
 }
-/* POLY OCT FUZZ's clipper over a block, oversampled (the shared buffers px_os_*: the only user) */
+/* POLY OCT FUZZ's clipper over a block, oversampled (shares px_os_* with VALVE) */
 static __attribute__((noinline)) void drive_buffer(px_drive_state *state, px_hb *filters, float *samples, int n, int os)
 {
     float *up = px_os_u, *tone = px_os_t, *middle = px_os_m, *exchange = px_os_d;
@@ -2791,7 +2892,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     px_tick(e);                                        /* v38: glides and fades move on, once a block */
     const px_preset_t *p = &e->run;                    /* v38: with the blocks still fading out */
     const float sr = e->sr;
-    const int cmp_t = p->type[PX_B_COMP] % PX_CMP_COUNT;
+    const int cmp_t = cmp_type(p->type[PX_B_COMP]);
     const int pit_t = px_type_canonical(PX_B_PITCH, p->type[PX_B_PITCH] % PX_PIT_COUNT);
     const int sfx_t = p->type[PX_B_SFX] % PX_SFX_COUNT;
     const int mod_t = p->type[PX_B_MOD] % PX_MOD_COUNT;
@@ -2889,6 +2990,10 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 e->syn_lp += e->syn_lpk * (x - e->syn_lp);
                 xb[k] = (x + e->syn_fuzz_tone * (x - e->syn_lp)) * e->syn_out * strim;
             }
+            goto faded;
+        }
+        if (sblk == PX_B_COMP && cmp_t == PX_CMP_VALVE) {
+            triode_block(e, xb, n, strim);
             goto faded;
         }
 #if PX_RUNS

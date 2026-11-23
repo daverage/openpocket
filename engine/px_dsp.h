@@ -41,7 +41,7 @@ enum { PX_BST_RANGEMASTER, PX_BST_EPBOOST, PX_BST_MAXIMIZER, PX_BST_VOXWAH, PX_B
 #define PX_NPAR 5
 
 enum { PX_GATE_NORMAL, PX_GATE_SMART, PX_GATE_COUNT };
-enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
+enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_VALVE, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ,
        PX_PIT_LOWEST_HQ,
        PX_PIT_POLYSHIFT,                                /* v75: POLY SHIFTER, a phase-vocoder shifter for chords (engine/px_pv.h) */
@@ -248,6 +248,10 @@ typedef struct px_engine_s {
     int   rv_tap[14];                                  /* plate: output taps (samples into tank units) */
     float rv_in, rv_out, rv_mix, rv_env, rv_rq, rv_fade;
     float cmp_la[128]; int cmp_lw;                     /* v36: swell look-ahead (128 samples) */
+    struct {
+        px_hb up, down;
+        float cathode_v, output_dc, cathode_step, dc_step, drive;
+    } triode;
     float btr[PX_NBLK], patch_g;                        /* v36: per-block level trims, preset level */          /* rv_rq: rounding (0.5), or 0 once the tail is very quiet */
     int   rv_gate, rv_hold_n, sp_on; float rv_hold, rv_genv, rv_gg, rv_gate_rel;
     float sp_z[6], sp_a;

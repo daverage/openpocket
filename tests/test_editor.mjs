@@ -59,6 +59,11 @@ ok(info && info.proto === 9 && info.version === "v39" && info.identity === "Pock
 ok(info && info.nblk === 10 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 10 blocks, 5 parameters, 52 slots, names of 13");
 const t0 = Date.now();
 const cat = await ed.catalog();
+const cached = { blocks: cat.blocks.map((block, i) => i === 1 ? { ...block, types: block.types.slice(0, -1) } : block) };
+globalThis.localStorage.getItem = () => JSON.stringify(cached);
+const refreshed = await ed.catalog();
+globalThis.localStorage.getItem = () => null;
+ok(refreshed.blocks[1].types.at(-1).name === "VALVE", "catalogue refreshes a cached build with fewer compressor types");
 const ntypes = cat.blocks.reduce((n, b) => n + b.types.length, 0);
 ok(cat.blocks.length === 10 && cat.blocks.map((b) => b.label).join() === "GT,CMP,OCT,SYN,SFX,EQ,MOD,DLY,REV,BST", `catalogue: 10 blocks, ${ntypes} types (${Date.now() - t0} ms)`);
 ok(cat.blocks[3].name === "SYNTH" && cat.blocks[3].color === "#ff6500", `catalogue: the SYNTH block and its tile colour (${cat.blocks[3].color})`);
@@ -127,6 +132,11 @@ ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st
 
 // ---- 2. live editing ----
 const amp = 3;                                  // (v70: the SYNTH block)
+const comp = 1;
+const valve = cat.blocks[comp].types.findIndex((type) => type.name === "VALVE");
+ok(valve === 4 && cat.blocks[comp].types[valve].params.map((p) => p.name).join() === "DRIVE", "CMP VALVE exposes one DRIVE control");
+const driveText = cat.blocks[comp].types[valve].params[0].texts;
+ok(driveText[0] === "0 dB" && driveText[50] === "+6 dB" && driveText[100] === "+24 dB", "CMP VALVE reports the compensated drive range");
 const v1 = await ed.setParam(amp, 0, 77);
 st = await ed.state();
 ok(v1 === 77 && st.preset.p[amp][0] === 77 && st.dirty, "SET: SYNTH's 1st knob = 77, the sound is now changed (*)");
@@ -170,6 +180,14 @@ ok(list.length === 52 && list.filter((x) => x.saved).length === 1, "LIST: 52 slo
 const g = await ed.slotGet(10);
 ok(!g.saved && g.preset.name === list[10].name, `SLOT_GET: slot 11, factory "${g.preset.name}"`);
 const a = clonePreset(g.preset); a.name = "STAGED A";
+await ed.setType(comp, valve);
+const valveDefault = (await ed.state()).preset.p[comp][0];
+await ed.setOn(comp, 1);
+await ed.setParam(comp, 0, 75);
+const valvePreset = (await ed.state()).preset;
+ok(valveDefault === 50 && valvePreset.type[comp] === valve && valvePreset.on[comp] === 1 && valvePreset.p[comp][0] === 75,
+  "CMP VALVE defaults to +6 dB and its DRIVE is adjustable in the preset");
+a.type[comp] = valvePreset.type[comp]; a.on[comp] = valvePreset.on[comp]; a.p[comp] = valvePreset.p[comp];
 const b = clonePreset(g.preset); b.name = "STAGED B"; b.p[amp][0] = 99;
 ok(await ed.slotPut(20, a, false) === 0 && await ed.slotPut(21, b, false) === 0, "SLOT_PUT: two slots staged in memory");
 ok(await ed.commit() === 0, "COMMIT: one flash write");
@@ -231,6 +249,8 @@ list = await ed.list();
 }
 
 ok(list[20].name === "STAGED A" && list[21].name === "STAGED B" && list[20].saved && !list[4].saved, "power cycle: the saved slots are still there");
+const savedValve = (await ed.slotGet(20)).preset;
+ok(savedValve.type[comp] === valve && savedValve.on[comp] === 1 && savedValve.p[comp][0] === 75, "CMP VALVE and DRIVE survive a power cycle");
 st = await ed.state();
 ok(st.slot === 4, "power cycle: the pedal starts on the last slot SAVEd (imports do not move it)");
 await s.end();
