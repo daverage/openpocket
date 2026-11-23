@@ -132,6 +132,8 @@ $CC -O1 -Wall -Wno-unused-function -o build/edsim tests/edsim.c engine/px_dsp.c 
 node tests/test_editor.mjs
 node tests/test_ping.mjs
 node tests/test_editor_logic.mjs
+echo "== editor over Bluetooth (docs/pxble.js: framing, link loss; no radio)"
+node tests/test_pxble.mjs
 echo "== log channel (tools/op.mjs log)"
 $CC -O1 -Wall -Wno-unused-function -DOP_BLE_TEST=1 -o build/edsim_diag tests/edsim.c engine/px_dsp.c firmware/px_math.c -lm
 node tests/test_log.mjs

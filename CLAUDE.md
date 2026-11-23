@@ -50,6 +50,16 @@ Numerical rule: the pedal has no hardware sqrt and does not fuse multiply-add. T
 - No build outputs are committed, except `tools/sim/px_engine.wasm` (+ its `.sources` hash).
 - `PUBLISH-*.bat` are the maintainer's Windows release tools; `main` on GitHub is overwritten from the local folder on publish.
 
+## Bluetooth (not in the release; research on branch `bluetooth`)
+
+- The release firmware has no radio. The BLE test image (`OP_BLE=1`, `firmware/ble/`, `docs/BLE-TEST.md`) advertises and hears scanners but, at v76, **crashes or hangs on most boots** with the cause still unknown. Read [docs/research/BLUETOOTH-RADIO-FINDINGS.md](docs/research/BLUETOOTH-RADIO-FINDINGS.md) first: it has the experiment log, what is ruled out (do not repeat it) and the next tests in order. The plan and rules for the work are in `docs/research/BLUETOOTH-EDITOR-PROMPT.md`.
+- The page side is finished and host-tested: `docs/pxble.js` (a Web MIDI-shaped access over a GATT service of our own, SysEx framed by F0..F7) and `tests/test_pxble.mjs`. It is not yet wired into `editor.js`. Replies reach 851 bytes, so the pedal side must chunk its notifications; the negotiated MTU decides how slow the first catalogue read is.
+- Build the BLE image with `docker run --rm --platform linux/amd64 --user $(id -u):$(id -g) -e HOME=/tmp -e OP_BLE=1 [-e OP_BLE_NORADIO=1] [-e OP_BLE_EARLY=0] [-e OP_BLE_RUNS=0] -v "$PWD":/src -w /src openpocket-build sh firmware/build.sh`. `node tools/op.mjs ble` does not pass those variables into the container. Output: `build/ble/`.
+- Pedal rules: `flash --dry-run` first; flash a BLE image only on the user's word for that image; afterwards restore `docs/firmware/BlackBox_<ver>.fwsc`. After a failed boot the next start is safe mode (effects off) once; power-cycle to clear it. Never save presets from a test.
+- Reading a crash on the BLE image: `node tools/op.mjs log` (the `regs`, `etm`, `radio`, `code` and `stall` lines come from DIAG, BLE image only), then look the PCs up in `firmware/build-ble/symbols.txt`. Disassemble with `objdump --mcpu=r3`: the default shows the FPU instructions as "unknown". `EMU`/`DBG` bits: `docs/HARDWARE-HANDBOOK.md`. The log is readable after a reset, not after a power cycle (`.noinit` RAM).
+- `firmware/bsp/chip/fm1_irq.h` carries an OpenPocket addition (`fm1_crash_t.code[8]`) that affects every build, not only the BLE image.
+- `build/` can hold Linux binaries from earlier container builds; on a Mac they fail with `ENOEXEC` (for example `build/edsim`, `build/devsim`). Rebuild the one a test needs with the `$CC` line in `tests/run_tests.sh`.
+
 ## Build and verify
 
 - Follow [docs/BUILDING.md](docs/BUILDING.md) for toolchain setup and packaging. `make doctor` checks prerequisites, and `make package` builds the firmware and installer packages.
