@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Editor, presetToJSON, presetFromJSON, filePresets, parsePresetFile, clonePreset } from "../docs/pxedit.js";
+import { C, Editor, encodePreset, presetToJSON, presetFromJSON, filePresets, parsePresetFile, clonePreset } from "../docs/pxedit.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SIM = process.env.EDSIM || join(ROOT, "build", "edsim");
@@ -55,7 +55,7 @@ let s = sim(["--dump", flash1]);
 await s.ready;
 let ed = new Editor(s.access);
 const info = await ed.connect();
-ok(info && info.proto === 10 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
+ok(info && info.proto === 11 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
 ok(info && info.nblk === 10 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 10 blocks, 5 parameters, 52 slots, names of 13");
 const t0 = Date.now();
 const cat = await ed.catalog();
@@ -133,7 +133,8 @@ ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st
 // ---- 2. live editing ----
 const amp = 3;                                  // (v70: the SYNTH block)
 const comp = 1, valve = 10;
-ok(ed.hasValve && !st.preset.valveOn && st.preset.valveDrive === 71, "Valve defaults to off at +12 dB");
+ok(ed.hasValve && ed.hasValveLevel && !st.preset.valveOn && st.preset.valveDrive === 71 && st.preset.valveLevel === 24,
+  "Valve defaults to off with +12 dB Drive and 0 dB Level");
 const v1 = await ed.setParam(amp, 0, 77);
 st = await ed.state();
 ok(v1 === 77 && st.preset.p[amp][0] === 77 && st.dirty, "SET: SYNTH's 1st knob = 77, the sound is now changed (*)");
@@ -181,11 +182,16 @@ await ed.setType(comp, 1);
 await ed.setOn(comp, 1);
 await ed.setOn(valve, 1);
 await ed.setParam(valve, 0, 75);
+ok(await ed.setParam(valve, 1, 90) === 48, "SET: Valve Level clamps at +12 dB");
+await ed.setParam(valve, 1, 33);
 const valvePreset = (await ed.state()).preset;
-ok(valvePreset.valveOn && valvePreset.valveDrive === 75 && valvePreset.type[comp] === 1 && valvePreset.on[comp] === 1,
+ok(valvePreset.valveOn && valvePreset.valveDrive === 75 && valvePreset.valveLevel === 33 && valvePreset.type[comp] === 1 && valvePreset.on[comp] === 1,
   "Valve and Studio compression run independently in the same preset");
-a.valveOn = valvePreset.valveOn; a.valveDrive = valvePreset.valveDrive;
+a.valveOn = valvePreset.valveOn; a.valveDrive = valvePreset.valveDrive; a.valveLevel = valvePreset.valveLevel;
 a.type[comp] = valvePreset.type[comp]; a.on[comp] = valvePreset.on[comp]; a.p[comp] = valvePreset.p[comp];
+const oldWire = encodePreset(valvePreset, info.nblk, info.npar, 2);
+ok((await ed.request(C.PUT, oldWire))[0] === 0 && (await ed.state()).preset.valveLevel === 24,
+  "PUT: protocol 10 presets restore unity Level");
 const b = clonePreset(g.preset); b.name = "STAGED B"; b.p[amp][0] = 99;
 ok(await ed.slotPut(20, a, false) === 0 && await ed.slotPut(21, b, false) === 0, "SLOT_PUT: two slots staged in memory");
 ok(await ed.commit() === 0, "COMMIT: one flash write");
@@ -202,7 +208,8 @@ ok(r.warn.length === 0 && JSON.stringify(r.preset) === JSON.stringify(q), "file:
 const odd = presetFromJSON({ name: "X", blocks: [{ block: "SYN", on: true, type: "NO SUCH SYNTH", params: [1, 2, 3] }, { block: "AMP" }] }, cat, q);
 ok(odd.warn.length === 2 && odd.preset.p[amp][0] === 1, "file: unknown type and block are reported, the rest comes through");
 const legacyValve = presetFromJSON({ blocks: [{ block: "CMP", on: true, type: "VALVE", params: [96] }] }, cat, q);
-ok(legacyValve.preset.valveOn && legacyValve.preset.valveDrive === 96 && !legacyValve.preset.on[comp], "imports migrate the old CMP VALVE");
+ok(legacyValve.preset.valveOn && legacyValve.preset.valveDrive === 96 && legacyValve.preset.valveLevel === 24 && !legacyValve.preset.on[comp],
+  "imports migrate the old CMP VALVE at unity Level");
 // v75 (protocol 9): GLOBAL (the settings outside the presets) and TUNER
 {
   const g0 = await ed.global();
@@ -250,7 +257,8 @@ list = await ed.list();
 
 ok(list[20].name === "STAGED A" && list[21].name === "STAGED B" && list[20].saved && !list[4].saved, "power cycle: the saved slots are still there");
 const savedValve = (await ed.slotGet(20)).preset;
-ok(savedValve.valveOn && savedValve.valveDrive === 75 && savedValve.on[comp] && savedValve.type[comp] === 1, "Valve and COMP survive a power cycle");
+ok(savedValve.valveOn && savedValve.valveDrive === 75 && savedValve.valveLevel === 33 && savedValve.on[comp] && savedValve.type[comp] === 1,
+  "Valve and COMP survive a power cycle");
 st = await ed.state();
 ok(st.slot === 4, "power cycle: the pedal starts on the last slot SAVEd (imports do not move it)");
 await s.end();

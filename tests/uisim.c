@@ -294,6 +294,11 @@ static int overhaul(const char *d)
     poison(); ui_invalidate(); ui_render(); shot(d, "valve_input_off");
     tap(UB_PUSH); ui_turn(8, 0); ui_render(); shot(d, "valve_input_on");
     CHECK(PRESET.valve_on && PRESET.valve_drive == PX_VALVE_DEFAULT + 8, "F10: PARA switches Valve and changes Drive");
+    tap(UB_FX); CHECK(ui_mode == M_VALVE && ui_item == 1u, "F10: FX selects Valve Level");
+    ui_turn(3, 0); ui_render(); shot(d, "valve_input_level");
+    CHECK(PRESET.valve_level == PX_VALVE_LEVEL_UNITY + 3u && PRESET.valve_drive == PX_VALVE_DEFAULT + 8,
+          "F10: PARA changes Level independently of Drive");
+    tap(UB_PUSH); CHECK(!PRESET.valve_on, "F10: PARA also switches Valve on the Level page");
     tap(UB_FX); CHECK(ui_mode == M_BLOCK && ui_pos_of(ui_blk) < 3, "F10: after Valve, FX starts again from the first utility block");
     /* F17: SYN's page is SYNTH. v50 gave NOISE GATE a second model (SMART GATE), so no block has a single
      * model any more: check the other side, a block of several models shows its arrows */

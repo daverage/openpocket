@@ -189,6 +189,8 @@ static void st_get(uint32_t k, px_preset_t *p)
         memcpy(p, st_slot[k], PX_PRESET_BASE_SIZE);
         p->valve_on = st_slot[k][ST_VALVE_OFF] == 1u;
         p->valve_drive = st_slot[k][ST_VALVE_OFF + 1u] <= 100u ? st_slot[k][ST_VALVE_OFF + 1u] : PX_VALVE_DEFAULT;
+        uint8_t level = st_slot[k][ST_VALVE_OFF + 2u];
+        p->valve_level = level <= PX_VALVE_LEVEL_MAX ? level : PX_VALVE_LEVEL_UNITY;
         if (!px_order_valid(p->order)) px_order_default(p->order);
     }
     else px_preset_factory(p, (int)k);
@@ -260,7 +262,7 @@ typedef char st_fs_check[(sizeof(px_preset_t) + 1u < ST_SLOT) ? 1 : -1];   /* th
 /* v75: slot k's footswitch gestures: bytes 95..98 of the slot (left double tap, left hold, right double tap, right hold: an action code, 0xFF nothing), in
  * the 15 bytes the slot kept free between the preset's mark and the footswitch byte */
 #define ST_GS_OFF (PX_PRESET_BASE_SIZE + 1u)
-typedef char st_gs_check[(ST_VALVE_OFF + 2u <= ST_SLOT - 1u) ? 1 : -1];
+typedef char st_gs_check[(ST_VALVE_OFF + 3u <= ST_SLOT - 1u) ? 1 : -1];
 static void st_gs_of(uint32_t k, uint8_t *out)
 {
     int old_valve = st_legacy_valve(k);
@@ -276,6 +278,7 @@ static void st_pack_preset(uint32_t k, const px_preset_t *p)
     st_slot[k][PX_PRESET_BASE_SIZE] = ST_MARK;
     st_slot[k][ST_VALVE_OFF] = p->valve_on;
     st_slot[k][ST_VALVE_OFF + 1u] = p->valve_drive;
+    st_slot[k][ST_VALVE_OFF + 2u] = p->valve_level;
 }
 /* save p, with its footswitch assignment fs and gestures gs (4 bytes, or 0: none), to slot k (becomes the start slot) */
 static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs)

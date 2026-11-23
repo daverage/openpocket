@@ -454,20 +454,30 @@ static void draw_edit(int force)
 static void ui_valve_draw(void)
 {
     static unsigned shown;
-    const unsigned state = PRESET.valve_drive | (unsigned)PRESET.valve_on << 8;
+    const int edit_level = ui_item == 1u;
+    const unsigned state = PRESET.valve_drive | (unsigned)PRESET.valve_on << 8
+                         | (unsigned)PRESET.valve_level << 9 | (unsigned)edit_level << 16;
     if (uc.screen != 2 || uc.full) {
         uc.screen = 2; uc.full = 0; shown = ~0u;
         lcd_rect(0, 0, 240, 240, UI_BG);
         ft_box(0, 4, 240, "VALVE INPUT", &FT_MD, BLK, UI_ACC, 1);
-        ft_box(0, F_Y + 3u, 240, "KNOB: DRIVE    PUSH: ON/OFF", &FT_SM, UI_DIM, UI_PANEL, 1);
     }
     if (shown == state) return;
     shown = state;
-    char text[16] = "DRIVE ";
-    b_num(text, (unsigned)px_valve_drive_db(PRESET.valve_drive));
-    b_str(text, " DB");
-    ft_box(0, 66, 240, PRESET.valve_on ? "ON" : "OFF", &FT_MD, UI_ACC, UI_BG, 1);
-    ft_box(0, 110, 240, text, &FT_MD, UI_TXT, UI_BG, 1);
+    char drive[16] = "DRIVE ";
+    b_num(drive, (unsigned)px_valve_drive_db(PRESET.valve_drive));
+    b_str(drive, " DB");
+    char level[16] = "LEVEL ";
+    const int halves = (int)PRESET.valve_level - (int)PX_VALVE_LEVEL_UNITY;
+    unsigned magnitude = (unsigned)(halves < 0 ? -halves : halves);
+    if (halves) b_str(level, halves < 0 ? "-" : "+");
+    b_num(level, magnitude / 2u);
+    if (magnitude % 2u) b_str(level, ".5");
+    b_str(level, " DB");
+    ft_box(0, 55, 240, PRESET.valve_on ? "ON" : "OFF", &FT_MD, UI_ACC, UI_BG, 1);
+    ft_box(0, 101, 240, drive, &FT_MD, edit_level ? UI_TXT : BLK, edit_level ? UI_BG : UI_ACC, 1);
+    ft_box(0, 143, 240, level, &FT_MD, edit_level ? BLK : UI_TXT, edit_level ? UI_ACC : UI_BG, 1);
+    ft_box(0, F_Y + 3u, 240, edit_level ? "FX: NEXT   PUSH: ON/OFF" : "FX: LEVEL   PUSH: ON/OFF", &FT_SM, UI_DIM, UI_PANEL, 1);
 }
 static void ui_render(void)
 {
@@ -758,6 +768,7 @@ static const uint8_t UI_FXB[UI_NFX] = {PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_SFX,
 static int ui_is_fx(uint32_t b) { for (int i = 0; i < UI_NFX; i++) if (UI_FXB[i] == b) return 1; return 0; }
 static void ui_fx_cycle(void)          /* FX: the next of its blocks along the preset's chain, as the tiles read (v42), else the first */
 {
+    if (ui_mode == M_VALVE && ui_item == 0u) { ui_item = 1; return; }
     ui_order_fix();
     int from = ui_mode != M_VALVE && ui_is_fx(ui_blk) ? ui_pos_of(ui_blk) + 1 : 0;
     for (int i = from; i < PX_NBLK; i++) {
@@ -1187,8 +1198,10 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
     else if (ui_mode == M_TUNER) tuner_ref_turn(dd);              /* v75: the reference A */
     else if (ui_mode == M_GLOBAL) global_turn(dd, fast);
     else if (ui_mode == M_VALVE) {
-        const int drive = (int)PRESET.valve_drive + dd * (fast ? 5 : 1);
-        PRESET.valve_drive = (uint8_t)(drive < 0 ? 0 : drive > 100 ? 100 : drive);
+        uint8_t *knob = ui_item ? &PRESET.valve_level : &PRESET.valve_drive;
+        const int max = ui_item ? (int)PX_VALVE_LEVEL_MAX : 100;
+        const int value = (int)*knob + dd * (fast ? 5 : 1);
+        *knob = (uint8_t)(value < 0 ? 0 : value > max ? max : value);
     }
     else ui_knob(dd, fast);
 }

@@ -270,9 +270,9 @@ body[data-view="sound"] #view-sound, body[data-view="models"] #view-models, body
 .patch-options > summary { cursor: pointer; font-weight: 700; font-size: 0.875rem; }
 .patch-options[open] > :not(summary) { margin-block-start: 10px; }
 .patch-value { float: inline-end; color: var(--faint); font-weight: 500; }
-.valve-controls, .valve-drive { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
-.valve-drive input { width: min(230px, 45vw); }
-.valve-drive output { min-width: 5ch; }
+.valve-controls, .valve-param { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.valve-param input { width: min(230px, 45vw); }
+.valve-param output { min-width: 7ch; }
 .fshead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
 .fshelp { flex: 1 1 18rem; margin: 0; font-size: 0.8125rem; color: var(--faint); }
 .fsgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }

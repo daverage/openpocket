@@ -58,9 +58,9 @@ check("bypass passes the dry input, at MASTER", () => {
   const out = run(e, IN);
   out.forEach((v, i) => assert.ok(Math.abs(v - IN[i] * 0.64) < 1e-6));
 });
-check("Valve input: DRIVE adds harmonics, keeps quiet notes near unity, and obeys bypass", () => {
+check("Valve input: Drive sets coloration, Level sets output gain, and bypass stays dry", () => {
   const e = engine(), dry = engine(), low = engine();
-  const preset = (on, drive, comp = false) => presetBytes({ name: "VALVE", valveOn: !!on, valveDrive: drive, on: [0, +comp, 0, 0, 0, 0, 0, 0, 0, 0],
+  const preset = (on, drive, comp = false, level = 24) => presetBytes({ name: "VALVE", valveOn: !!on, valveDrive: drive, valveLevel: level, on: [0, +comp, 0, 0, 0, 0, 0, 0, 0, 0],
     type: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0], p: Array.from({ length: 10 }, (_, i) => i === 1 ? [90, 50, 50, 100, 50] : [0, 0, 50, 0, 0]),
     order: Array.from({ length: 10 }, (_, i) => i) });
   dry.preset(preset(0, 0)); low.preset(preset(1, 0)); e.preset(preset(1, 100));
@@ -72,6 +72,15 @@ check("Valve input: DRIVE adds harmonics, keeps quiet notes near unity, and obey
   const nonlinear = (out) => (power(out, 800) + power(out, 1200)) / power(out, 400);
   assert.ok(nonlinear(wet) > 4 * nonlinear(mellow));
   assert.ok(peak(wet) < 0.9 * peak(mellow), "the valve rounds off strong peaks at higher drive");
+  const boost = engine();
+  boost.preset(preset(1, 0, false, 48));
+  const boosted = tail(run(boost, input)), ratio = 10 ** (12 / 20);
+  boosted.forEach((v, i) => assert.ok(Math.abs(v - mellow[i] * ratio) < 1e-5, "Level applies a linear gain after the valve"));
+  boost.preset(preset(1, 0).slice(0, 96));
+  assert.ok(Math.abs(peak(tail(run(boost, input))) / peak(mellow) - 1) < 1e-4, "older preset bytes restore unity Level");
+  boost.preset(preset(0, 0, false, 48));
+  const switchedOff = tail(run(boost, input)), dryOut = tail(run(dry, input));
+  switchedOff.forEach((v, i) => assert.ok(Math.abs(v - dryOut[i]) < 1e-7, "Valve off ignores Level"));
   const together = engine(), comp = engine();
   together.preset(preset(1, 100, true)); comp.preset(preset(0, 100, true));
   const both = tail(run(together, input)), compOnly = tail(run(comp, input));
@@ -120,7 +129,7 @@ check("Synth2: ANALOG and ARCADE play the guitar's note in the WebAssembly engin
 check("a block switched off changes the sound", () => {
   const s = new PxEngine(module);
   s.factory(15);
-  const bytes = new Uint8Array(s.x.memory.buffer, s.x.px_preset(), 110).slice(), amp = 14 + 5;
+  const bytes = new Uint8Array(s.x.memory.buffer, s.x.px_preset(), 97).slice(), amp = 14 + 5;
   const a = run(s, IN);
   bytes[amp] = 0;
   s.preset(bytes);
@@ -178,8 +187,9 @@ try {
   const state = await (await fetch(sim.url + "/api/state")).json();
   check("the pedal's preset, as the simulator reports it, is the engine's", () => {
     const e = engine(state.slot);
-    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 96);   // px_preset_t (v75: 10 blocks)
-    assert.deepEqual([...presetBytes(state.preset)], [...memory]);
+    const bytes = presetBytes(state.preset);
+    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), bytes.length);
+    assert.deepEqual(bytes, memory);
   });
   const served = await fetch(sim.url + "/sim/px_engine.wasm");
   check("the engine is served as WebAssembly", () => assert.equal(served.headers.get("content-type"), "application/wasm"));

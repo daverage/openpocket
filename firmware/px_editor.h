@@ -19,7 +19,7 @@
 #define ED_H0 0x7Du
 #define ED_H1 0x4Fu
 #define ED_H2 0x50u
-#define ED_PROTO 10u                             /* 10: per-preset valve; 9: v75, GLOBAL (the global settings, TUNER); 8: v75, SHED (the blocks switched off for the load); 7: v75, ten blocks (BST); 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
+#define ED_PROTO 11u                             /* 11: Valve Level; 10: per-preset valve; 9: v75, GLOBAL (the global settings, TUNER); 8: v75, SHED (the blocks switched off for the load); 7: v75, ten blocks (BST); 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
 #define ED_NAME_MAX 13u
 #define ED_P_SIZE PX_PRESET_BASE_SIZE          /* the name, then per block on, type, 5 settings and its place in the order: v75: 10 blocks, 94 bytes; v70: 9, 86 */
 #if OP_UADEV
@@ -30,7 +30,7 @@
 #ifndef ED_STATS
 #define ED_STATS 6u                             /* PING's figures after the flags (ed_stat): the Bluetooth test image has 8 */
 #endif
-typedef char ed_size_check[sizeof(px_preset_t) == ED_P_SIZE + 2u ? 1 : -1];
+typedef char ed_size_check[sizeof(px_preset_t) == ED_P_SIZE + 3u ? 1 : -1];
 enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_ORDER, ED_NAME, ED_PUT, ED_SELECT,
        ED_FOCUS, ED_LIST, ED_SLOT_GET, ED_SLOT_PUT, ED_COMMIT, ED_SAVE, ED_WATCH, ED_PING,
        ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,   /* 19..22: NAM retired (v70) */
@@ -69,7 +69,8 @@ static int ed_take_preset(const uint8_t *a, uint32_t n, px_preset_t *q)
     memcpy(q, a, ED_P_SIZE);
     q->valve_on = n >= ED_P_SIZE + 2u ? a[ED_P_SIZE] : 0u;
     q->valve_drive = n >= ED_P_SIZE + 2u ? a[ED_P_SIZE + 1u] : PX_VALVE_DEFAULT;
-    if (q->valve_on > 1u || q->valve_drive > 100u) return 0;
+    q->valve_level = n >= ED_P_SIZE + 3u ? a[ED_P_SIZE + 2u] : PX_VALVE_LEVEL_UNITY;
+    if (q->valve_on > 1u || q->valve_drive > 100u || q->valve_level > PX_VALVE_LEVEL_MAX) return 0;
     for (i = 0; i < 14u; i++) {
         uint8_t c = (uint8_t)q->name[i];
         if (i >= ED_NAME_MAX || !c) { for (; i < 14u; i++) q->name[i] = 0; break; }
@@ -163,6 +164,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         uint32_t b = a[0], v = a[3];
         if (b == PX_VALVE_ACTION) {
             if (a[1] == 0u && a[2] == 0u) v = PRESET.valve_drive = (uint8_t)(v > 100u ? 100u : v);
+            else if (a[1] == 0u && a[2] == 1u) v = PRESET.valve_level = (uint8_t)(v > PX_VALVE_LEVEL_MAX ? PX_VALVE_LEVEL_MAX : v);
             else if (a[1] == 1u) v = PRESET.valve_on = v != 0u;
             else return;
             ed_b(b); ed_b(a[1]); ed_b(a[2]); ed_b(v);

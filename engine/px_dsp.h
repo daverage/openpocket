@@ -88,10 +88,12 @@ typedef struct {
     uint8_t type[PX_NBLK];
     uint8_t p[PX_NBLK][PX_NPAR];   /* 0..100 */
     uint8_t order[PX_NBLK];        /* processing (and display) order: a permutation of the block indices */
-    uint8_t valve_on, valve_drive;
+    uint8_t valve_on, valve_drive, valve_level;
 } px_preset_t;
 #define PX_PRESET_BASE_SIZE (14u + (3u + PX_NPAR) * PX_NBLK)
 #define PX_VALVE_DEFAULT 71u       /* about +12 dB */
+#define PX_VALVE_LEVEL_UNITY 24u   /* half-dB steps, -12 to +12 dB */
+#define PX_VALVE_LEVEL_MAX 48u
 #define PX_VALVE_ACTION 10u        /* footswitch action, outside the reorderable blocks */
 int px_valve_drive_db(int control);
 
@@ -255,7 +257,7 @@ typedef struct px_engine_s {
     float cmp_la[128]; int cmp_lw;                     /* v36: swell look-ahead (128 samples) */
     struct {
         px_hb up, down;
-        float cathode_v, output_dc, cathode_step, dc_step, drive, mix;
+        float cathode_v, output_dc, cathode_step, dc_step, drive, level, mix;
     } triode;
     float btr[PX_NBLK], patch_g;                        /* v36: per-block level trims, preset level */          /* rv_rq: rounding (0.5), or 0 once the tail is very quiet */
     int   rv_gate, rv_hold_n, sp_on; float rv_hold, rv_genv, rv_gg, rv_gate_rel;

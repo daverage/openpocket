@@ -298,7 +298,8 @@ static void status(void)
     printf(",\"lights\":%u}", st_cfg.lights);
     printf(",\"presses\":%u,\"knob\":%d,\"held\":[", n_press, knob_pos);
     for (int i = 0, n = 0; i < N_BUTTON; i++) if (held >> i & 1u) { printf(n++ ? "," : ""); json_str(BUTTON[i]); }
-    printf("],\"preset\":{\"valveOn\":%s,\"valveDrive\":%u,\"name\":", PRESET.valve_on ? "true" : "false", (unsigned)PRESET.valve_drive);
+    printf("],\"preset\":{\"valveOn\":%s,\"valveDrive\":%u,\"valveLevel\":%u,\"name\":",
+           PRESET.valve_on ? "true" : "false", (unsigned)PRESET.valve_drive, (unsigned)PRESET.valve_level);
     json_str(PRESET.name);
     printf(",\"on\":"); json_list(PRESET.on, PX_NBLK);
     printf(",\"type\":"); json_list(PRESET.type, PX_NBLK);

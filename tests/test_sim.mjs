@@ -222,6 +222,10 @@ await act("/api/press/home");
   await act("/api/press/push");
   const after = (await state()).preset;
   ok(after.valveDrive === Math.min(100, before.valveDrive + 2) && after.valveOn !== before.valveOn, "Valve page: turn PARA for Drive, press to toggle");
+  await act("/api/press/fx");
+  await act("/api/knob/2");
+  const level = (await state()).preset;
+  ok(level.valveLevel === Math.min(48, after.valveLevel + 2) && level.valveDrive === after.valveDrive, "Valve page: FX selects Level for PARA");
   await act("/api/press/home");
 }
 const k0 = (await state()).knob;

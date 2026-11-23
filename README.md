@@ -54,9 +54,9 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 | **FUZZ FACE** | Germanium or silicon Fuzz Face circuit model with pickup loading and bias controls. |
 | **ACOUSTIC PRE** | Piezo preamp with low cut, dequack, body, feedback notch, and level. |
 
-- **Valve** is a separate 12AX7 input stage that runs before the reorderable effects and can run alongside COMP. Each
-  preset saves on/off and Drive. It defaults to off at +12 dB. Drive ranges from 0 to +24 dB with automatic output
-  compensation.
+- **Valve** is a separate 12AX7 input stage that runs before the reorderable effects and can run alongside COMP. Drive
+  ranges from 0 to +24 dB with automatic output compensation. Current source builds add independent output **Level**
+  from −12 to +12 dB in 0.5 dB steps. Presets save both controls. Valve defaults to off, with +12 dB Drive and 0 dB Level.
 - **SMART GATE** learns the background level while closed. The global **Smart Gate Hush** setting controls its dynamic
   hiss filter. **HUM FILTER** in EQ notches mains hum and its harmonics at 50 Hz or 60 Hz, with an Auto setting.
 - **SPECIAL FX** includes **SQUARE SYNTH HQ**, a tracked square wave and sub voice, and **ACOUSTIC DRIVE**, a piezo-voiced
@@ -79,7 +79,8 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 - **52 factory presets** cover synth, pitch, boost, acoustic, and conventional effects. Updating from the original
   multi-effects preset format retains global settings and starts with the Synth2 factory bank. A retired SYNTH type
   loads switched off with its parameter values retained. Older **COMP → VALVE** presets carry on/off, Drive, and
-  Valve footswitch assignments forward. Earlier boost presets can migrate their SPECIAL FX settings to PRE / BOOST.
+  Valve footswitch assignments forward. Presets saved before Level was added load at 0 dB Level.
+  Earlier boost presets can migrate their SPECIAL FX settings to PRE / BOOST.
   Export your presets before changing firmware. Older firmware cannot read the preset store format written by v75 and later.
 - **USB MIDI and USB audio** carry over from upstream. USB MIDI handles preset selection, block controls and delay
   clock. Enable USB AUDIO to record and play back stereo 16-bit audio at 44.1 kHz. See [MIDI](docs/MIDI.md) and
@@ -93,8 +94,9 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 3. Click **Install** and leave the pedal powered and connected until the installer verifies the firmware after restart.
 
 Build 981 packages are `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox.
-The installer can also restore the manufacturer’s official `.fwsc`. For a local install, run `make package` and
-`make serve`, then open the localhost address it prints. [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
+The installer can also restore the manufacturer’s official `.fwsc`. To try Valve Level in the current source build,
+run `make package` and `make serve`, then open the localhost address it prints.
+[Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
 
 ## Preset editor
 
@@ -105,8 +107,8 @@ over USB. The editor uses the ten-block layout and the pedal's own model catalog
 - **Presets** browses, loads, renames, copies and moves the 52 slots. Export or import JSON to back up and restore
   presets.
 - **Sound** edits the active blocks, models, settings and chain order. It shows DSP load and peaks and lets you
-  compare the current sound with the saved preset. Expand **Valve** for On/Off and Drive, or **Footswitches** for
-  Stomp/Patch mode and the current preset's press, double-tap and hold assignments.
+  compare the current sound with the saved preset. Expand **Valve** for on/off, Drive and Level on supported firmware.
+  Expand **Footswitches** for Stomp/Patch mode and the current preset's press, double-tap and hold assignments.
 - **MIDI** shows the current preset's Control Change mappings and lets you learn controls from a MIDI controller
   connected to the computer.
 - **Stage** gives you a larger view of the current preset, effect and footswitch states, and the tuner.
@@ -118,8 +120,10 @@ Edits take effect live and changes on the pedal appear in the editor. See the
 
 ### Editing from the pedal
 
-- **Valve**. Tap FX until **VALVE INPUT** appears. Turn PARA to adjust Drive and press PARA to toggle Valve.
-  Hold PARA to open SAVE, select the destination if needed, and press PARA to confirm.
+- **Valve**. Tap FX until **VALVE INPUT** appears. Turn PARA to adjust Drive (0 to +24 dB).
+  On a current source build, tap FX once more and turn PARA to adjust output Level (−12 to +12 dB, 0 dB for unity).
+  Press PARA to toggle Valve.
+  Hold PARA to open SAVE, select the destination if needed, and press PARA to confirm. Both controls are also in the editor's Valve panel.
 - **Footswitches**. From the home screen, hold CAB to enter STOMP. Hold either footswitch and tap FX until its assignment shows **VLV**,
   or select another assignment the same way. Tap the footswitch to toggle its assignment while playing. Use the editor
   to change the double-tap and hold actions.

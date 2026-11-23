@@ -119,16 +119,21 @@ int main(void)
         st_pack_preset(k, &f);
         st_slot[k][ST_SLOT - 1u] = (uint8_t)(PX_B_REVERB << 4 | PX_B_COMP);
         memcpy(&st_slot[k][ST_GS_OFF], gestures, sizeof gestures);
-        st_slot[k][ST_VALVE_OFF] = st_slot[k][ST_VALVE_OFF + 1u] = 0xFF;
+        st_slot[k][ST_VALVE_OFF] = st_slot[k][ST_VALVE_OFF + 1u] = st_slot[k][ST_VALVE_OFF + 2u] = 0xFF;
         CHECK(st_commit() == 0, "write a legacy COMP Valve preset");
         reboot();
         st_get(k, &q);
-        CHECK(q.valve_on && q.valve_drive == 82 && !q.on[PX_B_COMP] && q.type[PX_B_COMP] == PX_CMP_SQUASH,
+        CHECK(q.valve_on && q.valve_drive == 82 && q.valve_level == PX_VALVE_LEVEL_UNITY && !q.on[PX_B_COMP] && q.type[PX_B_COMP] == PX_CMP_SQUASH,
               "older stored COMP Valve becomes the dedicated input stage");
         uint8_t migrated[4];
         st_gs_of(k, migrated);
         CHECK(st_fs_of(k) == (PX_B_REVERB << 4 | PX_VALVE_ACTION) && migrated[0] == PX_VALVE_ACTION && migrated[1] == PX_B_REVERB,
               "legacy press and gesture assignments follow Valve; other assignments stay");
+        st_pack_preset(k, &q);
+        st_slot[k][ST_VALVE_OFF + 2u] = 0xFF;
+        st_get(k, &q);
+        CHECK(q.valve_on && q.valve_drive == 82 && q.valve_level == PX_VALVE_LEVEL_UNITY,
+              "earlier dedicated Valve presets retain their Drive and default to unity Level");
         st_reset(k);
     }
 
