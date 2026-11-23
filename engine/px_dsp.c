@@ -485,12 +485,12 @@ static const tdef T_GATE[] = {{"NOISE GATE", 3, PN_GATE}, {"SMART GATE", 5, PN_S
 static const char *const PN_CMP[] = {"SUSTAIN", "ATTACK", "LEVEL", "MIX"};
 static const char *const PN_OPTO[] = {"COMPRESS", "LEVEL", "MIX"};
 static const char *const PN_SWELL[] = {"RISE", "SENS", "LEVEL"};
-static const char *const PN_VALVE[] = {"DRIVE"};
 static float valve_drive_db(float control) { return 24.0f * control * control; }  /* +6 dB at noon, +24 dB at full */
+int px_valve_drive_db(int control) { return (int)(valve_drive_db((float)control * 0.01f) + 0.5f); }
 static const tdef T_COMP[PX_CMP_COUNT] = {
     {"SQUASH", 3, PN_CMP}, {"STUDIO", 4, PN_CMP}, {"OPTO LA-2", 3, PN_OPTO}, {"SLOW SWELL", 3, PN_SWELL},
-    {"VALVE", 1, PN_VALVE}};
-static int cmp_type(uint8_t t) { return t < PX_CMP_COUNT ? t : t % PX_CMP_VALVE; }
+    {"", 0, 0}};   /* old VALVE type ID, migrated into the preset's input settings */
+static int cmp_type(uint8_t t) { return t % PX_CMP_VALVE; }
 
 static const char *const PN_OCT[] = {"DRY", "SUB -1", "SUB -2", "UP +1", "TONE"};
 static const char *const PN_POLY[] = {"DRY", "OCT -1", "OCT +1"};
@@ -562,7 +562,8 @@ static int px_sfx_to_bst(int t)
 }
 int px_type_retired(int b, int t)
 {
-    return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && (t == PX_SFX_APPLAUSE || px_sfx_to_bst(t) >= 0));
+    return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && (t == PX_SFX_APPLAUSE || px_sfx_to_bst(t) >= 0)) ||
+           (b == PX_B_COMP && t == PX_CMP_VALVE);
 }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
 int px_live_type(int b, int i)
@@ -662,6 +663,13 @@ static int bst_untouched(const px_preset_t *p)   /* BST as a format 6 slot, an o
 }
 void px_preset_canonical(px_preset_t *p)
 {
+    if (p->type[PX_B_COMP] == PX_CMP_VALVE) {
+        p->valve_on = p->on[PX_B_COMP];
+        p->valve_drive = p->p[PX_B_COMP][0];
+        p->on[PX_B_COMP] = 0;
+        p->type[PX_B_COMP] = PX_CMP_SQUASH;
+        px_type_defaults(PX_B_COMP, PX_CMP_SQUASH, p->p[PX_B_COMP]);
+    }
     for (int b = 0; b < PX_NBLK; b++) px_block_canonical(b, &p->type[b], p->p[b]);
     const int to = px_sfx_to_bst(p->type[PX_B_SFX]);
     if (to >= 0 && bst_untouched(p)) {
@@ -783,15 +791,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             return 1;
         }
         break;
-    case PX_B_COMP:
-        if (t == PX_CMP_VALVE && k == 0) {
-            put_int(buf, (int)(valve_drive_db(x) + 0.5f), 1);
-            char *end = buf;
-            while (*end) ++end;
-            put_str(end, " dB");
-            return 1;
-        }
-        break;
     case PX_B_PITCH:
         if ((t == PX_PIT_POLYOCT_HQ || t == PX_PIT_LOWEST_HQ) && k == 3) {
             if (v == 0) put_str(buf, "FULL");
@@ -881,6 +880,7 @@ static void blk(px_preset_t *p, int b, int on, int type, int a, int c, int d, in
 static void base_preset(px_preset_t *p)
 {
     memset(p, 0, sizeof(*p));
+    p->valve_drive = PX_VALVE_DEFAULT;
     blk(p, PX_B_GATE,   1, 0, 40, 20, 50, 0, 0);   /* 3rd: preset LEVEL (v36), 50 = 0 dB */
     blk(p, PX_B_COMP,   0, PX_CMP_SQUASH, 50, 30, 50, 100, 0);
     blk(p, PX_B_PITCH,  0, PX_PIT_OCTAVER, 70, 50, 0, 0, 40);
@@ -1051,10 +1051,6 @@ static void rc_dyn(px_engine *e)
 
     q = p->p[PX_B_COMP];
     const int t = cmp_type(p->type[PX_B_COMP]);
-    if (t == PX_CMP_VALVE) {
-        e->triode.drive = 4.0f * db2lin(valve_drive_db(f01(q[0])));
-        return;
-    }
     e->cmp_rel = expf(-1.0f / (0.15f * sr));
     e->cmp_mix = 1.0f;
     switch (t) {
@@ -1717,6 +1713,7 @@ static void rc_syn(px_engine *e)
 static void px_recalc(px_engine *e)
 {
     float sr = e->sr, osr = sr * PX_OVERSAMPLE;
+    e->triode.drive = 4.0f * db2lin(valve_drive_db(f01(e->cur.valve_drive)));
     rc_dyn(e);
     rc_pitch(e);
     rc_sfx(e);
@@ -1809,8 +1806,8 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     e->shed = 0;                                       /* v75: a new preset: nothing shed */
     memset(e->pfs, 0, sizeof e->pfs);
     { const uint8_t wo[2] = {e->run.on[PX_B_DELAY], e->run.on[PX_B_REVERB]}, wt[2] = {e->run.type[PX_B_DELAY], e->run.type[PX_B_REVERB]}; px_spill_plan(e, p, wo, wt, 1); }
-    if (p->type[PX_B_COMP] == PX_CMP_VALVE && (e->cur.type[PX_B_COMP] != PX_CMP_VALVE || !e->run.on[PX_B_COMP]))
-        triode_reset(e);
+    if (p->valve_on && e->triode.mix == 0.0f) triode_reset(e);
+    e->triode.mix = p->valve_on ? 1.0f : 0.0f;
     if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) memset(&e->ad, 0, sizeof e->ad);   /* v76: ACOUSTIC DRIVE: no old state */
     if (e->cur.type[PX_B_BST] != p->type[PX_B_BST] || e->cur.on[PX_B_BST] != p->on[PX_B_BST]) bst_reset(e);   /* a different pedal, or on/off: no old state */
     e->cur = *p;
@@ -1857,7 +1854,7 @@ int px_engine_change(const px_engine *e, const px_preset_t *p)
     const uint8_t *o = p->order;
     if (!px_order_valid(o)) { px_order_default(od); o = od; }
     if (memcmp(o, e->ord, PX_NBLK)) return PX_CH_FULL;
-    int k = 0;
+    int k = c->valve_on != p->valve_on || c->valve_drive != p->valve_drive;
     for (int b = 0; b < PX_NBLK; b++) {
         if (c->type[b] != p->type[b]) return PX_CH_FULL;
         if (c->on[b] != p->on[b] || memcmp(c->p[b], p->p[b], PX_NPAR)) k = 1;
@@ -1874,6 +1871,9 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     for (int i = 0; i < GL_N; i++) was[i] = *GLP(e, i);
     const px_preset_t old = e->cur;
     e->cur = *p;
+    if (p->valve_on && !old.valve_on && e->triode.mix == 0.0f) triode_reset(e);
+    if (p->valve_drive != old.valve_drive)
+        e->triode.drive = 4.0f * db2lin(valve_drive_db(f01(p->valve_drive)));
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     for (int b = 0; b < PX_NBLK; b++)                  /* v75: a shed block that is switched or given another type is the user's again */
         if (old.on[b] != p->on[b] || old.type[b] != p->type[b]) e->shed &= (uint16_t)~(1u << b);
@@ -1911,7 +1911,6 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         uint8_t on = (uint8_t)((p->on[b] && !(e->shed >> b & 1)) || e->bfd[b] < 0 || (b == PX_B_DELAY && e->spill[0]) || (b == PX_B_REVERB && e->spill[1]));
         if (on && !e->run.on[b]) {
             e->bf[b] = e->bfa[b] = 0.0f;
-            if (b == PX_B_COMP && p->type[b] == PX_CMP_VALVE) triode_reset(e);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
@@ -1930,6 +1929,8 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     memcpy(e->run.p, p->p, sizeof p->p);
     memcpy(e->run.type, p->type, sizeof p->type);
     memcpy(e->run.order, p->order, sizeof p->order);
+    e->run.valve_on = p->valve_on;
+    e->run.valve_drive = p->valve_drive;
     for (int L = 0; L < 2; L++) if (e->spill[L]) e->run.type[L ? PX_B_REVERB : PX_B_DELAY] = e->sp_type[L];   /* v75: a tail keeps the type it had */
 }
 /* ---- v75: load shedding ---- */
@@ -2161,7 +2162,7 @@ static inline triode_currents triode_load_line(float vin, float vk)
  * gain and the output polarity is corrected. The half-band pair filters the stage's
  * correction to the dry signal.
  */
-static __attribute__((noinline)) void triode_block(px_engine *e, float *samples, int n, float trim)
+static __attribute__((noinline)) void triode_block(px_engine *e, float *samples, int n)
 {
     const float drive = e->triode.drive, makeup = PXT_PLATE_SCALE / drive;
     hb1_up(&e->triode.up, samples, px_os_u, n, px_os_d);
@@ -2174,7 +2175,18 @@ static __attribute__((noinline)) void triode_block(px_engine *e, float *samples,
         px_os_u[i] = wet - e->triode.output_dc - x;
     }
     hb1_down(&e->triode.down, px_os_u, px_os_t, n, px_os_d);
-    for (int i = 0; i < n; ++i) samples[i] = (samples[i] + px_os_t[i]) * trim;
+    const float trim = 1.05074736f;   /* +0.43 dB valve calibration */
+    if (e->triode.mix == 1.0f && e->run.valve_on) {
+        for (int i = 0; i < n; ++i) samples[i] = (samples[i] + px_os_t[i]) * trim;
+        return;
+    }
+    const float goal = e->run.valve_on ? 1.0f : 0.0f;
+    const float delta = (goal ? 1.0f : -1.0f) / (0.02f * e->sr);
+    for (int i = 0; i < n; ++i) {
+        float mix = e->triode.mix + delta;
+        e->triode.mix = mix < 0.0f ? 0.0f : mix > 1.0f ? 1.0f : mix;
+        samples[i] += e->triode.mix * ((samples[i] + px_os_t[i]) * trim - samples[i]);
+    }
 }
 
 static void drive_block(px_drive_state *state, float *u, int n, int os, float *t, float *h)   /* (static buffers: off the interrupt's stack) */
@@ -2931,6 +2943,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     float sy[PX_MAX_BLOCK];
     const int syn2 = p->on[PX_B_SYN] && px_syn_mono(syn_t);
     if (syn2) px_synth_run(e, xb, sy, n);
+    if (p->valve_on || e->triode.mix > 0.0f) triode_block(e, xb, n);
     for (int s = 0; s < ns; s++) {
         const int sblk = st[s];
         const float strim = tr[s];
@@ -2990,10 +3003,6 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 e->syn_lp += e->syn_lpk * (x - e->syn_lp);
                 xb[k] = (x + e->syn_fuzz_tone * (x - e->syn_lp)) * e->syn_out * strim;
             }
-            goto faded;
-        }
-        if (sblk == PX_B_COMP && cmp_t == PX_CMP_VALVE) {
-            triode_block(e, xb, n, strim);
             goto faded;
         }
 #if PX_RUNS

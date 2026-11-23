@@ -266,8 +266,14 @@ body[data-view="sound"] #view-sound, body[data-view="models"] #view-models, body
 @media (pointer: coarse) { .tile { grid-template-rows: 44px 36px; } }
 .fscard { margin-block: 12px 4px; padding: 12px 16px 10px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-card); display: grid; gap: 10px; }
 .fscard[hidden] { display: none; }
+.patch-options:not([hidden]) { display: block; }
+.patch-options > summary { cursor: pointer; font-weight: 700; font-size: 0.875rem; }
+.patch-options[open] > :not(summary) { margin-block-start: 10px; }
+.patch-value { float: inline-end; color: var(--faint); font-weight: 500; }
+.valve-controls, .valve-drive { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.valve-drive input { width: min(230px, 45vw); }
+.valve-drive output { min-width: 5ch; }
 .fshead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-.fshead h3 { font-size: 0.8125rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
 .fshelp { flex: 1 1 18rem; margin: 0; font-size: 0.8125rem; color: var(--faint); }
 .fsgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
 @media (max-width: 640px) { .fsgrid { grid-template-columns: minmax(0, 1fr); } }

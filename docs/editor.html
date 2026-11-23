@@ -89,14 +89,21 @@
         </div>
       </div>
 
+      <details class="fscard patch-options" id="valverow" hidden>
+        <summary>Valve <span class="patch-value" id="valvesummary"></span></summary>
+        <div class="valve-controls" id="valvecontrols">
+          <button type="button" class="switch" id="valveon" role="switch" aria-label="Valve on" aria-checked="false"><i></i><span>Off</span></button>
+          <label class="valve-drive">Drive <input id="valvedrive" type="range" min="0" max="100" step="1" value="71"><output id="valvedb" for="valvedrive">+12 dB</output></label>
+        </div>
+      </details>
       <div class="chain-wrap">
         <span class="cap-io" aria-hidden="true">IN</span>
         <div class="chain" id="tiles" role="group" aria-label="Signal chain, in the order the sound passes through"></div>
         <span class="cap-io" aria-hidden="true">OUT</span>
       </div>
-      <section class="fscard" id="fsrow" aria-label="Footswitches" hidden>
+      <details class="fscard patch-options" id="fsrow" hidden>
+        <summary>Footswitches <span class="patch-value" id="fsmode"></span></summary>
         <header class="fshead">
-          <h3>Footswitches</h3>
           <button type="button" class="switch" id="stomp" role="switch" aria-checked="false" aria-describedby="fshelp"><i></i><span>Stomp</span></button>
           <span class="fsstate" id="fsstate" role="status"></span>
           <p class="fshelp" id="fshelp"></p>
@@ -117,9 +124,9 @@
         </div>
         <details class="fsmore" id="fsgest">
           <summary>How the footswitches work</summary>
-          <p>In Stomp mode a press switches the assigned block (or BYPASS) on and off; both switches together open the tuner. A hold (0.7 s) takes the press's own step back, then does its action. A double tap (Stomp mode only: the two toggles cancel) does its action. Patch mode keeps the assignments but the switches change the preset. Assignments and gestures are part of the preset: Save keeps them.</p>
+          <p>In Stomp mode a press toggles its assignment. Press both switches together to open the tuner. A hold (0.7 s) reverses the press before running its action. A double tap runs its action in Stomp mode. In Patch mode a press changes the preset. Save the preset to keep its assignments.</p>
         </details>
-      </section>
+      </details>
       <p class="hint" id="hint">Drag a block to move it. Arrow keys choose a block, Space switches it, Alt + arrows move it.</p>
 
       <div class="block" id="block">

@@ -122,7 +122,7 @@ ok((await state()).mode === "block", "HOME does nothing yet while it is down");
 await act("/api/up/home");
 ok((await state()).mode === "chain", "HOME acts at a short release");
 await act("/api/down/home");
-{   // (polled: the tuner comes at 0.7 s, the diagnostics 0.7 s after it; a fixed sleep missed that window under load)
+{   // Poll until the 0.7 s hold registers.
   let m = "chain";
   for (let t = 0; t < 1300 && m !== "tuner"; t += 25) { await sleep(25); m = (await state()).mode; }
   ok(m === "tuner", `HOME held 0.7 s: the tuner, before the release (${m})`);
@@ -133,7 +133,33 @@ ok(s.mode === "tuner" && s.held.length === 0, "the release of that hold leaves t
 await act("/api/down/home");
 await sleep(760);
 await act("/api/up/home");
-ok((await state()).mode === "diag", "HOME held again on the tuner: the diagnostics (v42)");
+ok((await state()).mode === "global", "HOME held again on the tuner opens Global");
+await act("/api/press/push");   // Output EQ, select the first band
+await act("/api/press/push");
+await act("/api/knob/3");
+ok((await state()).global.eq[0] === 27, "Global EQ applies live before saving");
+await act("/api/press/home");   // back to the list
+const setGlobal = async (detents) => {
+  await act("/api/knob/1");
+  await act("/api/press/push");
+  await act(`/api/knob/${detents}`);
+  await act("/api/press/push");
+};
+await setGlobal(2);  // HPF: 25 Hz
+await setGlobal(19); // Hush: 19%
+await setGlobal(3);  // Limiter: -2 dB
+await setGlobal(-1); // Tails: off
+await setGlobal(1);  // Tuner lights: strobe
+await setGlobal(-1); // Button lights: off
+const appliedGlobal = (await state()).global;
+ok(appliedGlobal.hpf === 25 && appliedGlobal.hush === 19 && appliedGlobal.lim === 4 && appliedGlobal.tails === 0 && appliedGlobal.lights === 6,
+   "Global HPF, hush, limiter, tails and lights apply live");
+ok(!existsSync(flash), "Global knob edits do not write flash");
+await act("/api/press/home");
+ok((await state()).mode === "chain" && existsSync(flash), "HOME exits Global and commits the settings without saving a preset");
+await act("/api/press/home_long"); await act("/api/press/home_long");
+await act("/api/knob/7"); await act("/api/press/push");
+ok((await state()).mode === "diag", "Diagnostics opens from the Global list");
 await act("/api/down/fx");
 ok((await state()).mode === "diag", "FX acts at its release");
 await act("/api/up/fx");
@@ -170,10 +196,10 @@ await act("/api/press/home");
   ok((await state()).preset.on[3] === 1 - amp0 && (await state()).slot === slot0, "the left footswitch: SYNTH on / off, the preset stays");
   await act("/api/press/fs_dn");
   await act("/api/down/fs_up");
-  for (let i = 0; i < 11; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // the 10 blocks, then BYP
+  for (let i = 0; i < 12; i++) { await act("/api/down/fx"); await act("/api/up/fx"); }   // the 10 blocks, then BYP
   await act("/api/up/fs_up");
   t = await state();
-  ok(t.fs[1] === 12, "hold the right footswitch + FX eleven times: every block, then BYPASS");
+  ok(t.fs[1] === 12, "hold the right footswitch + FX twelve times: Valve, every block, then BYPASS");
   await act("/api/press/fs_up");
   ok((await state()).bypass === 1 && (await state()).dsp.bypass === 0, "the right footswitch: BYPASS on (the user's, not the overload's)");
   await act("/api/press/fs_up");
@@ -187,6 +213,16 @@ await act("/api/press/home");
   await act("/api/press/fs_up");
   ok((await state()).slot === (slot0 + 1) % 52, "PATCH mode: the footswitch changes the preset again");
   await act("/api/press/fs_dn");
+}
+{
+  for (let i = 0; i < 6 && (await state()).mode !== "valve"; i++) await act("/api/press/fx");
+  const before = (await state()).preset;
+  ok((await state()).mode === "valve", "FX cycles to the Valve input page");
+  await act("/api/knob/2");
+  await act("/api/press/push");
+  const after = (await state()).preset;
+  ok(after.valveDrive === Math.min(100, before.valveDrive + 2) && after.valveOn !== before.valveOn, "Valve page: turn PARA for Drive, press to toggle");
+  await act("/api/press/home");
 }
 const k0 = (await state()).knob;
 await act("/api/knob/3");
@@ -212,6 +248,7 @@ await sim.close();
 sim = await startSim({ port: 0, flash });
 s = await state();
 ok(s.slot === 4 && s.saved === 1 && JSON.stringify(s.preset) === JSON.stringify(saved), "a restart on the same flash file: the session is as it was");
+ok(JSON.stringify(s.global) === JSON.stringify(appliedGlobal), "Global settings persist after a simulator restart");
 await act("/api/reset");
 s = await state();
 ok(s.slot === 0 && s.saved === 0 && !existsSync(flash), "reset: a blank flash, the factory presets, the file gone");

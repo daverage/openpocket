@@ -6,7 +6,6 @@ export const COST = {
   "CMP:STUDIO": 3.7,
   "CMP:OPTO LA-2": 3.4,
   "CMP:SLOW SWELL": 3.6,
-  "CMP:VALVE": 22.7,
   "OCT:OCTAVER": 5.8,
   "OCT:WHAMMY": 5.4,
   "OCT:HARMONIZER": 5.1,

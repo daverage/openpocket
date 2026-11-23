@@ -162,6 +162,7 @@ static int ota_wire_send(const uint8_t *p, uint32_t n)
 
 #include "../firmware/px_midi.h"
 #include "../firmware/px_store.h"
+#include "../firmware/ui_global.h"
 #if OP_BLE_TEST
 #include "../firmware/ble/ble_diag.h"
 #define ED_DIAG_LINES 4u
@@ -282,7 +283,7 @@ static void json_list(const uint8_t *a, int n)
 }
 static void status(void)
 {
-    static const char *const MODE[] = {"chain", "block", "edit", "tuner", "save", "move", "midi", "list", "diag"};
+    static const char *const MODE[] = {"chain", "block", "edit", "tuner", "save", "move", "midi", "list", "diag", "valve", "global"};
     frame_draw();
     printf("#status {\"slot\":%u,\"name\":", cur_preset);
     json_str(PRESET.name);
@@ -292,9 +293,12 @@ static void status(void)
            (double)tuner_hz, writes_ok, fb_gen, ed_load(), ed_flags() & 1u, ed_flags() >> 1 & 1u);
     json_str(last_press);
     printf(",\"stomp\":%u,\"bypass\":%u,\"fs\":[%u,%u]", ui_stomp, ui_byp, ui_fs_get(0), ui_fs_get(1));   /* v48 */
+    printf(",\"global\":{\"hpf\":%u,\"lim\":%u,\"tails\":%u,\"hush\":%u,\"eq\":", a_gl.hpf, a_gl.lim, a_gl.tails, a_gl.hush);
+    json_list(a_gl.eq, 5);
+    printf(",\"lights\":%u}", st_cfg.lights);
     printf(",\"presses\":%u,\"knob\":%d,\"held\":[", n_press, knob_pos);
     for (int i = 0, n = 0; i < N_BUTTON; i++) if (held >> i & 1u) { printf(n++ ? "," : ""); json_str(BUTTON[i]); }
-    printf("],\"preset\":{\"name\":");
+    printf("],\"preset\":{\"valveOn\":%s,\"valveDrive\":%u,\"name\":", PRESET.valve_on ? "true" : "false", (unsigned)PRESET.valve_drive);
     json_str(PRESET.name);
     printf(",\"on\":"); json_list(PRESET.on, PX_NBLK);
     printf(",\"type\":"); json_list(PRESET.type, PX_NBLK);

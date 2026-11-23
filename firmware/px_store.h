@@ -130,8 +130,8 @@ static void st_migrate6(void)
             memset(s, 0xFF, ST_SLOT - 1u);
             s[ST_SLOT - 1u] = (uint8_t)(l | r << 4);
         }
-        memcpy(s, &q, sizeof q);
-        s[sizeof q] = ST_MARK;
+        memcpy(s, &q, PX_PRESET_BASE_SIZE);
+        s[PX_PRESET_BASE_SIZE] = ST_MARK;
     }
 }
 
@@ -179,12 +179,18 @@ static void st_load(void)
     }
 }
 
-static int st_saved(uint32_t k) { return k < ST_NSLOT && st_slot[k][sizeof(px_preset_t)] == ST_MARK; }
+#define ST_VALVE_OFF (PX_PRESET_BASE_SIZE + 5u)
+static int st_saved(uint32_t k) { return k < ST_NSLOT && st_slot[k][PX_PRESET_BASE_SIZE] == ST_MARK; }
 
 /* the preset in slot k: the saved one, else the factory one */
 static void st_get(uint32_t k, px_preset_t *p)
 {
-    if (st_saved(k)) { memcpy(p, st_slot[k], sizeof *p); if (!px_order_valid(p->order)) px_order_default(p->order); }
+    if (st_saved(k)) {
+        memcpy(p, st_slot[k], PX_PRESET_BASE_SIZE);
+        p->valve_on = st_slot[k][ST_VALVE_OFF] == 1u;
+        p->valve_drive = st_slot[k][ST_VALVE_OFF + 1u] <= 100u ? st_slot[k][ST_VALVE_OFF + 1u] : PX_VALVE_DEFAULT;
+        if (!px_order_valid(p->order)) px_order_default(p->order);
+    }
     else px_preset_factory(p, (int)k);
     px_preset_canonical(p);                            /* v64: every block's retired types; v75: the pedals that moved to BST */
 }
@@ -235,21 +241,47 @@ static int st_commit(void)
 }
 
 /* v48: slot k's footswitch assignment (0xFF: nothing, also for a slot never saved) */
-static uint8_t st_fs_of(uint32_t k) { return st_saved(k) ? st_slot[k][ST_SLOT - 1u] : 0xFFu; }
+static int st_legacy_valve(uint32_t k)
+{
+    return st_saved(k) && st_slot[k][14u + PX_NBLK + PX_B_COMP] == PX_CMP_VALVE;
+}
+static uint8_t st_fs_of(uint32_t k)
+{
+    if (!st_saved(k)) return 0xFFu;
+    uint8_t fs = st_slot[k][ST_SLOT - 1u];
+    if (st_legacy_valve(k)) {
+        if ((fs & 15u) == PX_B_COMP) fs = (uint8_t)((fs & 0xF0u) | PX_VALVE_ACTION);
+        if ((fs >> 4) == PX_B_COMP) fs = (uint8_t)((fs & 15u) | (PX_VALVE_ACTION << 4));
+    }
+    return fs;
+}
 typedef char st_fs_check[(sizeof(px_preset_t) + 1u < ST_SLOT) ? 1 : -1];   /* the mark, then this byte */
 
 /* v75: slot k's footswitch gestures: bytes 95..98 of the slot (left double tap, left hold, right double tap, right hold: an action code, 0xFF nothing), in
  * the 15 bytes the slot kept free between the preset's mark and the footswitch byte */
-#define ST_GS_OFF (sizeof(px_preset_t) + 1u)
-typedef char st_gs_check[(ST_GS_OFF + 4u <= ST_SLOT - 1u) ? 1 : -1];
-static void st_gs_of(uint32_t k, uint8_t *out) { for (uint32_t i = 0; i < 4u; i++) out[i] = st_saved(k) ? st_slot[k][ST_GS_OFF + i] : 0xFFu; }
+#define ST_GS_OFF (PX_PRESET_BASE_SIZE + 1u)
+typedef char st_gs_check[(ST_VALVE_OFF + 2u <= ST_SLOT - 1u) ? 1 : -1];
+static void st_gs_of(uint32_t k, uint8_t *out)
+{
+    int old_valve = st_legacy_valve(k);
+    for (uint32_t i = 0; i < 4u; i++) {
+        uint8_t action = st_saved(k) ? st_slot[k][ST_GS_OFF + i] : 0xFFu;
+        out[i] = old_valve && action == PX_B_COMP ? PX_VALVE_ACTION : action;
+    }
+}
+static void st_pack_preset(uint32_t k, const px_preset_t *p)
+{
+    memset(st_slot[k], 0xFF, ST_SLOT);
+    memcpy(st_slot[k], p, PX_PRESET_BASE_SIZE);
+    st_slot[k][PX_PRESET_BASE_SIZE] = ST_MARK;
+    st_slot[k][ST_VALVE_OFF] = p->valve_on;
+    st_slot[k][ST_VALVE_OFF + 1u] = p->valve_drive;
+}
 /* save p, with its footswitch assignment fs and gestures gs (4 bytes, or 0: none), to slot k (becomes the start slot) */
 static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs)
 {
     if (k >= ST_NSLOT) return -1;
-    memset(st_slot[k], 0xFF, ST_SLOT);
-    memcpy(st_slot[k], p, sizeof *p);
-    st_slot[k][sizeof *p] = ST_MARK;
+    st_pack_preset(k, p);
     if (gs) memcpy(&st_slot[k][ST_GS_OFF], gs, 4);
     st_slot[k][ST_SLOT - 1u] = fs;
     st_last = (uint8_t)k;

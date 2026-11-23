@@ -58,10 +58,10 @@ check("bypass passes the dry input, at MASTER", () => {
   const out = run(e, IN);
   out.forEach((v, i) => assert.ok(Math.abs(v - IN[i] * 0.64) < 1e-6));
 });
-check("COMP VALVE: DRIVE adds harmonics, keeps quiet notes near unity, and obeys bypass", () => {
+check("Valve input: DRIVE adds harmonics, keeps quiet notes near unity, and obeys bypass", () => {
   const e = engine(), dry = engine(), low = engine();
-  const preset = (on, drive) => presetBytes({ name: "VALVE", on: [0, on, 0, 0, 0, 0, 0, 0, 0, 0],
-    type: [0, 4, 0, 0, 0, 0, 0, 0, 0, 0], p: Array.from({ length: 10 }, (_, i) => i === 1 ? [drive, 50, 50, 50, 50] : [0, 0, 50, 0, 0]),
+  const preset = (on, drive, comp = false) => presetBytes({ name: "VALVE", valveOn: !!on, valveDrive: drive, on: [0, +comp, 0, 0, 0, 0, 0, 0, 0, 0],
+    type: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0], p: Array.from({ length: 10 }, (_, i) => i === 1 ? [90, 50, 50, 100, 50] : [0, 0, 50, 0, 0]),
     order: Array.from({ length: 10 }, (_, i) => i) });
   dry.preset(preset(0, 0)); low.preset(preset(1, 0)); e.preset(preset(1, 100));
   const soft = tone(400, 1, 0.00625), input = tone(400, 1, 0.035);
@@ -72,8 +72,24 @@ check("COMP VALVE: DRIVE adds harmonics, keeps quiet notes near unity, and obeys
   const nonlinear = (out) => (power(out, 800) + power(out, 1200)) / power(out, 400);
   assert.ok(nonlinear(wet) > 4 * nonlinear(mellow));
   assert.ok(peak(wet) < 0.9 * peak(mellow), "the valve rounds off strong peaks at higher drive");
+  const together = engine(), comp = engine();
+  together.preset(preset(1, 100, true)); comp.preset(preset(0, 100, true));
+  const both = tail(run(together, input)), compOnly = tail(run(comp, input));
+  assert.notDeepEqual(both, compOnly);
+  assert.notDeepEqual(both, wet);
   e.bypass(true);
   assert.deepEqual(run(e, input), input);
+});
+check("Global output EQ changes the audio and survives a preset change", () => {
+  const neutral = engine(), shaped = engine();
+  const input = tone(1000, 1, 0.03);
+  const flat = { hpf: 0, eq: [24, 24, 24, 24, 24], lim: 0, tails: 1, hush: 0 };
+  neutral.globals(flat);
+  shaped.globals({ ...flat, eq: [24, 24, 48, 24, 24] });
+  for (const slot of [0, 1]) {
+    neutral.factory(slot); shaped.factory(slot);
+    assert.ok(power(tail(run(shaped, input)), 1000) > 4 * power(tail(run(neutral, input)), 1000));
+  }
 });
 check("a preset change changes the spectrum", () => {
   // v70: the factory slots are placeholders (the gate only); the other sound is POLY OCT FUZZ on the SYNTH block
@@ -162,7 +178,7 @@ try {
   const state = await (await fetch(sim.url + "/api/state")).json();
   check("the pedal's preset, as the simulator reports it, is the engine's", () => {
     const e = engine(state.slot);
-    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 94);   // px_preset_t (v75: 10 blocks)
+    const memory = new Uint8Array(e.x.memory.buffer, e.x.px_preset(), 96);   // px_preset_t (v75: 10 blocks)
     assert.deepEqual([...presetBytes(state.preset)], [...memory]);
   });
   const served = await fetch(sim.url + "/sim/px_engine.wasm");

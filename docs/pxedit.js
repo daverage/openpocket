@@ -9,7 +9,10 @@ export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 
   FOCUS: 11, LIST: 12, SLOT_GET: 13, SLOT_PUT: 14, COMMIT: 15, SAVE: 16, WATCH: 17, PING: 18,
   DIAG: 23, USB_AUDIO: 28, FOOTSWITCH: 29, SHED: 30, GLOBAL: 31, TUNER: 32 };   // (19..22 and 24..27, the NAM models and IRs, retired in v70)
 // px_preset_t: a 14-byte name, then on, type, 5 settings and the order for each block (v75: 10 blocks, 94 bytes; v70: 9, 86)
-export const presetSize = (nblk = 10, npar = 5) => 14 + nblk * (3 + npar);
+export const presetSize = (nblk = 10, npar = 5, valve = false) => 14 + nblk * (3 + npar) + (valve ? 2 : 0);
+export const VALVE_ACTION = 10;
+export const VALVE_DEFAULT = 71;
+const valveValue = (v) => Math.max(0, Math.min(100, Math.round(Number(v)) || 0));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function fail(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
@@ -30,9 +33,10 @@ export function decodePreset(b, nblk = 10, npar = 5) {
   const type = [...b.slice(i, i + nblk)]; i += nblk;
   const p = []; for (let k = 0; k < nblk; k++) { p.push([...b.slice(i, i + npar)]); i += npar; }
   const order = [...b.slice(i, i + nblk)];
-  return { name, on, type, p, order };
+  i += nblk;
+  return { name, on, type, p, order, ...(b.length >= i + 2 && { valveOn: !!b[i], valveDrive: b[i + 1] }) };
 }
-export function encodePreset(q, nblk = 10, npar = 5) {
+export function encodePreset(q, nblk = 10, npar = 5, valve = false) {
   const out = [];
   const nm = cleanName(q.name);
   for (let i = 0; i < 14; i++) out.push(i < nm.length ? nm.charCodeAt(i) : 0);
@@ -40,12 +44,13 @@ export function encodePreset(q, nblk = 10, npar = 5) {
   for (let k = 0; k < nblk; k++) out.push(q.type[k] & 0x7F);
   for (let k = 0; k < nblk; k++) for (let j = 0; j < npar; j++) out.push(Math.max(0, Math.min(100, q.p[k][j] | 0)));
   for (let k = 0; k < nblk; k++) out.push(q.order[k] & 0x7F);
+  if (valve) out.push(q.valveOn ? 1 : 0, valveValue(q.valveDrive ?? VALVE_DEFAULT));
   return out;
 }
 export function cleanName(s, max = 13) {
   return String(s || "").replace(/[^\x20-\x7E]/g, "?").slice(0, max);
 }
-export const clonePreset = (q) => ({ name: q.name, on: [...q.on], type: [...q.type], p: q.p.map((r) => [...r]), order: [...q.order] });
+export const clonePreset = (q) => ({ ...q, on: [...q.on], type: [...q.type], p: q.p.map((r) => [...r]), order: [...q.order] });
 
 export class Editor {
   constructor(access, opts = {}) {
@@ -132,7 +137,7 @@ export class Editor {
 
   // ---- the catalogue: blocks, types, parameter names and value texts (cached per firmware) ----
   async catalog(progress = () => {}) {
-    const key = `openpocket-cat-${this.info.identity}-${this.info.version}`;
+    const key = `openpocket-cat-${this.info.identity}-${this.info.version}-${this.info.proto}`;
     let cached;
     try { cached = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) { }
     const blocks = [];
@@ -180,8 +185,9 @@ export class Editor {
   _state(args) {
     const r = new Reader(args);
     const slot = r.b(), flags = r.b(), focus = r.b();
-    return { slot, dirty: !!(flags & 1), saved: !!(flags & 2), focus, preset: decodePreset(r.bytes(presetSize(this.info.nblk, this.info.npar)), this.info.nblk, this.info.npar) };
+    return { slot, dirty: !!(flags & 1), saved: !!(flags & 2), focus, preset: decodePreset(r.bytes(presetSize(this.info.nblk, this.info.npar, this.hasValve)), this.info.nblk, this.info.npar) };
   }
+  get hasValve() { return !!(this.info && this.info.proto >= 10); }
   async state() { return this._state(await this.request(C.STATE)); }
   async set(block, what, k, v) { const r = await this.request(C.SET, [block, what, k, v]); return r[3]; }
   setParam(block, k, v) { return this.set(block, 0, k, v); }
@@ -189,7 +195,7 @@ export class Editor {
   setType(block, t) { return this.set(block, 2, 0, t); }
   async order(order) { return (await this.request(C.ORDER, order))[0]; }
   async name(s) { return new Reader(await this.request(C.NAME, [...cleanName(s, this.info.nameMax)].map((c) => c.charCodeAt(0)).concat([0]))).s(); }
-  async put(q) { return (await this.request(C.PUT, encodePreset(q, this.info.nblk, this.info.npar)))[0]; }
+  async put(q) { return (await this.request(C.PUT, encodePreset(q, this.info.nblk, this.info.npar, this.hasValve)))[0]; }
   async select(slot) { return (await this.request(C.SELECT, [slot]))[1]; }
   async focus(block) { await this.request(C.FOCUS, [block]); }
 
@@ -206,12 +212,12 @@ export class Editor {
   async slotGet(slot) {
     const r = new Reader(await this.request(C.SLOT_GET, [slot]));
     r.b(); const saved = !!r.b();
-    return { slot, saved, preset: decodePreset(r.bytes(presetSize(this.info.nblk, this.info.npar)), this.info.nblk, this.info.npar) };
+    return { slot, saved, preset: decodePreset(r.bytes(presetSize(this.info.nblk, this.info.npar, this.hasValve)), this.info.nblk, this.info.npar) };
   }
   // q null: back to the factory preset. commit: write the flash now
   async slotPut(slot, q, commit) {
     const args = [slot, (q ? 1 : 0) | (commit ? 2 : 0)];
-    if (q) args.push(...encodePreset(q, this.info.nblk, this.info.npar));
+    if (q) args.push(...encodePreset(q, this.info.nblk, this.info.npar, this.hasValve));
     return (await this.request(C.SLOT_PUT, args, commit ? 4000 : this.timeout))[1];
   }
   async commit() { return (await this.request(C.COMMIT, [], 4000))[0]; }
@@ -294,6 +300,7 @@ export function presetToJSON(q, cat, slot) {
     name: q.name,
     blocks: cat.blocks.map((b, i) => ({ block: b.label, on: !!q.on[i], type: b.types[q.type[i]] ? b.types[q.type[i]].name : q.type[i], params: [...q.p[i]] })),
     order: q.order.map((i) => cat.blocks[i] ? cat.blocks[i].label : i),
+    ...(q.valveOn !== undefined && { valve: { on: q.valveOn, drive: q.valveDrive } }),
   };
 }
 export function filePresets(presets) { return { format: "openpocket-presets", version: 1, presets }; }
@@ -302,12 +309,23 @@ export function filePresets(presets) { return { format: "openpocket-presets", ve
 export function presetFromJSON(o, cat, base) {
   const q = clonePreset(base), warn = [];
   q.name = cleanName(o.name || q.name);
+  if (q.valveOn !== undefined) {
+    q.valveOn = !!o.valve?.on;
+    q.valveDrive = valveValue(o.valve?.drive ?? VALVE_DEFAULT);
+  }
   const byLabel = new Map(cat.blocks.map((b, i) => [b.label, i]));
   const MOVED = ["RANGEMASTER", "EP BOOST", "MAXIMIZER", "ENHANCE"];     // v75: SFX types that live in the BST (PRE / BOOST) block now
   for (let ob of Array.isArray(o.blocks) ? o.blocks : []) {
     if (ob.block === "SFX" && MOVED.includes(ob.type) && byLabel.has("BST")) ob = { ...ob, block: "BST" };
     const i = byLabel.get(ob.block);
     if (i === undefined) { warn.push(`unknown block ${ob.block}`); continue; }
+    if (q.valveOn !== undefined && ob.block === "CMP" && (ob.type === "VALVE" || ob.type === 4)) {
+      q.valveOn = !!ob.on;
+      q.valveDrive = valveValue(ob.params?.[0] ?? VALVE_DEFAULT);
+      q.on[i] = 0;
+      q.type[i] = 0;
+      continue;
+    }
     q.on[i] = ob.on ? 1 : 0;
     let t = typeof ob.type === "number" ? ob.type : cat.blocks[i].types.findIndex((x) => x.name === ob.type);
     if (t < 0 || t >= cat.blocks[i].types.length) { warn.push(`${ob.block}: unknown type ${ob.type}`); t = q.type[i]; }

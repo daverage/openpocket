@@ -108,6 +108,30 @@ int main(void)
     CHECK(st_fs_of(6) == 0xFFu, "a factory slot: nothing assigned");
     st_ui = 0u;
 
+    /* Older format 7 saves leave the Valve bytes erased and assign its controls to COMP. */
+    {
+        const uint32_t k = 7;
+        px_preset_factory(&f, k);
+        f.type[PX_B_COMP] = PX_CMP_VALVE;
+        f.on[PX_B_COMP] = 1;
+        f.p[PX_B_COMP][0] = 82;
+        const uint8_t gestures[4] = {PX_B_COMP, PX_B_REVERB, 15u, 15u};
+        st_pack_preset(k, &f);
+        st_slot[k][ST_SLOT - 1u] = (uint8_t)(PX_B_REVERB << 4 | PX_B_COMP);
+        memcpy(&st_slot[k][ST_GS_OFF], gestures, sizeof gestures);
+        st_slot[k][ST_VALVE_OFF] = st_slot[k][ST_VALVE_OFF + 1u] = 0xFF;
+        CHECK(st_commit() == 0, "write a legacy COMP Valve preset");
+        reboot();
+        st_get(k, &q);
+        CHECK(q.valve_on && q.valve_drive == 82 && !q.on[PX_B_COMP] && q.type[PX_B_COMP] == PX_CMP_SQUASH,
+              "older stored COMP Valve becomes the dedicated input stage");
+        uint8_t migrated[4];
+        st_gs_of(k, migrated);
+        CHECK(st_fs_of(k) == (PX_B_REVERB << 4 | PX_VALVE_ACTION) && migrated[0] == PX_VALVE_ACTION && migrated[1] == PX_B_REVERB,
+              "legacy press and gesture assignments follow Valve; other assignments stay");
+        st_reset(k);
+    }
+
     /* v75: the global settings (st_cfg): defaults when the store never had them, kept across a save and a reboot, damaged -> the defaults */
     {
         reboot();

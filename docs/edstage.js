@@ -4,7 +4,8 @@
 // previous preset, a tuner (the pedal's own: it hears the guitar, the editor draws the note), a screen lock and three looks. Everything here is the pedal's
 // own state, read through the editor protocol; nothing is kept in the page except the look.
 import { app, $, h, on } from "./edcore.js";
-import { setOn } from "./edsound.js";
+import { setOn, setValveOn } from "./edsound.js";
+import { VALVE_ACTION } from "./pxedit.js";
 import { stepPreset } from "./edpresets.js";
 
 const KEY = "op-stage-look";
@@ -15,7 +16,7 @@ try { const k = localStorage.getItem(KEY); if (LOOKS.includes(k)) look = k; } ca
 
 const blockName = (b) => app.cat.blocks[b];
 const typeName = (b) => { const t = app.st.preset.type[b], B = blockName(b); return (B.types[t] && B.types[t].name) || ""; };
-const ACT = { 12: "BYPASS", 16: "Tuner", 17: "Next preset", 18: "Previous preset", 19: "STOMP / PATCH" };
+const ACT = { [VALVE_ACTION]: "Valve on / off", 12: "BYPASS", 16: "Tuner", 17: "Next preset", 18: "Previous preset", 19: "STOMP / PATCH" };
 const actName = (a) => (a === 15 || a === undefined ? "" : a < 10 ? `${blockName(a).label} on / off` : ACT[a] || "");
 
 async function readFs() {
@@ -48,11 +49,13 @@ function render() {
   }));
   const side = (i, name) => {
     if (!fs) return "";
-    const t = i ? fs.right : fs.left, b = t < app.cat.blocks.length ? t : null, g = fs.gestures || [], on_ = b !== null && !!p.on[b];
-    const what = b !== null ? `${blockName(b).label} · ${blockName(b).name}` : t === 12 ? "BYPASS" : "Nothing";
-    return h("button", { type: "button", class: `st-fs${on_ ? " on" : ""}${t === 12 && fs.bypass ? " on" : ""}`, disabled: locked || (b === null), style: b !== null ? `--c:${blockName(b).color}` : "", onclick: () => b !== null && setOn(b, !p.on[b]) },
+    const t = i ? fs.right : fs.left, b = t < app.cat.blocks.length ? t : null, g = fs.gestures || [];
+    const valve = app.ed?.hasValve && t === VALVE_ACTION;
+    const on_ = valve ? !!p.valveOn : b !== null && !!p.on[b];
+    const what = valve ? "Valve" : b !== null ? `${blockName(b).label} · ${blockName(b).name}` : t === 12 ? "BYPASS" : "Nothing";
+    return h("button", { type: "button", class: `st-fs${on_ ? " on" : ""}${t === 12 && fs.bypass ? " on" : ""}`, disabled: locked || (!valve && b === null), style: b !== null ? `--c:${blockName(b).color}` : "", onclick: () => valve ? setValveOn(!on_) : setOn(b, !on_) },
       h("small", { text: name }), h("b", { text: what }),
-      h("span", { text: fs.stomp ? (b !== null ? (on_ ? "ON" : "OFF") : t === 12 ? (fs.bypass ? "BYPASSED" : "") : "") : "PATCH: changes the preset" }),
+      h("span", { text: fs.stomp ? (valve || b !== null ? (on_ ? "ON" : "OFF") : t === 12 ? (fs.bypass ? "BYPASSED" : "") : "") : "PATCH: changes the preset" }),
       h("em", { text: [g[i * 2] !== undefined && actName(g[i * 2]) ? `Double: ${actName(g[i * 2])}` : "", g[i * 2 + 1] !== undefined && actName(g[i * 2 + 1]) ? `Hold: ${actName(g[i * 2 + 1])}` : ""].filter(Boolean).join("  ·  ") }));
   };
   const feet = h("div", { class: "st-feet" }, side(0, "Left footswitch"), side(1, "Right footswitch"));

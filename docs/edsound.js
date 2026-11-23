@@ -4,21 +4,23 @@
 
 import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName, toast } from "./edcore.js";
 import { costPct } from "./pxcost.js";
+import { VALVE_ACTION } from "./pxedit.js";
 import { save, saveAs, revert, exportOne, setCompare, comparing, duplicate, moveTo, restoreFactory } from "./edpresets.js";
 
 let dragging = null;
 // v75: the footswitches in STOMP mode (protocol 5): the pedal's own state, read after every change that reaches us (its state frames carry a hash of it)
 let fs = null;
 const FS_NONE = 15, FS_BYP = 12;
+const valveOption = (label) => app.ed?.hasValve ? [[VALVE_ACTION, label]] : [];
 // v75: the gestures (protocol 9): a double tap (in STOMP mode) and a hold of each footswitch, each an action
 const GEST = [["ldbl", "Left: double tap"], ["lhold", "Left: hold"], ["rdbl", "Right: double tap"], ["rhold", "Right: hold"]];
 function gestOptions(sel, v) {
   sel.textContent = "";
-  const opts = [[FS_NONE, "Nothing"], ...app.cat.blocks.map((B, i) => [i, `Switch ${B.label} on / off`]), [FS_BYP, "BYPASS on / off"], [16, "The tuner"], [17, "Next preset"], [18, "Previous preset"], [19, "STOMP / PATCH mode"]];
+  const opts = [[FS_NONE, "Nothing"], ...valveOption("Switch Valve on / off"), ...app.cat.blocks.map((B, i) => [i, `Switch ${B.label} on / off`]), [FS_BYP, "BYPASS on / off"], [16, "The tuner"], [17, "Next preset"], [18, "Previous preset"], [19, "STOMP / PATCH mode"]];
   for (const [value, text] of opts) sel.append(h("option", { value, text }));
   sel.value = opts.some(([x]) => x === v) ? v : FS_NONE;
 }
-const fsValid = (v) => (v < app.cat.blocks.length || v === FS_BYP ? v : FS_NONE);   // a block or BYPASS; an older pedal may report 10 or 11, which are not blocks
+const fsValid = (v) => (v < app.cat.blocks.length || v === FS_BYP || (app.ed?.hasValve && v === VALVE_ACTION) ? v : FS_NONE);
 async function refreshFs() {
   if (!app.ed || !app.ed.hasFootswitch) { fs = null; renderFs(); return; }
   try { fs = await app.ed.footswitch(); } catch (_) { return; }
@@ -26,7 +28,7 @@ async function refreshFs() {
 }
 function fsOptions(sel, v) {
   sel.textContent = "";
-  for (const [value, text] of [...app.cat.blocks.map((B, i) => [i, `${B.label} · ${B.name}`]), [FS_BYP, "BYPASS (the dry guitar)"], [FS_NONE, "Nothing"]]) sel.append(h("option", { value, text }));
+  for (const [value, text] of [...valveOption("Valve"), ...app.cat.blocks.map((B, i) => [i, `${B.label} · ${B.name}`]), [FS_BYP, "BYPASS (the dry guitar)"], [FS_NONE, "Nothing"]]) sel.append(h("option", { value, text }));
   sel.value = v;
 }
 function renderFs() {
@@ -36,6 +38,7 @@ function renderFs() {
   const sw = $("stomp"), cmp = comparing();
   sw.setAttribute("aria-checked", fs.stomp ? "true" : "false");
   sw.querySelector("span").textContent = fs.stomp ? "Stomp" : "Patch";
+  $("fsmode").textContent = fs.bypass ? "Bypassed" : fs.stomp ? "Stomp" : "Patch";
   if (document.activeElement !== $("fsl")) fsOptions($("fsl"), fsValid(fs.left));
   if (document.activeElement !== $("fsr")) fsOptions($("fsr"), fsValid(fs.right));
   document.querySelectorAll("#fsrow [data-gest]").forEach((el) => { el.hidden = !fs.gestures; });   // an older pedal has no gestures
@@ -44,7 +47,7 @@ function renderFs() {
   st.textContent = fs.bypass ? "BYPASSED: the dry guitar" : "";
   st.className = `fsstate${fs.bypass ? " byp" : ""}`;
   const help = $("fshelp");
-  help.textContent = fs.stomp ? "Each footswitch switches its block on and off. Both together open the tuner."
+  help.textContent = fs.stomp ? "Each footswitch toggles its assignment. Both together open the tuner."
     : "The footswitches change the preset. The assignments are kept for Stomp mode.";
   row.inert = cmp;
 }
@@ -53,11 +56,38 @@ function setFs(set) {
   act(async () => { fs = await app.ed.footswitch(set); await sync(); renderFs(); renderTiles(); });
 }
 
+function valveDb(value) {
+  const db = Math.round(24 * (value / 100) ** 2);
+  return `${db ? "+" : ""}${db} dB`;
+}
+function renderValve() {
+  const row = $("valverow"), p = app.st?.preset;
+  row.hidden = !app.ed?.hasValve || !p;
+  if (row.hidden) return;
+  const sw = $("valveon"), input = $("valvedrive"), on = p.valveOn ? "On" : "Off";
+  sw.setAttribute("aria-checked", String(!!p.valveOn));
+  sw.querySelector("span").textContent = on;
+  if (document.activeElement !== input) input.value = p.valveDrive;
+  const db = valveDb(+input.value);
+  $("valvedb").textContent = db;
+  $("valvesummary").textContent = `${on} · ${db}`;
+  input.setAttribute("aria-valuetext", db);
+  $("valvecontrols").inert = comparing();
+}
+export function setValveOn(on) {
+  if (!app.ed?.hasValve || comparing()) return;
+  return act(async () => {
+    await app.ed.setOn(VALVE_ACTION, on);
+    await sync();
+  });
+}
+
 // ---- live editing (also what a learned MIDI control calls) ----
 let pendingParam = null, sendingParam = false;
 export function sendParam(b, k, v) {
   if (!app.ed || comparing()) return;
-  app.st.preset.p[b][k] = v;
+  if (b === VALVE_ACTION) app.st.preset.valveDrive = v;
+  else app.st.preset.p[b][k] = v;
   pendingParam = { b, k, v };
   if (!sendingParam) flushParam();
 }
@@ -299,8 +329,11 @@ function showVal(k) {
 function renderNote() { $("blocknote").hidden = true; }
 
 export function initSound() {
-  on("state", (o) => { if (!app.st) return; renderHeader(); if (!o.own) { renderTiles(); renderPage(o.push); } if (!o.own) refreshFs(); });
-  on("compare", () => { renderHeader(); renderTiles(); renderPage(); renderFs(); });
+  on("state", (o) => { if (!app.st) return; renderHeader(); renderValve(); if (!o.own) { renderTiles(); renderPage(o.push); } if (!o.own) refreshFs(); });
+  on("compare", () => { renderHeader(); renderTiles(); renderPage(); renderFs(); renderValve(); });
+  $("valveon").onclick = () => setValveOn(!app.st.preset.valveOn);
+  $("valvedrive").oninput = (e) => { sendParam(VALVE_ACTION, 0, +e.target.value); renderValve(); };
+  $("valvedrive").onblur = renderValve;
   $("stomp").onclick = () => setFs({ stomp: $("stomp").getAttribute("aria-checked") !== "true" });
   $("fsl").onchange = () => setFs({ left: +$("fsl").value });
   $("fsr").onchange = () => setFs({ right: +$("fsr").value });

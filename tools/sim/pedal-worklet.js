@@ -18,6 +18,7 @@ class PedalProcessor extends AudioWorkletProcessor {
     this.load = 0;
     this.port.onmessage = ({ data }) => {
       if (data.preset) { this.engine.preset(data.preset); this.heard = data.name; }
+      if (data.global) this.engine.globals(data.global);
       if (data.volume !== undefined) this.engine.volume(data.volume);
       if (data.bypass !== undefined) this.engine.bypass(data.bypass);
       if (data.tunerMute !== undefined) this.engine.tunerMute(data.tunerMute);

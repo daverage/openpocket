@@ -17,7 +17,7 @@
  *
  * Controls (ui_buttons, ui_turn and ui_action below: the main loop and the simulator both use them):
  * KNOB = select / adjust; PUSH = open / edit / confirm; HOME = back to PLAY, on PLAY the preset list (v42), hold 0.7 s =
- * tuner, held on = diagnostics; FOOTSWITCHES = next / previous preset, both together = tuner (v42);
+ * tuner, release and hold again = GLOBAL; FOOTSWITCHES = next / previous preset, both together = tuner (v42);
  * AMP CAB DLY REV MOD = that block's page (press again = on/off); FX = the next of GT, BST, CMP, SFX, EQ in the
  * preset's chain order (v42). Hold PUSH = SAVE (into one of the 52 slots, in flash). Hold FX = MIDI.
  * Double-click PUSH on PLAY = MOVE the selected block: KNOB moves it along the chain, PUSH drops it, HOME puts it back.
@@ -29,7 +29,7 @@
  */
 #pragma once
 
-enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG };
+enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_VALVE, M_GLOBAL };
 static uint32_t st_gen;                 /* bumped on each save: the "EDITED" reference reloads */
 static void st_get(uint32_t k, px_preset_t *p);
 static int st_save(uint32_t k, const px_preset_t *p);
@@ -43,6 +43,11 @@ static int st_saved(uint32_t k);
 static void save_draw(void);
 static void midi_draw(void);
 static void list_draw(void);
+static void global_open(void);
+static void global_draw(void);
+static void global_turn(int dd, int fast);
+static void global_push(void);
+static void global_back(void);
 static uint32_t ui_mode = M_CHAIN, ui_blk = PX_B_SYN, ui_item = 0;
 #define UI_PAGE (ui_mode == M_BLOCK || ui_mode == M_EDIT)   /* the block page has the focus */
 
@@ -171,15 +176,15 @@ static int ui_dirty(void)              /* the preset differs from what its slot 
 static uint8_t ui_gs[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 static int ui_gs_diff(void) { uint8_t s[4]; st_gs_of(cur_preset, s); return memcmp(s, ui_gs, 4) != 0; }
 enum { UI_GA_TUNER = 16, UI_GA_NEXT = 17, UI_GA_PREV = 18, UI_GA_MODE = 19 };
-static int ui_ga_valid(uint32_t a) { return a < PX_NBLK || a == 12u || (a >= UI_GA_TUNER && a <= UI_GA_MODE); }
+static int ui_ga_valid(uint32_t a) { return a < PX_NBLK || a == PX_VALVE_ACTION || a == 12u || (a >= UI_GA_TUNER && a <= UI_GA_MODE); }
 /* v48: STOMP mode (the footswitches' assignment: below, at ui_fs_toggle) */
 #define UI_FS_BYP  12u
 #define UI_FS_NONE 15u
 #define UI_HOLD_CAB 800u               /* hold CAB: STOMP mode on / off */
 static uint8_t ui_stomp, ui_byp;       /* STOMP mode; BYPASS engaged (the main loop hands it to the audio) */
-static int ui_fs_valid(uint32_t t) { return t < PX_NBLK || t == UI_FS_BYP; }   /* a footswitch assignment: a block or BYPASS (else nothing) */
+static int ui_fs_valid(uint32_t t) { return t < PX_NBLK || t == PX_VALVE_ACTION || t == UI_FS_BYP; }
 static uint32_t ui_fs_get(int i) { uint32_t t = (uint32_t)(ui_fs >> (4 * i)) & 15u; return ui_fs_valid(t) ? t : UI_FS_NONE; }   /* (v75: 10 blocks, 0..9; 10 and 11 were accepted by the editor of v48..v74 but never meant: nothing; a stored 9 is cleared by st_migrate6) */
-static const char *ui_fs_name(uint32_t t) { return t < PX_NBLK ? px_block_label((int)t) : t == UI_FS_BYP ? "BYP" : "---"; }
+static const char *ui_fs_name(uint32_t t) { return t < PX_NBLK ? px_block_label((int)t) : t == PX_VALVE_ACTION ? "VLV" : t == UI_FS_BYP ? "BYP" : "---"; }
 static void draw_status(int force)
 {
     if (uc.screen != 0) return;        /* (EDIT: its band takes the top) */
@@ -216,7 +221,7 @@ static int ui_load_kind(uint32_t l, int safe, int bypass, int late, int loading)
 }
 static void ui_status(const char *s, int kind)
 {
-    if (ui_mode == M_TUNER || ui_mode == M_SAVE || ui_mode == M_MIDI || ui_mode == M_LIST || ui_mode == M_DIAG) return;
+    if (ui_mode == M_TUNER || ui_mode == M_SAVE || ui_mode == M_MIDI || ui_mode == M_LIST || ui_mode == M_DIAG || ui_mode == M_GLOBAL) return;
     int same = uc.status_kind == kind;
     for (int i = 0; i < 12; i++) { if (uc.status[i] != s[i]) same = 0; if (!s[i]) break; }
     if (same && !uc.full) return;
@@ -446,12 +451,32 @@ static void draw_edit(int force)
 }
 
 /* ---- render: sends only what changed to the screen ---- */
+static void ui_valve_draw(void)
+{
+    static unsigned shown;
+    const unsigned state = PRESET.valve_drive | (unsigned)PRESET.valve_on << 8;
+    if (uc.screen != 2 || uc.full) {
+        uc.screen = 2; uc.full = 0; shown = ~0u;
+        lcd_rect(0, 0, 240, 240, UI_BG);
+        ft_box(0, 4, 240, "VALVE INPUT", &FT_MD, BLK, UI_ACC, 1);
+        ft_box(0, F_Y + 3u, 240, "KNOB: DRIVE    PUSH: ON/OFF", &FT_SM, UI_DIM, UI_PANEL, 1);
+    }
+    if (shown == state) return;
+    shown = state;
+    char text[16] = "DRIVE ";
+    b_num(text, (unsigned)px_valve_drive_db(PRESET.valve_drive));
+    b_str(text, " DB");
+    ft_box(0, 66, 240, PRESET.valve_on ? "ON" : "OFF", &FT_MD, UI_ACC, UI_BG, 1);
+    ft_box(0, 110, 240, text, &FT_MD, UI_TXT, UI_BG, 1);
+}
 static void ui_render(void)
 {
     if (ui_mode == M_TUNER || ui_mode == M_DIAG) return;   /* (the main loop draws them every 100 ms: tuner_draw, diag_draw) */
     if (ui_mode == M_SAVE) { save_draw(); return; }
     if (ui_mode == M_MIDI) { midi_draw(); return; }
     if (ui_mode == M_LIST) { list_draw(); return; }
+    if (ui_mode == M_VALVE) { ui_valve_draw(); return; }
+    if (ui_mode == M_GLOBAL) { global_draw(); return; }
     int scr = UI_PAGE ? 1 : 0;
     if (scr != uc.screen) { uc.screen = scr; uc.full = 1; }
     int f = uc.full;
@@ -538,6 +563,7 @@ static void ui_knob(int dd, int fast)
 }
 static void ui_push(void)
 {
+    if (ui_mode == M_VALVE) { PRESET.valve_on ^= 1u; return; }
     if (ui_mode == M_MOVE) { ui_move_drop(); return; }
     if (ui_mode == M_CHAIN) { ui_mode = M_BLOCK; ui_item = 0; }
     else if (ui_mode == M_BLOCK) {
@@ -723,7 +749,7 @@ static void ui_preset_step(int dd)
     int n = px_preset_count();
     ui_goto((uint32_t)(((int)cur_preset + n + dd) % n));
     ui_stepped = dd;
-    if (UI_PAGE || ui_mode == M_LIST) { ui_mode = M_CHAIN; ui_item = 0; }   /* a footswitch on a block page goes back to PLAY, where the preset shows */
+    if (UI_PAGE || ui_mode == M_LIST || ui_mode == M_VALVE) { ui_mode = M_CHAIN; ui_item = 0; }
 }
 /* the FX button's blocks (the FX light follows them: px_lights.h) */
 /* v70: FX is INPUT / TONE / UTILITY: the gate, the compressor, the special effects and the EQ; v75: and PRE / BOOST (BST) */
@@ -733,12 +759,12 @@ static int ui_is_fx(uint32_t b) { for (int i = 0; i < UI_NFX; i++) if (UI_FXB[i]
 static void ui_fx_cycle(void)          /* FX: the next of its blocks along the preset's chain, as the tiles read (v42), else the first */
 {
     ui_order_fix();
-    int from = ui_is_fx(ui_blk) ? ui_pos_of(ui_blk) + 1 : 0;
-    for (int i = 0; i < PX_NBLK; i++) {
-        uint32_t b = PRESET.order[(from + i) % PX_NBLK];
-        if (ui_is_fx(b)) { ui_blk = b; break; }
+    int from = ui_mode != M_VALVE && ui_is_fx(ui_blk) ? ui_pos_of(ui_blk) + 1 : 0;
+    for (int i = from; i < PX_NBLK; i++) {
+        uint32_t b = PRESET.order[i];
+        if (ui_is_fx(b)) { ui_blk = b; ui_mode = M_BLOCK; ui_item = 0; return; }
     }
-    ui_mode = M_BLOCK; ui_item = 0;
+    ui_mode = M_VALVE; ui_item = 0;
 }
 
 
@@ -823,7 +849,7 @@ static void tuner_open(void)
     ft_box(100, TN_BAR_Y + 18u, 40, "0", &FT_SM, UI_DIM, UI_BG, 1);
     ft_box(190, TN_BAR_Y + 18u, 40, "+50", &FT_SM, UI_DIM, UI_BG, 1);
     lcd_rect(0, F_Y, 240, 240u - F_Y, UI_PANEL);
-    ft_box(0, F_Y + 3u, 240, "KNOB: A REF   ANY SWITCH: EXIT", &FT_SM, UI_DIM, UI_PANEL, 1);
+    ft_box(0, F_Y + 3u, 240, "KNOB: A REF   HOLD HOME: GLOBAL", &FT_SM, UI_DIM, UI_PANEL, 1);
     tn_last_note = -2; tn_last_x = -1; tn_last_c = 1000; tn_last_dir = 2; tn_in_tune = 0; tn_last_ok = -1; ui_tn_fresh = 1;
 }
 static void tuner_close(void) { ui_tn_have = 0; a_tmute = 0; ui_mode = M_CHAIN; lcd_rect(0, 0, 240, 240, UI_BG); uc.screen = -1; ui_invalidate(); }
@@ -1067,7 +1093,7 @@ static void diag_draw(void) { if (dg_page) diag_power(); else diag_dsp(); }
 enum { UB_FSUP, UB_FSDN, UB_PUSH, UB_HOME, UB_FX, UB_MOD, UB_AMP, UB_CAB, UB_DLY, UB_REV, UB_N };   /* a button: bit 1 << UB_x */
 enum { UA_SAVE = UB_N, UA_MOVE, UA_TUNER, UA_MIDI, UA_FEET, UA_STOMP };   /* the gestures (a button's plain press is its UB_x) */
 #define UI_HOLD_PUSH 800u              /* hold PUSH: SAVE */
-#define UI_HOLD_HOME 700u              /* hold HOME: the tuner; held on as long again: the diagnostics */
+#define UI_HOLD_HOME 700u              /* hold HOME: the tuner; release and hold again for GLOBAL */
 #define UI_HOLD_FX   800u              /* hold FX: MIDI */
 #define UI_CLICK2    350u              /* PUSH again within this, after a click opened a block from PLAY: MOVE that block */
 #define UI_FEET      150u              /* the other footswitch within this: both, the tuner */
@@ -1090,6 +1116,7 @@ static void ui_fs_toggle(int i)        /* a footswitch in STOMP mode: what it is
 {
     uint32_t t = ui_fs_get(i);
     if (t < PX_NBLK) PRESET.on[t] ^= 1u;
+    else if (t == PX_VALVE_ACTION) PRESET.valve_on ^= 1u;
     else if (t == UI_FS_BYP) ui_byp ^= 1u;
     ui_stepped = t == UI_FS_NONE ? 0 : 1;           /* (both footswitches take a toggle back, as they take a step back) */
 }
@@ -1105,11 +1132,11 @@ static void ui_fs_assign(int i, int b)
     uint32_t t;
     if (b == UB_FX) {
         /* v70: every block (v75: ten, BST last), then BYPASS, then nothing */
-        static const uint8_t STEP[PX_NBLK + 2] = {PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
-                                                  PX_B_DELAY, PX_B_REVERB, UI_FS_BYP, UI_FS_NONE};
+        static const uint8_t STEP[] = {PX_VALVE_ACTION, PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD,
+                                       PX_B_DELAY, PX_B_REVERB, UI_FS_BYP, UI_FS_NONE};
         uint32_t cur = ui_fs_get(i); int k = 0;
-        for (int q = 0; q < PX_NBLK + 2; q++) if (STEP[q] == cur) { k = q + 1; break; }
-        t = STEP[k % (PX_NBLK + 2)];
+        for (unsigned q = 0; q < sizeof STEP; q++) if (STEP[q] == cur) { k = (int)q + 1; break; }
+        t = STEP[(unsigned)k % sizeof STEP];
     } else t = BLK_OF[b - UB_MOD];
     ui_fs_put(i, t);
 }
@@ -1119,7 +1146,8 @@ static void ui_action(int a)
     switch (ui_mode) {
     case M_SAVE: if (a == UB_PUSH) save_confirm(); else if (a == UB_HOME) save_close(); return;
     case M_MIDI: if (a == UB_PUSH) midi_push(); else if (a == UB_HOME) midi_close(); return;
-    case M_TUNER: if (a == UA_TUNER) diag_open(); else tuner_close(); return;   /* any control leaves; HOME held on: diagnostics */
+    case M_TUNER: if (a == UA_TUNER) global_open(); else tuner_close(); return;
+    case M_GLOBAL: if (a == UB_PUSH) global_push(); else if (a == UB_HOME) global_back(); return;
     case M_DIAG: if (a != UA_TUNER) diag_close(); return;
     case M_MOVE: if (a == UB_PUSH) ui_move_drop(); else if (a == UB_HOME) ui_move_cancel(); return;
     }
@@ -1142,6 +1170,7 @@ static void ui_gesture(uint8_t a)
 {
     if (!ui_ga_valid(a)) return;
     if (a < PX_NBLK) PRESET.on[a] ^= 1u;
+    else if (a == PX_VALVE_ACTION) PRESET.valve_on ^= 1u;
     else if (a == 12u) ui_byp ^= 1u;
     else if (a == UI_GA_TUNER) ui_action(UA_TUNER);
     else if (a == UI_GA_NEXT) ui_preset_step(+1);
@@ -1156,10 +1185,16 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
     else if (ui_mode == M_LIST) list_knob(dd);
     else if (ui_mode == M_DIAG) diag_turn();
     else if (ui_mode == M_TUNER) tuner_ref_turn(dd);              /* v75: the reference A */
+    else if (ui_mode == M_GLOBAL) global_turn(dd, fast);
+    else if (ui_mode == M_VALVE) {
+        const int drive = (int)PRESET.valve_drive + dd * (fast ? 5 : 1);
+        PRESET.valve_drive = (uint8_t)(drive < 0 ? 0 : drive > 100 ? 100 : drive);
+    }
     else ui_knob(dd, fast);
 }
 static void ui_press(int b, uint32_t now)   /* a button's plain press: at its press, PUSH HOME FX at a short release */
 {
+    if (ui_mode == M_GLOBAL) { ui_action(b); return; }
     if (b == UB_FSUP || b == UB_FSDN) {        /* v42: both footswitches = the tuner. The first acts at once, as always; the
                                                 * other one soon after, while the first is still down, takes its step back
                                                 * and opens the tuner */
@@ -1211,18 +1246,18 @@ static void ui_buttons(uint32_t now, uint32_t held)   /* every pass: which butto
             ug.t[b] = now; ug.fired[b] = 0;
             if (fsw) memcpy(ug.gs, ui_gs, 4);
             if (!timed) ui_press(b, now);
-            if (fsw && ui_mode != M_TUNER && ui_mode != M_DIAG) {       /* v75: a double tap (in STOMP mode: the two toggles cancel, then the action) */
+            if (fsw && ui_mode != M_TUNER && ui_mode != M_DIAG && ui_mode != M_GLOBAL) { /* v75: a double tap in STOMP mode */
                 const int i = ui_fs_idx(b);
                 if (ug.fs != b) { ug.gt[0] = ug.gt[1] = 0; }             /* (both footswitches: the tuner; no tap of either counts) */
                 else if (ug.gt[i] && now - ug.gt[i] < UI_DTAP && ui_stomp && ui_ga_valid(ug.gs[2 * i])) { ug.gt[i] = 0; ui_gesture(ug.gs[2 * i]); }
                 else ug.gt[i] = now;
             }
         }
-        else if (timed && (held >> b & 1u) && (b == UB_HOME || !ug.fired[b]) && now - ug.t[b] >= hold) {
-            ug.fired[b] = 1; ug.t[b] = now; ug.clk = 0;              /* (HOME: each further hold as long goes one page on) */
+        else if (timed && (held >> b & 1u) && !ug.fired[b] && now - ug.t[b] >= hold) {
+            ug.fired[b] = 1; ug.clk = 0;
             ui_action(b == UB_PUSH ? UA_SAVE : b == UB_HOME ? UA_TUNER : b == UB_CAB ? UA_STOMP : UA_MIDI);
         }
-        else if (fsw && (held >> b & 1u) && !ug.fired[b] && ug.fs == b && !ug.fs_set && ui_mode != M_TUNER && ui_mode != M_DIAG &&
+        else if (fsw && (held >> b & 1u) && !ug.fired[b] && ug.fs == b && !ug.fs_set && ui_mode != M_TUNER && ui_mode != M_DIAG && ui_mode != M_GLOBAL &&
                  ui_ga_valid(ug.gs[2 * ui_fs_idx(b) + 1]) && now - ug.t[b] >= UI_HOLD_FS) {   /* v75: a hold: the press's own step is taken back, then the action */
             const int i = ui_fs_idx(b);
             ug.fired[b] = 1; ug.gt[i] = 0;

@@ -49,6 +49,10 @@ static int midi_saved;
 static void midi_persist(void) { midi_saved++; }
 #include "ui_text.h"
 #include "ui.h"
+static struct { px_global_t g; uint8_t lights; } st_cfg = {{0, {24, 24, 24, 24, 24}, 0, 1, 0}, 1};
+static void audio_globals(const px_global_t *g) { (void)g; }
+static int st_commit(void) { return 0; }
+#include "ui_global.h"
 static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); }   /* (v75: and its gestures) */
 
 static void shot(const char *dir, const char *name)
@@ -221,11 +225,18 @@ static int overhaul(const char *d)
     CHECK(ui_mode == M_CHAIN && cur_preset == 9, "F5: footswitches 200 ms apart are two presses");
     tap(UB_FSUP); tap(UB_FSDN); hold(0, 200);
     CHECK(ui_mode == M_CHAIN && cur_preset == 9, "F5: one footswitch released before the other goes down: two presses");
-    /* F12: hold HOME: the tuner; held on: the diagnostics (the photo the release notes ask for), with the sound on */
+    /* F12: hold HOME for the tuner, then release and hold again for global settings. */
     hold(1u << UB_HOME, 750); CHECK(ui_mode == M_TUNER, "hold HOME 0.7 s: the tuner");
+    hold(1u << UB_HOME, 700); CHECK(ui_mode == M_TUNER, "F12: one continuous hold stays on the tuner");
+    hold(0, 5); hold(1u << UB_HOME, 750); hold(0, 5);
+    CHECK(ui_mode == M_GLOBAL && !a_tmute, "F12: a second hold opens Global and restores audio");
     poison();
-    hold(1u << UB_HOME, 700); CHECK(ui_mode == M_DIAG && !a_tmute, "F12: HOME held on: the diagnostics, the sound on");
-    hold(0, 5); CHECK(ui_mode == M_DIAG, "the release leaves the diagnostics open");
+    ui_render(); shot(d, "global");
+    tap(UB_PUSH); poison(); ui_render(); shot(d, "global_output_eq");
+    tap(UB_PUSH); ui_turn(1, 0); CHECK(st_cfg.g.eq[0] == 25, "Global: adjust the selected output EQ band in half-dB steps");
+    tap(UB_HOME); CHECK(ui_mode == M_GLOBAL && !gl_eq_page, "Global: HOME returns from EQ to the list");
+    ui_turn(GL_DIAG, 0); tap(UB_PUSH);
+    CHECK(ui_mode == M_DIAG && !a_tmute, "F12: diagnostics opens from the Global list");
     if (diagnostics(d)) return 1;
     tap(UB_FX); CHECK(ui_mode == M_CHAIN, "any control leaves the diagnostics");
     full();
@@ -279,7 +290,11 @@ static int overhaul(const char *d)
         CHECK(ui_mode == M_BLOCK && ui_is_fx(ui_blk) && pos > last, "F10: FX goes on along the chain");
         last = pos;
     }
-    tap(UB_FX); CHECK(ui_blk == PRESET.order[0] || ui_pos_of(ui_blk) < 3, "F10: after the last, FX starts again from the first");
+    tap(UB_FX); CHECK(ui_mode == M_VALVE, "F10: the Valve page follows the utility blocks");
+    poison(); ui_invalidate(); ui_render(); shot(d, "valve_input_off");
+    tap(UB_PUSH); ui_turn(8, 0); ui_render(); shot(d, "valve_input_on");
+    CHECK(PRESET.valve_on && PRESET.valve_drive == PX_VALVE_DEFAULT + 8, "F10: PARA switches Valve and changes Drive");
+    tap(UB_FX); CHECK(ui_mode == M_BLOCK && ui_pos_of(ui_blk) < 3, "F10: after Valve, FX starts again from the first utility block");
     /* F17: SYN's page is SYNTH. v50 gave NOISE GATE a second model (SMART GATE), so no block has a single
      * model any more: check the other side, a block of several models shows its arrows */
     CHECK(!strcmp(ui_block_name(PX_B_SYN), "SYNTH"), "F17: SYN's page is SYNTH");
@@ -344,7 +359,8 @@ static int gestures(void)
     ui_gs[1] = UI_GA_TUNER; GCHECK(ui_dirty(), "a gesture set: the preset reads EDITED");
     st_save_fsg(9, &PRESET, ui_fs, ui_gs); load_preset(9);
     GCHECK(ui_gs[1] == UI_GA_TUNER && !ui_dirty(), "saved with the slot: back after loading it, not edited");
-    GCHECK(!ui_ga_valid(10) && !ui_ga_valid(11) && !ui_ga_valid(20) && ui_ga_valid(PX_B_BST) && ui_ga_valid(12) && ui_ga_valid(UI_GA_MODE), "action codes: blocks, BYPASS (12), 16..19; 10, 11, 20 and 0xFF are nothing");
+    GCHECK(ui_ga_valid(PX_VALVE_ACTION) && !ui_ga_valid(11) && !ui_ga_valid(20) && !ui_ga_valid(0xFF) &&
+           ui_ga_valid(PX_B_BST) && ui_ga_valid(12) && ui_ga_valid(UI_GA_MODE), "action codes include Valve alongside the blocks and other actions");
     st_reset(9); st_gen++; load_preset(9); cur_preset = 9; ui_stomp = 0; ui_byp = 0; hold(0, 300);
 #undef GCHECK
     return bad;

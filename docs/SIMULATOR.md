@@ -38,8 +38,8 @@ is one request; `POST down` and `POST up` have the firmware's.
 
 `http://127.0.0.1:8766/` is the pedal: its front panel, drawn in code (`tools/sim/pedal.html`), with the live screen in
 the LCD. It works as the pedal does, through `POST down` and `POST up`: a button acts when the firmware's does, so hold
-HOME 0.7 s for the tuner (1.4 s for the diagnostics), press both footswitches together for the tuner, hold PARA 0.8 s
-for SAVE, click PARA twice for MOVE.
+HOME 0.7 s for the tuner, then release and hold it again for **Global**. Select **Diagnostics** at the bottom of Global.
+Press both footswitches together to open the tuner. Hold PARA for 0.8 s to open SAVE, or click PARA twice to open MOVE.
 
 | Control | Mouse or touch | Keys |
 | --- | --- | --- |
@@ -152,8 +152,8 @@ before it is answered, so a state read right after a press shows the press.
 | --- | --- |
 | `GET info` | `{kind: "pedal" \| "update", port, flash, controls, log}`; `port` is the MIDI port name, `null` when none |
 | `GET state` | the pedal's state (below) |
-| `POST press/NAME` | a control: `fs_up` `fs_dn` `fx` `home` `push` `mod` `amp` `cab` `dly` `rev`; `push_long` (hold PUSH: SAVE), `dpush` (double click PUSH: MOVE), `home_long` (hold HOME: tuner; on the tuner: diagnostics), `fx_long` (hold FX: MIDI), `feet` (both footswitches: tuner) |
-| `POST down/NAME`, `POST up/NAME` | a button goes down, comes up: `fs_up` `fs_dn` `fx` `home` `push` `mod` `amp` `cab` `dly` `rev`. Timed as the firmware does (`ui_buttons` in `firmware/ui.h`): HOME, PUSH and FX act at a short release, or after 0.7 s, 0.8 s and 0.8 s held (HOME held on as long again: the diagnostics); a PUSH click on the chain opens the block at once and a second one within 350 ms makes it MOVE; the others act when they go down; the second footswitch down within 150 ms of the first, while the first is held, takes the first one's step back and opens the tuner. A button already down, or not down, is left as it is |
+| `POST press/NAME` | a control: `fs_up` `fs_dn` `fx` `home` `push` `mod` `amp` `cab` `dly` `rev`; `push_long` (hold PUSH for SAVE), `dpush` (double click PUSH for MOVE), `home_long` (hold HOME for the tuner, or for Global when already on the tuner), `fx_long` (hold FX for MIDI), `feet` (both footswitches for the tuner) |
+| `POST down/NAME`, `POST up/NAME` | a button goes down, comes up: `fs_up` `fs_dn` `fx` `home` `push` `mod` `amp` `cab` `dly` `rev`. HOME, PUSH and FX act at a short release, or after a continuous hold of 0.7 s, 0.8 s and 0.8 s, respectively. Release HOME and hold it again to go from the tuner to Global. A PUSH click on the chain opens the block and a second one within 350 ms opens MOVE. Other buttons act when they go down. Press both footswitches within 150 ms to cancel the first one's step and open the tuner. |
 | `POST knob/N[?fast]` | the PARA knob N detents (negative: the other way); `fast` is the quick-turn step of 5 |
 | `POST volume/N` | the MASTER knob, 0..100 |
 | `POST battery/MV[/USB_MV]` | the battery voltage the screen shows; `USB_MV` above 4300 shows "USB" |
@@ -180,7 +180,7 @@ before it is answered, so a state read right after a press shows the press.
 ```
 
 `slot` is 0..51 (the pedal shows 1..52); `dirty`: the sound differs from its slot (the pedal's "EDITED"); `saved`: the
-slot holds a saved preset (0: factory); `mode`: the page, one of `chain` `block` `edit` `tuner` `save` `move` `midi` `list` (the preset list) `diag` (diagnostics); `block`:
+slot holds a saved preset (0: factory); `mode`: the page, one of `chain` `block` `edit` `tuner` `save` `move` `midi` `list` `diag` `valve` `global`; `block`:
 the focused block (0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 7 EQ, 8 MOD, 9 DELAY, 10 REVERB, 11 SYN);
 `writes_ok` is 0 once the firmware tried to write outside the preset area of the flash; `frame` counts the drawing
 calls: it changes when the screen does; `knob`: the detents PARA has turned since the start; `held`: the buttons that are

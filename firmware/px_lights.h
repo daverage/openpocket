@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * OpenPocket — what the button lights show (issue #8). px_leds.h drives them; this decides them, once per main-loop
  * pass, from the preset being played:
- *   FX                          lit while any block of the FX button's group is on (UI_FXB: gate, BST, comp, SFX, EQ)
+ *   FX                          lit while Valve or any block of the FX button's group is on (gate, BST, comp, SFX, EQ)
  *   AMP, CAB                    v70: lit while SYNTH (AMP) or OCTAVE (CAB) is on
  *   MOD, DLY, REV               lit while their block is on
  *   HOME                        lit while the pedal plays, blinks (2 Hz) while the tuner is open (v70)
@@ -42,6 +42,7 @@ static uint8_t lights_of(const px_preset_t *p, int tuner, int bypass, uint32_t n
     const uint8_t home = tuner ? !((now / LT_BLINK_MS) & 1u) : !bypass;
     if (home) v |= 1u << LT_HOME;
     if (bypass) return v;
+    if (p->valve_on) v |= 1u << LT_FX;
     for (int i = 0; i < UI_NFX; i++)
         if (p->on[UI_FXB[i]]) v |= 1u << LT_FX;
     if (p->on[PX_B_SYN]) v |= 1u << LT_AMP;           /* v70: the AMP button is SYNTH, CAB is OCTAVE */

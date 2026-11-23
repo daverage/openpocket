@@ -171,7 +171,7 @@ limiter (transparent up to -2 dBFS) instead of a hard clip.
 | PUSH (knob) | PLAY → open the block's EDIT page at once · model/setting line → edit · ON/OFF → toggle · editing → confirm |
 | PUSH **double-click** (PLAY) | **MOVE** the selected block: knob = move it, PUSH = drop, HOME = put it back (the block's page shows for a moment between the clicks) |
 | PUSH **long press (0.8 s)** | **SAVE**: store the current sound (see below) |
-| HOME | back to PLAY · on PLAY: the **preset list** (knob = browse by name, PUSH = load, HOME = back) · **long press (0.7 s) = tuner**, keep holding (1.4 s) = **diagnostics** |
+| HOME | Back to PLAY. On PLAY, opens the preset list. Hold for 0.7 s to open the tuner. Release and hold again for **GLOBAL**. |
 | Right / left footswitch | next / previous preset (on a block's EDIT page it also goes back to PLAY, where the preset shows). Coming back to a preset you edited without saving gives the edit back (one edit is kept) |
 | **Both footswitches** | **tuner** (the first one changes the preset at once, as always; the second within about 0.15 s changes it back and opens the tuner). Both again leave it |
 | **Hold CAB** (0.8 s) | **STOMP / PATCH mode** (v48). PATCH: the footswitches change presets, as above. STOMP: each footswitch switches what the preset assigns it (a block on / off, or BYPASS); presets do not change (hold CAB again for PATCH). The footer on PLAY shows `STOMP   L: DRV   R: BYP`. A short CAB press still opens the CAB page, at its release |
@@ -180,6 +180,11 @@ limiter (transparent up to -2 dBFS) instead of a hard clip.
 | AMP, CAB, DLY, REV, MOD | jump to the block; press again = on/off |
 | FX | the next of DRV, SFX, SYN, PIT, CMP, GT and EQ in the order of the preset's chain, as the tiles read · **long press (0.8 s)** = MIDI page |
 | MASTER | output volume |
+
+On **GLOBAL**, turn PARA to select **Output EQ**, **Input High-Pass**, **Smart Gate Hush**, **Limiter**, **Tails**,
+**Tuner Lights**, or **Button Lights**. Press PARA to edit, turn it to adjust, and press it again to confirm. The effects
+apply live across presets. Output EQ opens a page for all five bands. Press HOME to go back from EQ, then press HOME on
+the main Global page to save and go back to PLAY. Open **Diagnostics** from the bottom of the Global list.
 
 **Screen (v36)**: PLAY shows the preset number and name large, the amp and cab, the chain in colour (on = filled,
 off = dark) and the selected block; EDIT shows the block on its colour, the model, and up to 5 settings with value and

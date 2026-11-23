@@ -314,7 +314,7 @@ static void fm1_fault(const fm1_crash_t *c)
 #define PH_DIR  (*(volatile uint32_t *)0x501C8u)
 #define ENC_MASK 0x3u      /* PC0=A, PC1=B */
 #ifndef OP_VERSION_NUM                  /* a test channel build (firmware/build.sh, OP_CHANNEL) sets its own number and tag */
-#define OP_VERSION_NUM "76"   /* OpenPocket Synth (v75: the BST block, FIXED WAH, FUZZ FACE, POLY SHIFTER, tuner, global settings, load shedding, tails, gestures; v76: ACOUSTIC PRE and DRIVE; v70: the synth layout; v71: tracker floor 38 Hz, minimal poly allocator; v72: both reverted; v73: octave-down follows the lowest sounding band) */
+#define OP_VERSION_NUM "81"   /* per-preset Valve input stage and on-device Global settings */
 #endif
 #ifndef OP_TAG
 #define OP_TAG ""
@@ -548,6 +548,7 @@ static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); s
 #define PX_LIGHTS_OFF() lights_off()
 #include "px_usb.h"         /* USB-MIDI + update entry (web installer) */
 #include "px_store.h"       /* the user's presets in flash */
+#include "ui_global.h"
 #if !AUDIO_PROBE
 static uint32_t ed_load(void) { return a_bypass ? a_peak : a_load; }   /* PING: the DSP load, as at the bottom right */
 static uint32_t ed_flags(void) { return (a_bypass ? 1u : 0u) | (a_c1 ? 2u : 0u) | (a_shed ? 4u : 0u); }   /* v75: bit 2: a block is switched off for the load */

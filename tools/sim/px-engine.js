@@ -13,12 +13,21 @@ export function presetBytes(preset) {
     preset = { ...preset, on: [...preset.on, 0], type: [...preset.type, 0], p: [...preset.p, [50, 0, 0, 0, 0]],
       order: preset.order.flatMap((b) => (b === 0 ? [0, NBLK - 1] : [b])) };
   }
-  const b = new Uint8Array(NAME + NBLK * 3 + NBLK * NPAR);
+  const size = NAME + NBLK * 3 + NBLK * NPAR;
+  const b = new Uint8Array(size + 2);
   b.set([...preset.name].slice(0, NAME - 1).map((c) => c.charCodeAt(0)));
   b.set(preset.on, NAME);
   b.set(preset.type, NAME + NBLK);
   b.set(preset.p.flat(), NAME + 2 * NBLK);
   b.set(preset.order, NAME + 2 * NBLK + NBLK * NPAR);
+  b[size] = preset.valveOn ? 1 : 0;
+  b[size + 1] = preset.valveDrive ?? 71;
+  if (preset.type[1] === 4) {
+    b[size] = preset.on[1] ? 1 : 0;
+    b[size + 1] = preset.p[1][0];
+    b[NAME + 1] = b[NAME + NBLK + 1] = 0;
+    b.fill(50, NAME + NBLK * 2 + NPAR, NAME + NBLK * 2 + NPAR * 2);
+  }
   return b;
 }
 
@@ -33,6 +42,7 @@ export class PxEngine {
   }
   factory(index) { this.x.px_factory(index); this.x.px_apply(); }
   preset(bytes) { new Uint8Array(this.x.memory.buffer, this.x.px_preset(), bytes.length).set(bytes); this.x.px_apply(); }
+  globals(g) { this.x.px_globals(g.hpf, ...g.eq, g.lim, g.tails, g.hush); }
   volume(master) { this.x.px_volume(master); }
   bypass(on) { this.x.px_bypass(on ? 1 : 0); }
   tunerMute(on) { this.x.px_tuner_mute(on ? 1 : 0); }

@@ -5,7 +5,7 @@
 
 export const BUTTONS = ["home", "fx", "amp", "mod", "dly", "rev", "cab", "fs_dn", "fs_up"];
 export const BLOCK = { amp: 3, cab: 2, mod: 6, dly: 7, rev: 8 };   // v70: AMP is SYNTH, CAB is OCTAVE
-export const FX_BLOCKS = [0, 1, 4, 5];                  // ui_fx_cycle (v70): GT CMP SFX EQ
+export const FX_BLOCKS = [0, 9, 1, 4, 5];               // ui_fx_cycle: GT BST CMP SFX EQ, then Valve
 
 export const FAST_MS = 45;                              // openpocket.c: detents closer than this are a fast turn
 export const MASTER_STEP = 2;                           // openpocket.c: the volume's hysteresis, the smallest move it follows
@@ -79,8 +79,11 @@ export function backlights(state) {
     if (paged && blocks.includes(state.block)) return "focus";
     return blocks.some((b) => state.preset.on[b]) ? "on" : "off";
   };
-  const lit = { home: state.mode === "chain" ? "focus" : "on", fx: light(FX_BLOCKS) };
+  const fx = light(FX_BLOCKS);
+  const lit = { home: state.mode === "chain" ? "focus" : "on",
+    fx: state.mode === "valve" ? "focus" : fx === "off" && state.preset.valveOn ? "on" : fx };
   for (const [name, block] of Object.entries(BLOCK)) lit[name] = light([block]);
-  if (state.bypass && state.mode !== "tuner") for (const k of Object.keys(lit)) lit[k] = "off";   // v70: BYPASS: all dark
+  if ((state.bypass || (state.global?.lights & 4)) && state.mode !== "tuner")
+    for (const k of Object.keys(lit)) lit[k] = "off";
   return lit;
 }

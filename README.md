@@ -4,7 +4,7 @@ OpenPocket Synth2 is guitar-synth and multi-effects firmware for the **Donner Po
 **M-VAVE BlackBox**. It turns a standard guitar signal into synth voices, keyboard sounds and octave effects.
 It runs on the pedals' JieLi AC791N chip and uses their built-in controls, USB MIDI and browser-based preset editor.
 
-## Build 915 compared with upstream v42
+## Build 981 compared with upstream v42
 
 This comparison covers the Synth2 build 915 packages for both pedals and uses
 [OpenPocket v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372)
@@ -41,13 +41,14 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 - **Ten reorderable blocks** run in the order stored with each preset. The default is GATE → BST (PRE / BOOST) → COMP →
   OCTAVE → SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB. The synth firmware drops DRIVE, AMP, CAB, NAM and user cabinet
   IRs, along with their editor controls. POLY OCT FUZZ retains the Fuzz Face sound inside SYNTH.
-- **VALVE** in the compressor panel models a single 12AX7 stage. DRIVE adds up to 24 dB of internal gain with automatic
-  output compensation. It saves with the preset and follows the compressor block's position in the chain.
+- **Valve** models a single 12AX7 stage at the input, ahead of the reorderable effects. Each preset saves its own
+  on/off state and Drive, with up to +24 dB of internal gain and automatic output compensation. Valve and COMP can run
+  together. Saved presets that used the older COMP → VALVE model carry their Valve settings forward.
 - **Pedal layout** shows the SYNTH and OCTAVE types under the preset number. The physical AMP and CAB buttons
   open SYNTH and OCTAVE, respectively. FX cycles through the utility blocks.
 - **STOMP mode** gives each footswitch a per-preset assignment. Hold CAB to switch between STOMP and PATCH.
-  In STOMP, hold a footswitch and press a block button to assign it directly, or press FX to cycle through all ten
-  blocks, global bypass and unassigned. Hold PUSH to save the assignments. Block lights follow bypass state.
+  In STOMP, hold a footswitch and press a block button to assign it directly, or tap FX to cycle through Valve, all ten
+  blocks, global bypass and unassigned. Hold PARA to open SAVE, then press PARA to confirm. Block lights follow bypass state.
 - **Preset compatibility** uses 52 slots in the synth bank. Updating from the original multi-effects preset format
   retains global settings and starts with the synth factory slots. Back up your presets before switching firmware.
   Existing synth-format presets with a retired SYNTH type keep their stored type and settings and load that block
@@ -59,9 +60,9 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 
 ## Install
 
-Build 976 packages are in `docs/firmware/` (built by `make package`). Use `PocketX_976.fwsc` for the Donner Pocket X or
-`BlackBox_976.fwsc` for the M-VAVE BlackBox. The [hardware test guide](docs/SYNTH2-HARDWARE-TEST.md)
-describes the package and dry-run workflow using build 901 as its example. Select the 976 file for your pedal.
+`make package` builds `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox in
+`docs/firmware/`. The [hardware test guide](docs/SYNTH2-HARDWARE-TEST.md) describes the package and dry-run workflow
+using build 901 as its example. Select the 981 file for your pedal.
 
 Run `make serve` to open the local installer and editor in Chrome or Edge. The installer also accepts the
 manufacturer's official `.fwsc` for restoring stock firmware. See the [recovery guide](docs/RESCUE.md)
@@ -75,12 +76,25 @@ over USB. The editor uses the ten-block layout and the pedal's own model catalog
 - **Presets** browses, loads, renames, copies and moves the 52 slots. Export or import JSON to back up and restore
   presets.
 - **Sound** edits the active blocks, models, settings and chain order. It shows DSP load and peaks and lets you
-  compare the current sound with the saved preset.
+  compare the current sound with the saved preset. Expand **Valve** for On/Off and Drive, or **Footswitches** for
+  Stomp/Patch mode and the current preset's press, double-tap and hold assignments.
 - **MIDI** shows the current preset's Control Change mappings and lets you learn controls from a MIDI controller
   connected to the computer.
 
 Edits take effect live and changes on the pedal appear in the editor. See the
 [editor protocol](docs/EDITOR-PROTOCOL.md).
+
+### Editing from the pedal
+
+- **Valve**. Tap FX until **VALVE INPUT** appears. Turn PARA to adjust Drive and press PARA to toggle Valve.
+  Hold PARA to open SAVE, select the destination if needed, and press PARA to confirm.
+- **Footswitches**. From the home screen, hold CAB to enter STOMP. Hold either footswitch and tap FX until its assignment shows **VLV**,
+  or select another assignment the same way. Tap the footswitch to toggle its assignment while playing. Use the editor
+  to change the double-tap and hold actions.
+- **Global settings**. Hold HOME to open the tuner, release it, then hold HOME again for **GLOBAL**. Use PARA to select,
+  edit and confirm a setting. The five output EQ bands have their own page. HOME goes back from EQ and saves when leaving
+  the main Global page. Diagnostics is the last item. Turn PARA in the tuner to adjust reference A. Hold FX for MIDI and
+  USB audio settings. The web editor's **Global** panel edits the same settings.
 
 ## Build
 

@@ -8,13 +8,14 @@
 #include "px_dsp.h"
 
 #define A_FR 128u
-_Static_assert(sizeof(px_preset_t) == 94, "tools/sim/px-engine.js writes the preset byte by byte");
+_Static_assert(sizeof(px_preset_t) == 96, "tools/sim/px-engine.js writes the preset byte by byte");
 
 static px_engine g_eng;
 static px_preset_t preset;
+static px_global_t global;
 static float a_in[A_FR], a_out[A_FR];
 static float a_gain = 0.64f, a_mg = 1.0f;
-static int a_bypass, a_tmute, a_nan;
+static int a_bypass, a_tmute, a_nan, a_has_global;
 
 void *memcpy(void *d, const void *s, unsigned long n) { char *a = d; const char *b = s; while (n--) *a++ = *b++; return d; }
 void *memset(void *d, int c, unsigned long n) { char *a = d; while (n--) *a++ = (char)c; return d; }
@@ -32,7 +33,19 @@ EXPORT(px_apply) void px_apply(void)                  /* v38: as the pedal: knob
     if (ch == PX_CH_KNOBS) { px_engine_prepare(&g_eng, &preset); px_engine_knobs(&g_eng, &preset); }
     else if (ch == PX_CH_FULL) px_engine_set(&g_eng, &preset);
 }
-EXPORT(px_reset) void px_reset(void) { px_engine_init(&g_eng, 44100.0f); px_engine_set(&g_eng, &preset); a_nan = 0; }
+EXPORT(px_reset) void px_reset(void)
+{
+    px_engine_init(&g_eng, 44100.0f);
+    if (a_has_global) px_engine_globals(&g_eng, &global);
+    px_engine_set(&g_eng, &preset);
+    a_nan = 0;
+}
+EXPORT(px_globals) void px_globals(int hpf, int eq0, int eq1, int eq2, int eq3, int eq4, int lim, int tails, int hush)
+{
+    global = (px_global_t){hpf, {eq0, eq1, eq2, eq3, eq4}, lim, tails, hush};
+    a_has_global = 1;
+    px_engine_globals(&g_eng, &global);
+}
 EXPORT(px_volume) void px_volume(int vol) { float v = (float)vol * 0.01f; a_gain = v * v; }
 EXPORT(px_bypass) void px_bypass(int on) { a_bypass = on; }
 EXPORT(px_tuner_mute) void px_tuner_mute(int on) { a_tmute = on; }

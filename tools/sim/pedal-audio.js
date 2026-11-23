@@ -64,6 +64,11 @@ export class PedalAudio {
       this.sentPreset = preset;
       port.postMessage({ preset: presetBytes(state.preset), name: state.preset.name });
     }
+    const global = JSON.stringify(state.global);
+    if (global !== this.sentGlobal) {
+      this.sentGlobal = global;
+      port.postMessage({ global: state.global });
+    }
     for (const [key, value] of Object.entries(tuning(state))) {
       if (this.sent[key] !== value) { this.sent[key] = value; port.postMessage({ [key]: value }); }
     }
