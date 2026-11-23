@@ -1,0 +1,5 @@
+data/
+build_valve_host
+__pycache__/
+audio/*
+!audio/README_OBSOLETE.md

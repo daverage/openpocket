@@ -1,0 +1,110 @@
+# 12AX7 stage: DSP vs SPICE validation
+
+Branch `dev`. **No firmware or engine file was changed.** Everything is in `tools/research/valve_ref/`.
+
+## Answer to the key question
+
+**Yes.** The lookup-table triode reproduces the electrical response of the circuit it claims to model (the Dempwolf & Zölzer equations, 250 V, 100k, 1.5k ∥ 2.2 µF, 33k). Step 1, below, closed the one open discrepancy.
+
+### Step 1: unloaded SPICE, fed from the DSP's own oversampled grid voltage
+
+SPICE here has a practically infinite output load (`RL = 1e9`, `Cc = 22 pF`, so τ is still 22 ms and the plate load is the 100k alone, as in the DSP's load line). Its input is the DSP's own 88.2 kHz grid voltage, so the up-sampler is excluded and the samples line up one for one. `step1_run.py` runs it and `step1_analyze.py` measures it, using the unloaded run, the DSP, and the earlier 1 MΩ-loaded run for comparison (`results/step1_results.csv`).
+
+| Measurement | DSP | SPICE unloaded | SPICE 1 MΩ loaded (earlier) |
+|---|---|---|---|
+| Plate-current gain, 220 Hz, 0.05 | +0.011 / +0.012 dB vs SPICE (0, +12 dB) | reference | +0.47 / +0.45 dB |
+| Plate-voltage gain (V/V) | 35.79 / 35.67 dB | 35.78 / 35.65 dB | 35.42 / 35.28 dB |
+| H2 (0, +12 dB) | −42.69 / −29.92 dBc | −42.72 / −29.95 dBc | −41.74 / −28.88 dBc |
+| H3 (0, +12 dB) | −71.5 / −45.9 dBc | −72.0 / −46.0 dBc | −70.5 / −44.8 dBc |
+| THD (0, +12 dB) | 0.734 / 3.231 % | 0.732 / 3.221 % | 0.819 / 3.645 % |
+| IMD 440 + 660, 0.02 (0, +12 dB) | 0.299 / 1.215 % | 0.308 / 1.213 % | 0.340 / 1.361 % |
+| Bias shift under a 0.3-unit burst (+12, +24 dB) | 0.107 / 0.475 V | 0.107 / 0.475 V | 0.136 / 0.520 V |
+| Bias recovery time constant (+12, +24 dB) | 1.66 / 1.71 ms | 1.66 / 1.70 ms | 1.74 / (fit failed) ms |
+| Residual bias left by the probe tone (+12, +24 dB) | 0.44 / 7.2 mV | 0.44 / 7.2 mV | not meaningful |
+
+**The 0.5 dB discrepancy is gone.** Against the unloaded circuit the DSP's plate-current gain differs by 0.01 dB, and every distortion, intermodulation and bias figure agrees within about 3 % (H3 at 0 dB is about 0.4 dB apart, at −72 dBc). This also settles the plate-current versus plate-voltage question: loading **raises** plate-current gain (+0.47 dB measured, +0.52 dB predicted) and **lowers** plate-voltage gain (−0.36 dB), exactly as expected for a lower AC plate resistance. The earlier "DSP 3–14 % lower" distortion figures were the load, not the DSP.
+
+**Recovery time, repaired.** The old metric thresholded a window average against the end of the record. The new one fits `vk(t) = c + D·e^(−t/τ)` plus the 220 Hz ripple harmonics over 2 to 200 ms after the burst (fit error below 0.01 mV). The recovery time constant is 1.7 ms (50 % in 1.15 ms, 90 % in 3.8 ms), about half of Rk·Ck = 3.3 ms. This is probably because the tube is still conducting during recovery, so the capacitor also sees the tube's 1/gm in parallel with Rk. I did not test that explanation. DSP and SPICE agree to 0.3 %.
+
+**Freeze the lookup-table algorithm.** Nothing here supports any change to `px_dsp.c`, `gen_triode.py` or the tables.
+
+### Earlier full-matrix results (1 MΩ-loaded SPICE, band-limited input)
+
+These were produced before the load was found, so the DSP-lower-than-SPICE gaps below are the load. The unloaded Step 1 table above supersedes them for gain, THD, IMD and bias; they remain valid for the compression point, aliasing and the Koren comparison.
+
+| Quantity | DSP vs SPICE Dempwolf (loaded) | Verdict |
+|---|---|---|
+| Idle point (Vk, Vp, Ia) | 1.2325 V / 167.84 V / 0.8216 mA on both, to 4 digits | exact |
+| 1 dB compression point | 1.58 V at the grid, identical; 1.50 V at +24 dB, identical | exact |
+| Compression depth at 3 V | DSP −4.94 dB, SPICE −5.10 dB | 0.16 dB (load) |
+| Cathode bias shift (0, 6, 12, 16, 24 dB) | DSP 0.13 / 0.20 / 0.28 / 0.33 / 0.52 V, SPICE 0.13 / 0.22 / 0.30 / 0.36 / 0.56 V | load; matches unloaded in Step 1 |
+| THD at 220 Hz, 0.05 units | DSP 0.73 / 1.50 / 3.23 / 5.22 / 23.0 %, SPICE 0.82 / 1.67 / 3.65 / 6.06 / 23.8 % | load; matches unloaded in Step 1 |
+| Aliasing (non-harmonic energy, 220 Hz to 1 kHz sines) | DSP −104 to −118 dBc | negligible |
+
+## Dempwolf vs Koren (model difference, not a DSP fault)
+
+An independent Koren 12AX7 model gives a different valve, as expected for a different fit:
+- Idle point: Vk 1.198 V, Vp 170.1 V, Ia 0.799 mA, against 1.232 V, 167.8 V, 0.822 mA for Dempwolf.
+- Small-signal gain about 0.6 dB lower than Dempwolf, under the same load.
+- THD 30–40 % higher at low drive (5.07 % against 3.67 % at 0 dB, 0.2 units), converging above +12 dB.
+- IMD 40–60 % higher at low and mid drive (SMPTE 0.02: 0.81 % against 0.54 % at 0 dB).
+- Bias shift 9–14 % smaller than Dempwolf above 0 dB.
+
+The DSP is therefore closer to Dempwolf than to Koren, as it should be. **I can't say which model is closer to a real valve.** That needs a measured tube, not another model.
+
+## Ranked discrepancies
+
+| # | Finding | Electrical importance | Perceptual importance | Status |
+|---|---|---|---|---|
+| 1 | 0.5 dB gain offset DSP vs SPICE | was 3–14 % on distortion ratios | none | **closed**: it was the 1 MΩ load in my netlist; unloaded agrees to 0.01 dB |
+| 2 | DSP bias shift 0–9 % smaller | was small | none | **closed**: same cause |
+| 3 | Dempwolf vs Koren: THD +30–40 %, IMD +40–60 % at low drive | model choice | possibly audible as a little more low-level grit | not a bug |
+| 4 | Hard-driven 0.2 units at +24 dB: DSP THD 36.7 % vs 36.9 % | none | none | agree |
+
+**Recommended code changes: none.** Nothing here supports altering `px_dsp.c`, `gen_triode.py` or the tables. If you want the model to be more or less "grippy" at low drive, the lever is the choice of tube fit (Koren-like vs Dempwolf), and it should be decided by listening and by measuring a real 12AX7.
+
+## What is not established (read before relying on this)
+
+- **Unloaded re-run is limited to Step 1's signals.** 220 Hz sine, 440 + 660 Hz and the bias burst, at two drive levels each. The compression sweep, frequency response and guitar clips were not repeated unloaded.
+- **SPICE noise floor.** At small signal (0.01–0.05 units at 0 to +12 dB) SPICE's own numerical noise is about −84 dBc, so SPICE can't resolve distortion below that. This is why the 0 dB small-signal chirp is meaningless. The +24 dB chirp is usable. Frequency-response numbers above about 10 kHz are also unreliable, because the SPICE input is a band-limited upsample that droops near Nyquist.
+- **Bias recovery time.** `results/bias_recovery.csv` now holds the repaired fit for all five drive levels. The original broken values are kept as `results/bias_recovery_original_BROKEN_metric.csv`. In the loaded SPICE rows with `fit_ok = False`, the fit residual is high (SPICE noise) and the time constant should not be trusted.
+- **Koren grid current.** Gg = 6.2e-4 A/V^1.5 and Vct = 0.2 V are my assumptions, not part of Koren's 12AX7 set. They only matter above about +16 dB.
+- **Processed-output residuals** (−25 to −28 dB vs Dempwolf) in the full matrix include the 0.5 dB load offset and the half-band up-sampler's phase, so they overstate the valve error. The DSP-fed Step 1 runs show the valve stage itself agrees much more closely.
+- **Parasitic capacitances.** Koren + Miller capacitance was run for 440 and 1000 Hz sines and the chirp only. The DSP has no equivalent, and I did not quantify its effect.
+- **OBSOLETE: blind-listening audio uses the loaded netlist** (see `audio/README_OBSOLETE.md`; the WAVs are not in Git). The SPICE versions are about 0.5 dB quieter in plate current and differ slightly in distortion. Regenerate with an unloaded netlist before using it for a listening judgement.
+- **Figures** in `figs/` overlay the DSP on the earlier 1 MΩ-loaded SPICE runs, so small gain offsets in them are the load (Step 1).
+- **Not covered:** the knee hack (20 V plate-to-cathode) was only exercised at hard drive. Its accuracy at that point agrees with SPICE (see the +24 dB rows) but I didn't isolate it.
+
+## Reproducing
+
+```
+cd tools/research/valve_ref
+cc -O2 -std=gnu11 -w -fno-builtin -ffp-contract=off -I../../../engine valve_host.c ../../../firmware/px_math.c -lm -o build_valve_host
+python3 signals.py                 # test inputs + manifest
+python3 run_all.py -j 8 [name ...] # DSP + SPICE (ngspice 47; set OMP_NUM_THREADS=1, one process per core)
+python3 analyze.py                 # results/*.csv
+OMP_NUM_THREADS=1 python3 step1_run.py   # the six short unloaded, DSP-fed runs -> data/spice_hiZ
+python3 step1_analyze.py                 # results/step1_results.csv
+python3 make_figs_audio.py         # figs/*.png, audio/named, audio/blind + blind_key.json
+```
+
+`valve_host` `#include`s `engine/px_dsp.c`, so it runs the same `triode_block` as the firmware. Its state-exporting copy matches `triode_block` within float rounding (1e-7 relative to the peak).
+
+## Files
+
+- `models/dempwolf.lib`, `models/koren.lib`: SPICE valve models. `gen_spice.py` writes the circuit netlist.
+- `results/*.csv`: DC point, sines (harmonics H2–H8, THD, THD+N, non-harmonic floor), IMD, compression, bias, frequency response, residuals.
+- `figs/*.png`: overlays of DSP, Dempwolf, Koren.
+- `audio/named/`, `audio/blind/` (+ `blind_key.json`): four guitar clips at five drive levels.
+- Raw runs (3 GB) are in `data/` and are git-ignored.
+
+## Circuit differences, documented
+
+| | DSP | SPICE |
+|---|---|---|
+| Output load | none (infinite) | 1 MΩ, 21 nF in the full matrix (the cause of the 0.5 dB offset); 1 GΩ, 22 pF in Step 1 |
+| Output coupling | one-pole DC removal, 22 ms | real coupling capacitor |
+| Plate dynamics | none (static current) | none (Dempwolf netlist) / 0.9–2.4 pF (Koren + capacitance variant) |
+| Cathode capacitor | explicit Euler, current held over each 2× sample | trapezoidal, adaptive step |
+| Input | 44.1 kHz through the engine's half-band up-sampler | band-limited ×4 upsample |
+| Plate below 20 V | hand-made knee roll-off | model equations only |

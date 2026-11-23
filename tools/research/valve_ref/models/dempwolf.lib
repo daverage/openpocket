@@ -1,0 +1,12 @@
+* OpenPocket 12AX7 reference -- model A: Dempwolf & Zoelzer (DAFx-11) RSD-1 equations, exactly as engine/px_triode_table.h
+* is generated from them (tools/gen_triode.py).  Units here are SI (A, V); the paper/table use mA.
+*   Ig  = 0.6177e-3 * ( ln(1+exp(9.901*Vgk)) / 9.901 )^1.314 + 8.025e-8
+*   Ik  = 2.242e-3  * ( ln(1+exp(3.40*(Vgk+Vak/103.2))) / 3.40 )^1.26        (cathode current)
+*   Ia  = Ik - Ig
+* The grid stopper (33k) is a separate resistor in the circuit, as in the DSP's load-line solve.
+* sp(x) = softplus with the exponent clamped at 30 (value error < 1e-13 relative above that, no overflow).
+.subckt tube_dempwolf p g k
+.func sp(x) {ln(1+exp(min(x,30)))+max(x-30,0)}
+Bg g k I = 1e-3*0.6177*pwr(max(sp(9.901*(V(g)-V(k)))/9.901,1e-30),1.314)+8.025e-8
+Ba p k I = 1e-3*2.242*pwr(max(sp(3.40*((V(g)-V(k))+(V(p)-V(k))/103.2))/3.40,1e-30),1.26)-1e-3*0.6177*pwr(max(sp(9.901*(V(g)-V(k)))/9.901,1e-30),1.314)-8.025e-8
+.ends
