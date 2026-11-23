@@ -270,10 +270,17 @@ export class Updater {
   async comeBack(product, step) {
     step("reboot");
     await sleep(this.t.afterWrite);
-    const back = await this.waitFor((id) => MODELS.includes(id.model), this.t.backWait);
-    if (!back) throw fail("noreturn", "the pedal did not come back: power-cycle it");
+    let reported = null;
+    const back = await this.waitFor((id) => {
+      if (!MODELS.includes(id.model)) return false;
+      reported = id.text;
+      return reported === product;
+    }, this.t.backWait);
+    if (!back) {
+      if (reported) throw fail("mismatch", `After restart, expected ${product}. The last reply was ${reported}.`, reported);
+      throw fail("noreturn", "the pedal did not come back: power-cycle it");
+    }
     back.link.close();
-    if (back.id.text !== product) throw fail("mismatch", `written, but the pedal reports ${back.id.text}`, back.id.text);
     step("done", back.id.text);
     return back.id.text;
   }
