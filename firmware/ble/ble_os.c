@@ -21,15 +21,25 @@ extern void ble_ctx_swap(uint32_t **save, uint32_t *load);
 extern void ble_ctx_enter(uint32_t **save, uint32_t *top, void (*fn)(void));
 
 /* ---- interrupts: one level of nesting count, as the SDK's local_irq_disable / local_irq_enable */
-static uint32_t irq_nest;
-void local_irq_disable(void) { fm1_irq_off(); irq_nest++; }
-void local_irq_enable(void) { if (irq_nest && !--irq_nest) fm1_irq_on(); }
+/* The outermost disable remembers whether interrupts were on; the matching enable puts them back as they were. A handler of the
+ * controller starts with them masked (the hardware does it), so its disable / enable pair must leave them masked: enabling
+ * them there let the audio interrupt nest inside the radio's, which the library does not expect (docs/BLE-TEST.md: the same
+ * misaligned access in the audio interrupt as when the radio's interrupts outranked it). */
+static uint32_t irq_nest, irq_was_on;
+void local_irq_disable(void)
+{
+    if (!irq_nest) irq_was_on = fm1_icfg() & 0x200u;
+    fm1_irq_off();
+    irq_nest++;
+}
+void local_irq_enable(void) { if (irq_nest && !--irq_nest && irq_was_on) fm1_irq_on(); }
 void __local_irq_disable(void) { local_irq_disable(); }
 void __local_irq_enable(void) { local_irq_enable(); }
 void sys_local_irq_disable(void) { local_irq_disable(); }
 void sys_local_irq_enable(void) { local_irq_enable(); }
 int cpu_irq_disabled(void) { return !(fm1_icfg() & 0x200u); }   /* icfg bit 9: the global enable that cli and sti clear and set */
-int cpu_in_irq(void) { return 0; }
+/* the SDK's test, measured on a BlackBox: icfg's low byte is 0x00 in the main loop and 0x08 in the audio interrupt (DIAG "ICFG MAIN / AUDIO ISR") */
+int cpu_in_irq(void) { return (fm1_icfg() & 0xFFu) != 0u; }
 
 /* ---- heap: first fit with coalescing on free, 8-byte aligned, one static pool */
 #define HEAP_BYTES (24u * 1024u)

@@ -52,6 +52,7 @@ typedef struct {
     uint32_t magic, count, vec, pc, rets, emu, dbg, sp, psr, icfg, uptime_ms;
     uint32_t etm[4];
     uint32_t early;                          /* consecutive crashes < 3 s after boot */
+    uint32_t code[8];                        /* OpenPocket: the 32 bytes of code before pc as the CPU found them (RAM or XIP only): was the code itself changed? */
 } fm1_crash_t;
 /* Not static: .noinit holds whatever the last run (or power-on) left, and a
  * file-local object would let the compiler assume its zero initial value and
@@ -142,6 +143,11 @@ void fm1_fault_c(uint32_t *f)
     for (i = 0; i < 4u; i++)
         fm1_crash.etm[i] = FM1_ETM_PC(i);
     fm1_crash.early = fm1_crash.uptime_ms < 3000u ? early + 1u : 0u;
+    {
+        uint32_t a = (f[16] & ~3u) - 24u;     /* (reads only where an instruction can be: RAM, or the XIP window) */
+        int ok = (a >= 0x01C00000u && a + 32u <= 0x01C80000u) || (a >= 0x02000120u && a + 32u <= 0x0208E0DCu);
+        for (i = 0; i < 8u; i++) fm1_crash.code[i] = ok ? ((const volatile uint32_t *)(uintptr_t)a)[i] : 0u;
+    }
     {
         fm1_crash_ctx_t *x = &fm1_crash_ctx[fm1_crash.count % FM1_CRASH_CTX_N];
         x->count = fm1_crash.count;

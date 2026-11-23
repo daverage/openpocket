@@ -260,7 +260,10 @@ static void a_collect(void)                            /* collects the block in 
 }
 
 /* ---- tuner: the interrupt stores the input low-passed and decimated by 4 (11025 Hz); the main loop estimates the note (px_tuner.h, v75) ---- */
-#if OP_BLE_TEST   /* the Bluetooth test image: the buffers in the cache RAM (app.ld CRAM); without it (pxc_init failed) no tuner */
+#ifndef OP_BLE_TUNER_CRAM
+#define OP_BLE_TUNER_CRAM 0   /* v77 test: 1 = the Bluetooth test image's old placement. It crashed at the first audio blocks on a BlackBox (docs/research) */
+#endif
+#if OP_BLE_TEST && OP_BLE_TUNER_CRAM   /* the Bluetooth test image: the buffers in the cache RAM (app.ld CRAM); without it (pxc_init failed) no tuner */
 #define TN_MEM __attribute__((section(".cram.tuner")))
 #define TN_READY (pxc_status == PXC_READY)
 #else
@@ -372,7 +375,36 @@ static void a_send(int32_t *d, uint32_t n)             /* an output block filled
 }
 #define A_ORDER_TICKS (A_BUDGET / 4u)                  /* an a_enc this soon after an a_dec is the same interrupt's (it comes within microseconds) */
 #include "px_aorder.h"                                /* v42: a_enc and a_dec, in whichever order the driver calls them */
+#if OP_BLE_TEST
+static volatile uint32_t a_icfg_isr;        /* icfg as the audio interrupt sees it (cpu_in_irq's test, docs/BLE-TEST.md), shown by DIAG */
+extern uint32_t ble_cnt_irq_ev, ble_cnt_irq_rx;   /* ble_status.h: the radio's two interrupts, counted at their entry */
+static volatile uint32_t a_isr_n, a_ble_nested;   /* audio interrupts, and those during which a radio interrupt began (it preempted audio) */
+/* A hang of the main loop ends in a watchdog reset that records nothing. The main loop counts its passes (a_main_beat); the audio
+ * interrupt, which keeps running, saves where the main loop was (reti = the interrupted pc) whenever the count has stood still for
+ * about a second (344 blocks of 128 frames). DIAG line 9 shows the last one after the reset. */
+static volatile uint32_t a_main_beat;
+static volatile struct { uint32_t magic, pc, rets, stale, sp; } a_stall __attribute__((section(".noinit")));
+#define A_STALL_MAGIC 0x53544C4Cu
+void fm1_alnk0_irq(void)
+{
+    uint32_t n0 = ble_cnt_irq_ev + ble_cnt_irq_rx;
+    static uint32_t last_beat, stale;
+    if (a_main_beat != last_beat) { last_beat = a_main_beat; stale = 0; }
+    else if (++stale > 344u) {
+        uint32_t pc, rt;
+        __asm__ volatile("%0 = reti" : "=r"(pc));
+        __asm__ volatile("%0 = rets" : "=r"(rt));
+        a_stall.magic = A_STALL_MAGIC; a_stall.pc = pc; a_stall.rets = rt; a_stall.stale = stale;
+        a_stall.sp = (uint32_t)(uintptr_t)&rt;               /* (a local: where the interrupt's frame lies) */
+    }
+    a_icfg_isr = fm1_icfg();
+    iis_irq_handler(0);
+    a_isr_n++;
+    if (ble_cnt_irq_ev + ble_cnt_irq_rx != n0) a_ble_nested++;
+}
+#else
 void fm1_alnk0_irq(void) { iis_irq_handler(0); }
+#endif
 extern void isr_alnk0(void);
 
 /* ===================== UI -> engine: same structure (px_preset_t), plain copy ===================== */

@@ -22,7 +22,16 @@ static volatile uint32_t ble_fail_step;
 static volatile int32_t ble_fail_code;
 static volatile uint32_t ble_wait;                 /* at a timeout: what the controller task is blocked on (ble_task_waiting) */
 
-static void ble_stage_set(uint32_t stage) { ble_stage = stage; }
+#ifdef BLE_CRUMB_HOOK
+static void BLE_CRUMB_HOOK(uint32_t n);   /* openpocket.c: the stage kept in .noinit, so a crash report can name it */
+#endif
+static void ble_stage_set(uint32_t stage)
+{
+    ble_stage = stage;
+#ifdef BLE_CRUMB_HOOK
+    BLE_CRUMB_HOOK(stage);
+#endif
+}
 
 /* The stall watch. The scheduler is cooperative, so library code that never returns (a failed assertion parks in
  * P33_SYSTEM_RESET, a wait on a register bit) holds the main loop until the watchdog resets, and that leaves no trace.

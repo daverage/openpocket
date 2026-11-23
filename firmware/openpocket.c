@@ -583,7 +583,7 @@ static uint32_t ed_stat(uint32_t k)                    /* PING, after the flags 
 static uint32_t ed_prof(uint32_t k) { return a_pf[k]; }
 #if OP_BLE_TEST             /* the log channel (firmware/ble/ble_diag.h): only this image answers DIAG, the normal firmware does not change */
 #define ED_STATS 8u         /* PING also gives the Bluetooth heap's and tasks' lowest free bytes */
-#define ED_DIAG_LINES 5u
+#define ED_DIAG_LINES 10u   /* + the last crash's registers (lines 5 and 6), the radio replay's breadcrumb (7) and the code at the crash (8) */
 #define ED_DIAG_LEN 224u
 static void ed_diag_line(uint32_t i, char *out);
 #endif
@@ -597,7 +597,23 @@ static void ed_diag_line(uint32_t i, char *out);
 #endif
 #include "led_probe.h"      /* the LED map (issue #8) */
 #endif
+#ifndef OP_BLE_EARLY
+#define OP_BLE_EARLY 1          /* 1: the radio starts before USB and audio (app_main); 0: after the screen, as the test image did */
+#endif
+#ifndef OP_BLE_NORADIO
+#define OP_BLE_NORADIO 0        /* 1 (a bisect build): everything linked and set up, the radio never started */
+#endif
 #if OP_BLE_TEST             /* the Bluetooth MIDI test image (docs/BLE-TEST.md): make ble */
+/* the radio start-up's last stage, kept across a reset (.noinit): a crash during the start shows where it was (DIAG line 6) */
+static volatile struct { uint32_t magic, stage, ms, count; } ble_crumb __attribute__((section(".noinit")));
+static volatile uint32_t ble_icfg_main;
+#define BLE_CRUMB_MAGIC 0x42435231u
+static void ble_crumb_set(uint32_t n)
+{
+    if (ble_crumb.magic != BLE_CRUMB_MAGIC) { ble_crumb.magic = BLE_CRUMB_MAGIC; ble_crumb.count = 0; }
+    ble_crumb.stage = n; ble_crumb.ms = fm1_uptime_ms(); ble_crumb.count++;
+}
+#define BLE_CRUMB_HOOK ble_crumb_set
 #include "ble/ble_os.c"
 #include "ble/ble_libc.c"
 #include "ble/ble_cfg.c"
@@ -612,7 +628,52 @@ static void ed_diag_line(uint32_t i, char *out)
     else if (i == 1u) ble_last_text(out, &ble_last);
     else if (i == 2u) ble_test_line(out);
     else if (i == 3u) ble_midi_line(out);
-    else ble_trace_line(out);
+    else if (i == 4u) ble_trace_line(out);
+    else if (i == 7u) {     /* the radio start-up's own breadcrumb (fm1_ble_rf.h), as the last run left it: valid after a reset, not a power cycle */
+        char *o = out; char h[9];
+        hex8(h, fm1_ble_bc.now); o = ble__put(o, "BC "); o = ble__put(o, h);
+        o = ble__put(o, " OP "); o = ble__num(o, (int32_t)fm1_ble_bc.op);
+        o = ble__put(o, " GOP "); o = ble__num(o, (int32_t)fm1_ble_bc.gop);
+        hex8(h, fm1_ble_bc.addr); o = ble__put(o, " ADDR "); o = ble__put(o, h);
+        hex8(h, ble_icfg_main); o = ble__put(o, " ICFG MAIN "); o = ble__put(o, h);
+        hex8(h, a_icfg_isr); o = ble__put(o, " AUDIO ISR "); o = ble__put(o, h);
+        o = ble__put(o, " NESTED "); o = ble__num(o, (int32_t)a_ble_nested); o = ble__put(o, " OF "); o = ble__num(o, (int32_t)a_isr_n);
+        o = ble__put(o, " IRQS "); o = ble__num(o, (int32_t)fm1_ble_bc.irqs);
+        hex8(h, fm1_ble_bc.stop); o = ble__put(o, " STOP "); o = ble__put(o, h);
+        *o = 0;
+    } else if (i == 9u) {   /* where the main loop was when it stopped (a hang that ended in a watchdog reset): valid after a reset */
+        char *o = out; char h[9];
+        if (a_stall.magic != A_STALL_MAGIC) { ble__put(o, "NO STALL RECORDED")[0] = 0; return; }
+        hex8(h, a_stall.pc); o = ble__put(o, "STALL PC "); o = ble__put(o, h);
+        hex8(h, a_stall.rets); o = ble__put(o, " RETS "); o = ble__put(o, h);
+        o = ble__put(o, " BLOCKS "); o = ble__num(o, (int32_t)a_stall.stale);
+        hex8(h, a_stall.sp); o = ble__put(o, " ISR FRAME "); o = ble__put(o, h);
+        *o = 0;
+    } else if (i == 8u) {   /* the code bytes before the crash pc as the CPU found them: compare with the ELF (objdump -s) */
+        char *o = out; char h[9]; uint32_t k;
+        o = ble__put(o, "CODE @");
+        hex8(h, (fm1_crash.pc & ~3u) - 24u); o = ble__put(o, h);
+        for (k = 0; k < 8u; k++) { hex8(h, fm1_crash.code[k]); *o++ = ' '; o = ble__put(o, h); }
+        *o = 0;
+    } else {                /* the last crash's registers (fm1_crash_ctx), for finding the faulting address */
+        char *o = out; char h[9]; uint32_t k;
+        const fm1_crash_ctx_t *x = &fm1_crash_ctx[fm1_crash.count % FM1_CRASH_CTX_N];
+        if (fm1_crash.magic != FM1_CRASH_MAGIC || x->count != fm1_crash.count) { ble__put(o, "NO CRASH REGISTERS")[0] = 0; return; }
+        if (i == 5u) {
+            o = ble__put(o, "R");
+            for (k = 0; k < 16u; k++) { hex8(h, x->r[k]); *o++ = ' '; o = ble__put(o, h); }
+        } else {
+            o = ble__put(o, "ETM");
+            for (k = 0; k < 4u; k++) { hex8(h, fm1_crash.etm[k]); *o++ = ' '; o = ble__put(o, h); }
+            hex8(h, fm1_crash.sp); o = ble__put(o, " SP "); o = ble__put(o, h);
+            hex8(h, fm1_crash.psr); o = ble__put(o, " PSR "); o = ble__put(o, h);
+            hex8(h, fm1_crash.icfg); o = ble__put(o, " ICFG "); o = ble__put(o, h);
+            hex8(h, x->usp); o = ble__put(o, " USP "); o = ble__put(o, h);
+            hex8(h, x->ssp); o = ble__put(o, " SSP "); o = ble__put(o, h);
+            o = ble__put(o, " CRUMB "); o = ble__num(o, (int32_t)ble_crumb.stage); o = ble__put(o, " AT "); o = ble__num(o, (int32_t)ble_crumb.ms); o = ble__put(o, " N "); o = ble__num(o, (int32_t)ble_crumb.count);
+        }
+        *o = 0;
+    }
 }
 #endif
 
@@ -739,6 +800,23 @@ static void app_main(void)
     px_flash_boot();                     /* the flash's size; a staging area an update left */
     px_store_boot();                     /* the saved presets and the settings; start on the last one saved */
     ui_stomp = st_ui & 1u;               /* v48: STOMP mode as last saved */
+#if OP_BLE_TEST && OP_BLE_EARLY
+    /* The radio's start-up replays a recorded register sequence (ble_rf.c). On a cold start it crashed the audio interrupt about
+     * 10 ms into it (breadcrumb stage RF, three boots out of three); a start after a flash, where the radio hardware is already
+     * set, did not. So it runs here, before USB, audio and the display loop, while nothing else does. The host (advertising)
+     * goes on from the main loop as before. */
+    ble_os_init();
+    if (!safe && !OP_BLE_NORADIO) {
+        fm1_irq_enable_all();            /* the controller's two interrupts need the global enable (audio_start does it later too) */
+        ble_test_start();
+        for (uint32_t t0 = ms_now(); ms_now() - t0 < 600u; ) {
+            fm1_wdt_feed();
+            ble_test_poll();
+            if (ble_state != BLE_STARTING || ble_stage == BLE_STAGE_READY || ble_stage == BLE_STAGE_ADV || ble_stage == BLE_STAGE_ENABLE) break;
+            fm1_delay_ms(1);
+        }
+    }
+#endif
     px_usb_start();                      /* USB-MIDI device + update entry (web installer); v42: USB audio when set */
     audio_start();                       /* guitar -> DSP engine -> output, amp enabled */
     leds_init();                         /* the button lights: all off loaded, then on (PC7 low), as stock */
@@ -748,9 +826,9 @@ static void app_main(void)
     ui_render();
     op_stage(ST_RUN, 0);
 #endif
-#if OP_BLE_TEST
+#if OP_BLE_TEST && !OP_BLE_EARLY
     ble_os_init();                       /* the task table, before the main loop polls it (ble_os.c: it lives in NOINIT) */
-    if (!safe)                           /* after a failed boot Bluetooth stays off: the pedal runs, and can be re-flashed */
+    if (!safe && !OP_BLE_NORADIO)        /* after a failed boot Bluetooth stays off: the pedal runs, and can be re-flashed */
         ble_test_start();                /* radio on, controller and host up, advertising (the pedal keeps working) */
 #endif
     enc_last = (uint8_t)(PC_IN & ENC_MASK);
@@ -758,6 +836,8 @@ static void app_main(void)
         uint32_t now = ms_now();
         fm1_wdt_feed();
 #if OP_BLE_TEST
+        ble_icfg_main = fm1_icfg();      /* icfg in the main loop, against a_icfg_isr (DIAG) */
+        a_main_beat++;
         ble_test_poll();
 #endif
 #if !AUDIO_PROBE

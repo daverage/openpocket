@@ -51,7 +51,7 @@ fi
 FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4 $OP_DSP_EXTRA"   # OP_DSP_EXTRA: extra engine defines for a test build, e.g. -DPXE_DIAG (ENHANCE: SENS and VOICE controls)
 # OpenPocket Synth (v70): one engine recipe. The v66 poly-test flags are part of the engine source now (engine/).
-[ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPX_RUNS=0"   # the test image: no RAM-resident runs (v40.4: px_dsp.c PX_RUNS); PX_LEAN went with the acoustic voices (Synth2)
+[ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPX_RUNS=${OP_BLE_RUNS:-1} -DOP_BLE_NORADIO=${OP_BLE_NORADIO:-0} -DOP_BLE_EARLY=${OP_BLE_EARLY:-1}"   # OP_BLE_RUNS=1: the release engine's runs. The test image: no RAM-resident runs (v40.4: px_dsp.c PX_RUNS); PX_LEAN went with the acoustic voices (Synth2)
 INC="-I$HERE/inc -I$HERE/../engine -I$HERE/../third_party/felucca-engines"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
     -I"$BSP/chip" -I"$BSP/boards/fm1" -include "$O/channel.h" -c "$HERE/openpocket.c" -o "$O/openpocket.o"

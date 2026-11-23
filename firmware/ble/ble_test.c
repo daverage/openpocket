@@ -35,13 +35,17 @@ static void test_task(void *arg)
 
 void ble_test_start(void)
 {
+    ble_stage_set(20u);                                         /* (crumbs for a crash report: 20 start, 21 VM read, 22 mutex, 23 task made) */
     ble_vm_load();                                              /* the stored radio records, read once before the controller runs */
+    ble_stage_set(21u);
     __crc16_mutex_init();                                       /* else thread_create (ll_init) waits for ever in crc_get_32bit */
+    ble_stage_set(22u);
     ble_state = BLE_STARTING;
     ble_stage_set(BLE_STAGE_TASK);
     t_start = fm1_uptime_ms();
     if (task_create(test_task, 0, "bletest"))
         ble_fail(BLE_FAIL_TASK_CREATE, -1);
+    ble_stage_set(23u);
 }
 
 void ble_test_poll(void)
