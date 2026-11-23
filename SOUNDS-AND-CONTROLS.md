@@ -187,7 +187,12 @@ apply live across presets. Output EQ opens a page for all five bands. Press HOME
 the main Global page to save and go back to PLAY. Open **Diagnostics** from the bottom of the Global list.
 
 On **VALVE INPUT**, turn PARA to adjust Drive (0 to +24 dB), and press it to toggle Valve. The stage sits ahead of the
-effects chain and can run with COMP. Save the preset to keep on/off and Drive. In the browser editor, open **Sound → Valve**.
+effects chain and can run with COMP.
+
+Current source builds add **Level**. Tap FX once more to select it, then turn PARA to adjust the valve output from −12
+to +12 dB in 0.5 dB steps. Level changes the gain after the valve stage. Set it to 0 dB for unity or raise it for a boost
+at low Drive. Press PARA from either setting to toggle Valve, or hold PARA to save the preset. Presets saved before
+Level was added load at 0 dB. In the browser editor, open **Sound → Valve**. The Level slider appears on supported firmware.
 
 **Screen (v36)**: PLAY shows the preset number and name large, the amp and cab, the chain in colour (on = filled,
 off = dark) and the selected block; EDIT shows the block on its colour, the model, and up to 5 settings with value and

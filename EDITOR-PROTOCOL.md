@@ -1,9 +1,9 @@
 # OpenPocket editor protocol (SysEx over USB-MIDI)
 
 The web editor (`docs/editor.html`, `docs/pxedit.js`) talks to the pedal with this protocol. The firmware side is
-`firmware/px_editor.h`; `tests/edsim.c` runs the same code on a PC for the tests. Protocol version 5 (OpenPocket v48: `FOOTSWITCH`, command 29; version 4: v42, `USB_AUDIO`, command 28; version 3: v38, the cabinet IR commands 24..27; version 2: v37, without them;
-version 1: v32 to v36, also without the NAM commands 19..22). A later version only adds commands: an editor written for
-an earlier one works unchanged.
+`firmware/px_editor.h`; `tests/edsim.c` runs the same code on a PC for the tests. Read the protocol version and block
+count from `INFO` before decoding presets. Protocol 11 adds Valve Level, protocol 10 adds per-preset Valve, and
+protocols 7–9 use the ten-block preset layout without Valve fields.
 
 ## Framing
 
@@ -17,7 +17,7 @@ one incoming frame at a time). While the editor watches (`WATCH`), the pedal als
 | byte | one 7-bit byte |
 | string | ASCII 32..126, ended by a 0 byte |
 | color | an RGB565 color in 3 bytes: bits 0-6, 7-13, 14-15 |
-| preset `P` | 96 bytes in protocol 10, 94 in protocols 7–9, 86 with the 9 blocks of protocol 6. The layout is `name` 14 (ASCII, 0-padded, at most 13 characters), `on` 10 (0/1), `type` 10, `p` 10 x 5 (0..100), `order` 10 (a permutation of 0..9), followed in protocol 10 by `valve_on` (0/1) and `valve_drive` (0..100, 71 for +12 dB). Protocol 10 accepts 94-byte presets and migrates the old COMP type 4 into the Valve fields. Other old presets get Valve off at +12 dB. |
+| preset `P` | 97 bytes in protocol 11, 96 in protocol 10, 94 in protocols 7–9, 86 with the 9 blocks of protocol 6. The layout is `name` 14 (ASCII, 0-padded, at most 13 characters), `on` 10 (0/1), `type` 10, `p` 10 x 5 (0..100), `order` 10 (a permutation of 0..9), followed starting in protocol 10 by `valve_on` (0/1) and `valve_drive` (0..100, 71 for +12 dB). Protocol 11 appends `valve_level` (0..48, with 24 for 0 dB and 0.5 dB per step). Protocol 11 accepts 96- and 94-byte presets and defaults Level to 0 dB. The old COMP type 4 migrates into the Valve fields. Other 94-byte presets get Valve off at +12 dB Drive. |
 
 The 10 blocks (protocol 7), by index: 0 GATE, 1 COMP, 2 OCTAVE, 3 SYNTH, 4 SFX, 5 EQ, 6 MOD, 7 DELAY,
 8 REVERB, 9 BST, PRE / BOOST (`CAT_BLOCK` gives their labels and names; `INFO` gives the count, so read it: protocol 6 has 9). BST is last in the index and sits right after the gate in the default order. A preset sent with a RANGEMASTER, EP BOOST or MAXIMIZER in SFX (types 10..12, which are tombstones now) has it moved to BST. `order` is the processing and display order.
@@ -34,7 +34,7 @@ them no reply. The other numbers are unchanged.
 | 3 CAT_TYPE | block, type | block, type, name string, parameters n, text mask (bit k: parameter k has its own value texts, see `TEXTS`), then n parameter-name strings |
 | 4 TEXTS | block, type, k | block, type, k, then 101 strings: the text the pedal shows for values 0..100 ("" = the number itself) |
 | 5 STATE | — | slot (0..51), flags (bit 0: the sound differs from the slot's, bit 1: the slot holds a saved preset), focused block, `P` (the current sound) |
-| 6 SET | block, what, k, v | block, what, k, v (after clamping). what 0: parameter k = v (0..100); 1: on = v (0/1); 2: type = v. Protocol 10 uses index 10 for Valve with parameter k = 0 (Drive) and on/off. |
+| 6 SET | block, what, k, v | block, what, k, v (after clamping). what 0: parameter k = v (0..100); 1: on = v (0/1); 2: type = v. Starting in protocol 10, index 10 is Valve, with parameter k = 0 (Drive) and on/off. Protocol 11 adds k = 1 (Level, 0..48). |
 | 7 ORDER | 12 bytes | rc (0 ok, 1 not a permutation) |
 | 8 NAME | string | the name as stored (13 characters at most, other characters become "?") |
 | 9 PUT | `P` | rc (0 ok, 1 invalid). Replaces the current sound (not saved) |

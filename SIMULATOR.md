@@ -41,6 +41,9 @@ the LCD. It works as the pedal does, through `POST down` and `POST up`: a button
 HOME 0.7 s for the tuner, then release and hold it again for **Global**. Select **Diagnostics** at the bottom of Global.
 Press both footswitches together to open the tuner. Hold PARA for 0.8 s to open SAVE, or click PARA twice to open MOVE.
 
+Tap FX until **VALVE INPUT** appears and turn PARA to change Drive. Tap FX again and turn PARA to change output Level.
+Press PARA to toggle Valve. Both controls are also available in the simulated editor under **Sound → Valve**.
+
 | Control | Mouse or touch | Keys |
 | --- | --- | --- |
 | Footswitches | press, hold, release | Up (right, next preset), Down (left, previous) |
@@ -184,7 +187,9 @@ slot holds a saved preset (0: factory); `mode`: the page, one of `chain` `block`
 the focused block (0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 7 EQ, 8 MOD, 9 DELAY, 10 REVERB, 11 SYN);
 `writes_ok` is 0 once the firmware tried to write outside the preset area of the flash; `frame` counts the drawing
 calls: it changes when the screen does; `knob`: the detents PARA has turned since the start; `held`: the buttons that are
-down (`POST down`). `preset` is the current sound, as in `docs/EDITOR-PROTOCOL.md`.
+down (`POST down`). `preset` is the current sound, as in `docs/EDITOR-PROTOCOL.md`. Its Valve fields are
+`valveOn` (boolean), `valveDrive` (0..100, representing 0 to +24 dB), and `valveLevel` (0..48, with 24 for 0 dB
+and 0.5 dB per step).
 
 Examples:
 

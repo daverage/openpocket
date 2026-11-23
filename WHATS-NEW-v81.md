@@ -9,6 +9,10 @@ Build 981 adds a per-preset Valve input stage, Valve footswitch assignments, and
 - Saved presets that used **COMP → VALVE** retain their Valve on/off state and Drive. Existing COMP footswitch assignments and gestures on those presets follow Valve to its new location. COMP opens as SQUASH, switched off, so you can choose a compressor when you want one.
 - On the pedal, tap **FX** until **VALVE INPUT** appears. Turn **PARA** for Drive and press it to switch Valve on or off. Hold **PARA** to open SAVE and press it again to confirm.
 
+### Valve Level in current source builds
+
+Current source builds add independent **Level** after the valve stage, from −12 to +12 dB in 0.5 dB steps. Tap **FX** again from Drive to select Level and turn **PARA** to adjust it. Older presets load at 0 dB Level. In the editor, the Level slider appears when the connected firmware supports it (editor protocol 11 or later). Use `make package` and `make serve` to try a local firmware build, or `make sim` to try the controls and audio without a pedal.
+
 ## Footswitches and the editor
 
 - Hold **CAB** to enter **STOMP** mode. Hold either footswitch and tap **FX** until **VLV** appears in its assignment. Save the preset to keep the assignment.

@@ -4,7 +4,7 @@
 
 import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName, toast } from "./edcore.js";
 import { costPct } from "./pxcost.js";
-import { VALVE_ACTION } from "./pxedit.js";
+import { VALVE_ACTION, VALVE_LEVEL_UNITY } from "./pxedit.js";
 import { save, saveAs, revert, exportOne, setCompare, comparing, duplicate, moveTo, restoreFactory } from "./edpresets.js";
 
 let dragging = null;
@@ -56,10 +56,7 @@ function setFs(set) {
   act(async () => { fs = await app.ed.footswitch(set); await sync(); renderFs(); renderTiles(); });
 }
 
-function valveDb(value) {
-  const db = Math.round(24 * (value / 100) ** 2);
-  return `${db ? "+" : ""}${db} dB`;
-}
+const formatDb = (db) => `${db > 0 ? "+" : ""}${db} dB`;
 function renderValve() {
   const row = $("valverow"), p = app.st?.preset;
   row.hidden = !app.ed?.hasValve || !p;
@@ -68,10 +65,16 @@ function renderValve() {
   sw.setAttribute("aria-checked", String(!!p.valveOn));
   sw.querySelector("span").textContent = on;
   if (document.activeElement !== input) input.value = p.valveDrive;
-  const db = valveDb(+input.value);
+  const db = formatDb(Math.round(24 * (+input.value / 100) ** 2));
   $("valvedb").textContent = db;
-  $("valvesummary").textContent = `${on} · ${db}`;
   input.setAttribute("aria-valuetext", db);
+  const level = $("valvelevel"), hasLevel = app.ed.hasValveLevel;
+  $("valvelevelrow").hidden = !hasLevel;
+  if (hasLevel && document.activeElement !== level) level.value = (p.valveLevel - VALVE_LEVEL_UNITY) / 2;
+  const levelDb = formatDb(+level.value);
+  $("valveleveldb").textContent = levelDb;
+  level.setAttribute("aria-valuetext", levelDb);
+  $("valvesummary").textContent = hasLevel ? `${on} · Drive ${db} · Level ${levelDb}` : `${on} · ${db}`;
   $("valvecontrols").inert = comparing();
 }
 export function setValveOn(on) {
@@ -83,26 +86,28 @@ export function setValveOn(on) {
 }
 
 // ---- live editing (also what a learned MIDI control calls) ----
-let pendingParam = null, sendingParam = false;
+const pendingParams = new Map();
+let sendingParam = false;
 export function sendParam(b, k, v) {
   if (!app.ed || comparing()) return;
-  if (b === VALVE_ACTION) app.st.preset.valveDrive = v;
+  if (b === VALVE_ACTION) app.st.preset[k === 0 ? "valveDrive" : "valveLevel"] = v;
   else app.st.preset.p[b][k] = v;
-  pendingParam = { b, k, v };
+  pendingParams.set(`${b}/${k}`, { b, k, v });
   if (!sendingParam) flushParam();
 }
 async function flushParam() {
   sendingParam = true;
   try {
     for (;;) {
-      while (pendingParam) {
-        const q = pendingParam; pendingParam = null;
+      while (pendingParams.size) {
+        const [key, q] = pendingParams.entries().next().value;
+        pendingParams.delete(key);
         await app.ed.setParam(q.b, q.k, q.v);
       }
       await sync();
-      if (!pendingParam) break;                     // a value that came in meanwhile goes out too
+      if (!pendingParams.size) break;               // a value that came in meanwhile goes out too
     }
-  } catch (_) { } finally { sendingParam = false; }
+  } catch (_) { pendingParams.clear(); } finally { sendingParam = false; }
 }
 // the pedal's word on the sound after a change of ours (its "edited" flag): the other sections hear of it
 async function sync() { app.st = await app.ed.state(); renderHeader(); emit("state", { own: true }); }
@@ -334,6 +339,8 @@ export function initSound() {
   $("valveon").onclick = () => setValveOn(!app.st.preset.valveOn);
   $("valvedrive").oninput = (e) => { sendParam(VALVE_ACTION, 0, +e.target.value); renderValve(); };
   $("valvedrive").onblur = renderValve;
+  $("valvelevel").oninput = (e) => { sendParam(VALVE_ACTION, 1, +e.target.value * 2 + VALVE_LEVEL_UNITY); renderValve(); };
+  $("valvelevel").onblur = renderValve;
   $("stomp").onclick = () => setFs({ stomp: $("stomp").getAttribute("aria-checked") !== "true" });
   $("fsl").onchange = () => setFs({ left: +$("fsl").value });
   $("fsr").onchange = () => setFs({ right: +$("fsr").value });
