@@ -49,7 +49,8 @@ function render() {
   const refs = Array.from({ length: 52 }, (_, i) => 415 + i);
   pop.append(
     h("h2", { text: "Global settings" }),
-    h("p", { class: "dim", text: "For the pedal and the room, not the preset. They play at once and are written to the pedal a moment after the last change." }),
+    h("p", { class: "dim", text: "Applies across presets. Changes take effect live and save automatically." }),
+    ...(app.ed?.hasValve ? [h("p", { class: "dim", text: "On the pedal, hold HOME for the tuner, release it, then hold HOME again for Global." })] : []),
     h("h3", { text: "Input" }),
     sel("High-pass", HPF, v.hpf, (x) => (x ? `${x} Hz` : "Off"), (x) => change({ hpf: x }), "Cuts a steady low rumble before every effect. 25 Hz and below for bass; 80 Hz for a guitar on a loud stage."),
     h("h3", { text: "Output EQ" }),
@@ -62,7 +63,7 @@ function render() {
     h("label", { class: "gl-row" }, h("span", { class: "gl-l", text: "Smart gate hush" }), slider(0, 100, 1, v.hush, "Smart gate hush", (x) => `${x} %`, (x) => change({ hush: x })),
       h("small", { class: "dim", text: "The gate's hiss filter: a low-pass that closes as a note dies away. Only with the SMART GATE." })),
     h("h3", { text: "Tuner" }),
-    sel("Reference A", refs, v.tuner, (x) => `${x} Hz`, (x) => change({ tuner: x }), "Also on the pedal: turn the knob on the tuner page."),
+    sel("Reference A", refs, v.tuner, (x) => `${x} Hz`, (x) => change({ tuner: x }), "Turn PARA on the pedal’s tuner page to adjust this on the pedal."),
     sel("Tuner lights", TLIGHTS, v.tunerLights, (x) => TL_NAME[x], (x) => change({ tunerLights: x }), "Blink: HOME blinks. Needle: one light moves along the row with the cents. Strobe: one light chases toward the side the note is out to; the middle three are steady when in tune."),
     h("label", { class: "gl-row" }, h("span", { class: "gl-l", text: "Lights off" }), h("input", { type: "checkbox", checked: v.lightsOff, onchange: (e) => change({ lightsOff: e.target.checked }) }),
       h("small", { class: "dim", text: "The button lights stay dark while you play (the tuner still shows)." })),

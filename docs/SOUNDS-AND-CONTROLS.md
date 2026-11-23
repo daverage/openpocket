@@ -118,7 +118,7 @@ It opens on a pick attack (energy jumping over the slow level), stays open while
 | Block | Types |
 |---|---|
 | GT | NOISE GATE (THRESH, RELEASE), SMART GATE (SENS, RELEASE, HOLD, REDUCTION) |
-| CMP | SQUASH (Dyna Comp), STUDIO (parallel, MIX), OPTO LA-2 (optical, slow release), SLOW SWELL (attack removed: violin effect), VALVE (single 12AX7 stage with 0 to +24 dB of compensated DRIVE, defaults to +6 dB) |
+| CMP | SQUASH (Dyna Comp), STUDIO (parallel, MIX), OPTO LA-2 (optical, slow release), SLOW SWELL (violin-style attack) |
 | PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (−1 and +1 octave), POLY OCTAVE HQ (same controls, phase-scaled octave voices), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents), POLY SHIFTER (v75: a phase-vocoder shifter for chords: SHIFT −12..+12 semitones, FINE ±50 cents, MIX, ATTACK; 17 ms of latency, dry and wet kept together; see [POLY-SHIFTER.md](POLY-SHIFTER.md)) |
 | SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, ACOUSTIC DRIVE (a drive for a piezo: it takes the lows and fizz off before a soft clipper and blends the dry guitar back; DRIVE, BLEND, PIEZO, TONE, LEVEL), SQUARE SYNTH (square-wave synth + sub, opening filter), SQUARE SYNTH HQ (monophonic pitch-tracked square + sub with the same controls) (ENHANCE, RANGEMASTER, EP BOOST and MAXIMIZER moved to the BST block in v75: a stored preset is converted) |
 | EQ | 5 BAND, GRAPHIC 5 (the Mesa "V"), PARAMETRIC, HUM FILTER (v75: notches at the mains and its harmonics for 50 Hz countries (Europe, Asia, Africa, Australia) and 60 Hz countries (the Americas, Korea, Taiwan, parts of Japan and the Gulf); MAINS = 50 HZ, AUTO (it listens for which hum is in the signal and follows a change, in about a second) or 60 HZ; DEPTH 3..40 dB, WIDTH 1..20 Hz, HARMONICS 1..5. At the default width a low E (82 Hz) and an A (110 Hz) pass untouched; a 60 Hz hum's 2nd harmonic (120 Hz) sits next to the B string's lowest note (123 Hz), so keep WIDTH low when playing there) |
@@ -174,17 +174,20 @@ limiter (transparent up to -2 dBFS) instead of a hard clip.
 | HOME | Back to PLAY. On PLAY, opens the preset list. Hold for 0.7 s to open the tuner. Release and hold again for **GLOBAL**. |
 | Right / left footswitch | next / previous preset (on a block's EDIT page it also goes back to PLAY, where the preset shows). Coming back to a preset you edited without saving gives the edit back (one edit is kept) |
 | **Both footswitches** | **tuner** (the first one changes the preset at once, as always; the second within about 0.15 s changes it back and opens the tuner). Both again leave it |
-| **Hold CAB** (0.8 s) | **STOMP / PATCH mode** (v48). PATCH: the footswitches change presets, as above. STOMP: each footswitch switches what the preset assigns it (a block on / off, or BYPASS); presets do not change (hold CAB again for PATCH). The footer on PLAY shows `STOMP   L: DRV   R: BYP`. A short CAB press still opens the CAB page, at its release |
-| Footswitch held + a block button (STOMP) | assigns that footswitch: MOD, AMP, CAB, DLY or REV directly; FX steps through DRV, SFX, SYN, PIT, CMP, GT, EQ, BYPASS and nothing. The footswitch's own press is taken back. The assignment is part of the preset (EDITED; hold PUSH to save). The web editor's protocol can set it too (`FOOTSWITCH`, EDITOR-PROTOCOL.md) |
+| **Hold CAB** (0.8 s) | Switches between **STOMP** and **PATCH**. In PATCH, the footswitches change presets. In STOMP, they toggle the assigned effect, Valve or bypass. The PLAY footer shows the assignments, for example `STOMP   L: VLV   R: BYP`. Tap CAB to open OCTAVE. |
+| Footswitch held + a block button (STOMP) | Assigns that footswitch. MOD, AMP, CAB, DLY and REV directly assign MOD, SYNTH, OCTAVE, DELAY and REVERB. FX cycles through Valve, all ten blocks, BYPASS and unassigned. Save the preset to keep its assignments. |
 | BYPASS on a footswitch (STOMP) | the dry guitar, every block off (DSP off); the footer turns red (`BYPASSED`). Press again to come back. Leaving STOMP mode ends it. STOMP mode is kept in the flash with the next save |
 | AMP, CAB, DLY, REV, MOD | jump to the block; press again = on/off |
-| FX | the next of DRV, SFX, SYN, PIT, CMP, GT and EQ in the order of the preset's chain, as the tiles read · **long press (0.8 s)** = MIDI page |
+| FX | Cycles through GATE, PRE / BOOST, COMP, SPECIAL FX and EQ in chain order, then **VALVE INPUT**. Hold for 0.8 s for MIDI and USB audio settings. |
 | MASTER | output volume |
 
 On **GLOBAL**, turn PARA to select **Output EQ**, **Input High-Pass**, **Smart Gate Hush**, **Limiter**, **Tails**,
 **Tuner Lights**, or **Button Lights**. Press PARA to edit, turn it to adjust, and press it again to confirm. The effects
 apply live across presets. Output EQ opens a page for all five bands. Press HOME to go back from EQ, then press HOME on
 the main Global page to save and go back to PLAY. Open **Diagnostics** from the bottom of the Global list.
+
+On **VALVE INPUT**, turn PARA to adjust Drive (0 to +24 dB), and press it to toggle Valve. The stage sits ahead of the
+effects chain and can run with COMP. Save the preset to keep on/off and Drive. In the browser editor, open **Sound → Valve**.
 
 **Screen (v36)**: PLAY shows the preset number and name large, the amp and cab, the chain in colour (on = filled,
 off = dark) and the selected block; EDIT shows the block on its colour, the model, and up to 5 settings with value and
@@ -242,8 +245,9 @@ the in-tune state from 4 cents until 7 so it does not flicker at the edge. The r
 phase turns between two windows, so a string's stretched upper partials do not pull it sharp (they did, by about 2 cents). On synthetic strings it is within 1.5 cents from B0 to E6 (tests/tunersim.c; not yet heard on a real
 guitar). **The knob sets the reference A** (415 to 466 Hz, one hertz a detent; the editor's Global panel too; kept with the next save). Tuner lights: see "Global settings".
 
-## Global settings (v75)
-Set once for the pedal and the room, not per preset. In the web editor: **Global** in the header. They play at once and are written to the pedal's flash with the next save or a moment after the last change.
+## Global settings
+
+These settings apply across presets. On v81, open **GLOBAL** from the tuner with another HOME hold and press HOME from the main list to save and exit. In the web editor, open **Global** in the header. Changes apply live and the editor saves them automatically.
 
 | Setting | What it does |
 |---|---|
@@ -254,13 +258,13 @@ Set once for the pedal and the room, not per preset. In the web editor: **Global
 | Smart gate hush | 0 to 100 %: the SMART GATE's dynamic hiss filter, a low-pass that closes as the note dies away; only with the SMART GATE |
 | Tuner reference A | 415 to 466 Hz (also the knob on the tuner page) |
 | Tuner lights | BLINK (HOME blinks, as before), NEEDLE (one of the seven button lights moves from HOME to CAB with the cents; the three in the middle are steady when in tune), STROBE (one light chases toward the side the note is out to, faster the further out) |
-| Lights off | the button lights stay dark while you play (the tuner still shows) |
+| Button lights | turn the lights off while you play. The tuner still uses its chosen lights mode. The editor labels this setting **Lights off**. |
 
 The defaults change nothing in the sound except TAILS, which is on. Older stores read as the defaults.
 
 ## Footswitch gestures (v75)
 Each footswitch has a **double tap** (STOMP mode only: the two toggles cancel, then the action runs) and a **hold** (0.7 s: the press's own step is taken back, then the action runs; PATCH mode too).
-Each is an action: nothing, a block on / off, BYPASS, the tuner, the next or previous preset, or STOMP / PATCH mode. Set in the web editor (Footswitches, Gestures); part of the preset: Save keeps them in the slot.
+Actions include toggling a block or Valve, BYPASS, the tuner, the next or previous preset, STOMP / PATCH mode, and unassigned. In the web editor, expand **Sound → Footswitches** to set them. Save the preset to keep them.
 
 ## Stage view (v75)
 The web editor's **Stage** button: a big second display for the pedalboard (put a phone or laptop beside it). The preset, the blocks that are on (tap one to switch it), the two footswitches with their assignment and
@@ -268,9 +272,10 @@ gestures (tap one as on the pedal), previous / next preset, a **tuner** (the ped
 a second to unlock), and three looks (Color, AMOLED, Mono). The screen stays on where the browser allows it.
 
 ## Diagnostics
-Keep holding HOME past the tuner (1.4 s in all), or hold HOME again on the tuner. The pages bug reports ask for a photo of
-(the tuner page showed these before); the knob turns between them, any control leaves, and the sound plays. Every figure is
-written beside its picture. Green is fine, amber is above 80 %, red is a late block or the effects bypassed.
+
+Open **GLOBAL** by holding HOME for the tuner, releasing it, and holding it again. Select **Diagnostics** at the bottom
+of the list and press PARA. Turn PARA to switch diagnostic pages. Audio plays while they are open. Green indicates normal
+operation, amber indicates DSP load above 80%, and red indicates a late block or bypassed effects.
 
 - **Page 1, the DSP:** the load as a bar with the safety bypass's limit marked (`GUARD 93%` with both cores, 85 % on one)
   and the peak since the preset was set; which cores ran (`C1` the second core, `C0` the fallback on the main core, `2C`

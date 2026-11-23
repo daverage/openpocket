@@ -78,6 +78,21 @@ sim.stdout.on("data", (d) => {
 
 let failed = 0;
 const ok = (c, what) => { console.log(`${what.padEnd(64)} ${c ? "ok" : "FAIL"}`); if (!c) failed++; };
+{
+  const latest = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const packages = ["PocketX", "BlackBox"].map((model) => ({ model, product: `${model}_981`, file: `${model}_981.fwsc` }));
+  await latest.route("**/firmware/manifest.json", (route) => route.fulfill({ json: { version: 81, packages } }));
+  await latest.goto(url);
+  await latest.waitForFunction(() => document.getElementById("pkgver").textContent === "v81 · build 981");
+  ok(await latest.isVisible("#build981"), "build 981 shows the Valve, footswitch and Global features");
+  await latest.click("#pkgfiles summary");
+  const downloads = await latest.locator("#pkgdownloads a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+  ok(downloads.join() === "firmware/PocketX_981.fwsc,firmware/BlackBox_981.fwsc", "downloads follow both model entries in the manifest");
+  const notes = await latest.request.get(url + "WHATS-NEW-v81.md");
+  ok(notes.ok() && (await notes.text()).includes("Global settings on the pedal"), "the build 981 release notes are available");
+  await latest.screenshot({ path: join(OUT, "page_v81.png"), fullPage: true });
+  await latest.close();
+}
 await page.goto(url);
 await page.waitForTimeout(300);
 startSim();
@@ -140,9 +155,11 @@ cpSync(join(FIX, "firmware"), join(SITE, "firmware", "midi-test"), { recursive: 
   await ch.waitForFunction(() => /midi-test/.test(document.getElementById("pkgver").textContent), null, { timeout: 5000 });
   ok(await ch.isVisible("#testchan"), "test channel: the banner says it is a test build");
   ok(/\(midi-test\)/.test(await ch.textContent("#pkgver")), "test channel: the packages come from firmware/midi-test/");
+  ok(!(await ch.isVisible("#build981")), "test channel stays separate from the build 981 feature notes");
   await ch.goto(url + "?channel=../../etc");
   await ch.waitForFunction(() => document.getElementById("pkgver").textContent !== "…", null, { timeout: 5000 });
   ok((await ch.textContent("#pkgver")) === "—", "test channel: a path in the name is cleaned (firmware/etc/ is asked for, nothing outside firmware/)");
+  ok(await ch.isVisible("#pkgmissing") && !(await ch.isVisible("#pkgfiles")), "a missing manifest gives setup help and hides downloads");
   await ch.screenshot({ path: join(OUT, "page_5_test_channel.png"), fullPage: true });
   ok(!(await page.isVisible("#testchan")), "the normal page shows no test banner");
 }

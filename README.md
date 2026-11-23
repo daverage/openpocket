@@ -4,11 +4,11 @@ OpenPocket Synth2 is guitar-synth and multi-effects firmware for the **Donner Po
 **M-VAVE BlackBox**. It turns a standard guitar signal into synth voices, keyboard sounds and octave effects.
 It runs on the pedals' JieLi AC791N chip and uses their built-in controls, USB MIDI and browser-based preset editor.
 
+[Install build 981](#install) · [What’s new in v81](docs/WHATS-NEW-v81.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
+
 ## Build 981 compared with upstream v42
 
-This comparison covers the Synth2 build 915 packages for both pedals and uses
-[OpenPocket v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372)
-as the baseline.
+The features below use [upstream OpenPocket v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) as the baseline. The [v76 release notes](docs/WHATS-NEW-v76.md) cover the earlier boosts, acoustic tools, and tuner changes.
 
 ### Guitar synths
 
@@ -24,6 +24,7 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 | **ARCADE SPLIT** | Two ARCADE patches split at a selectable note from E2 to E5. Each note keeps its assigned patch through bends. LOWER, UPPER, SPLIT, DECAY and MIX. |
 | **INSTRUMENT** | Five Felucca ANALOG pads, strings and brass sounds, plus five Felucca WHEEL tonewheel organ patches with drawbars, key click and rotary. PATCH, TONE, ATTACK, RELEASE and LEVEL. |
 | **ENSEMBLE** | The INSTRUMENT patches stacked in ten voicings with up to five voices. Choose unison, octaves, fifths or chord voicings and adjust detune and pitch drift. PATCH, VOICING, SPREAD, TONE and LEVEL. |
+| **CHOIR** | Tracked vocal formants with selectable vowels and singer stacks. VOWEL, SINGERS, SPREAD, TONE and LEVEL. |
 | **POLY OCT FUZZ** | Mixes guitar with octave-down and octave-up voices before a two-stage germanium-style Fuzz Face model. DOWN, UP, FUZZ, TONE and LEVEL. |
 
 ### Octave, gate and special effects
@@ -35,6 +36,9 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 - **SMART GATE** learns the background level while closed using a filtered detector. Adjust sensitivity, hold time,
   release and reduction.
 - **SQUARE SYNTH HQ** in SPECIAL FX adds a pitch-tracked square wave and sub voice with SWEEP, RESO, SUB and MIX.
+- **POLY SHIFTER** transposes chords in the OCTAVE block. **HUM FILTER** in EQ notches mains hum and its harmonics.
+- **PRE / BOOST** includes **FUZZ FACE**, **FIXED WAH**, **ENHANCE**, and **ACOUSTIC PRE** for piezo pickups.
+  **ACOUSTIC DRIVE** in SPECIAL FX adds piezo-voiced drive with a dry blend.
 
 ### Signal chain, controls and presets
 
@@ -42,7 +46,7 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
   OCTAVE → SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB. The synth firmware drops DRIVE, AMP, CAB, NAM and user cabinet
   IRs, along with their editor controls. POLY OCT FUZZ retains the Fuzz Face sound inside SYNTH.
 - **Valve** models a single 12AX7 stage at the input, ahead of the reorderable effects. Each preset saves its own
-  on/off state and Drive, with up to +24 dB of internal gain and automatic output compensation. Valve and COMP can run
+  on/off state and Drive, with up to +24 dB of internal gain and automatic output compensation. The default is off at +12 dB. Valve and COMP can run
   together. Saved presets that used the older COMP → VALVE model carry their Valve settings forward.
 - **Pedal layout** shows the SYNTH and OCTAVE types under the preset number. The physical AMP and CAB buttons
   open SYNTH and OCTAVE, respectively. FX cycles through the utility blocks.
@@ -60,13 +64,11 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 
 ## Install
 
-`make package` builds `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox in
-`docs/firmware/`. The [hardware test guide](docs/SYNTH2-HARDWARE-TEST.md) describes the package and dry-run workflow
-using build 901 as its example. Select the 981 file for your pedal.
+1. Run `make package`, then `make serve`. Open the localhost address printed in the terminal in desktop Chrome or Edge.
+2. Power on the pedal and connect it with a USB data cable. Click **Connect**, allow MIDI access, and check the detected model and **Available firmware**.
+3. Click **Install**. The installer transfers the matching package and verifies the reported version after restart. Keep the pedal powered and connected until it finishes.
 
-Run `make serve` to open the local installer and editor in Chrome or Edge. The installer also accepts the
-manufacturer's official `.fwsc` for restoring stock firmware. See the [recovery guide](docs/RESCUE.md)
-if the pedal restarts in a loop.
+Build 981 packages are `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox. After installation, open the preset editor or read the release notes. The installer can also restore the manufacturer’s official `.fwsc`. [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
 
 ## Preset editor
 
@@ -92,9 +94,9 @@ Edits take effect live and changes on the pedal appear in the editor. See the
   or select another assignment the same way. Tap the footswitch to toggle its assignment while playing. Use the editor
   to change the double-tap and hold actions.
 - **Global settings**. Hold HOME to open the tuner, release it, then hold HOME again for **GLOBAL**. Use PARA to select,
-  edit and confirm a setting. The five output EQ bands have their own page. HOME goes back from EQ and saves when leaving
-  the main Global page. Diagnostics is the last item. Turn PARA in the tuner to adjust reference A. Hold FX for MIDI and
-  USB audio settings. The web editor's **Global** panel edits the same settings.
+  edit and confirm a setting. Adjust the five-band output EQ, input high-pass, Smart Gate Hush, limiter, tails, tuner
+  lights and button lights. HOME goes back from EQ and saves when leaving the main Global page. Diagnostics is the last item.
+  Turn PARA in the tuner to adjust reference A. Hold FX for MIDI and USB audio settings. The web editor’s **Global** panel edits the same settings.
 
 ## Build
 

@@ -20,6 +20,27 @@ const ok = (c, what) => { console.log(`${what.padEnd(70)} ${c ? "ok" : "FAIL"}`)
 const FAST = { afterUpgrade: 50, afterStep1: 50, loaderWait: 5000, step1Idle: 3000, step2Idle: 5000, afterWrite: 50,
   backWait: 5000, perRequest: 0, poll: 50 };
 
+// During USB re-enumeration the first app response can precede the target firmware's response.
+{
+  const u = new Updater({}, null, { afterWrite: 0, backWait: 100, poll: 1 });
+  const identities = ["BlackBox_979", "BlackBox_981"];
+  u.find = async (filter) => {
+    const text = identities.shift();
+    if (!text) return null;
+    const [model, version] = text.split("_");
+    const id = { text, model, version: Number(version) };
+    return filter(id) ? { id, link: { close() {} } } : null;
+  };
+  let result;
+  try { result = await u.comeBack("BlackBox_981", () => {}); } catch (e) { result = e.message; }
+  ok(result === "BlackBox_981", `restart waits for BlackBox_981 over a transient old identity (${result})`);
+  identities.push("PocketX_981", "BlackBox_980");
+  let mismatch;
+  try { await u.comeBack("BlackBox_981", () => {}); } catch (e) { mismatch = e; }
+  ok(mismatch?.code === "mismatch" && mismatch.message.includes("expected BlackBox_981") && mismatch.detail === "BlackBox_980",
+    "restart rejects the wrong model or version and reports both identities");
+}
+
 execFileSync("python3", [join(ROOT, "tests", "fixtures.py"), TMP], { stdio: "inherit" });
 
 const pkg = (name) => readFileSync(join(TMP, name));
