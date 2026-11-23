@@ -40,3 +40,17 @@ On 24 Guitar-TECHS scales, gate and pitch dropped median pitch arrival from 19.8
 On the connected A2 to A3 pluck, the current wrapper took 74 ms to send the correct pitch to the adapter. Disabling the harmonic hold reduced it to 37 ms. Gate and pitch took 52 ms and kept the voice active across the transition.
 
 The lead and organ patches are candidates for continuous articulation. The wrong low-E start and the long tails identify two behaviors to keep testing before applying it to Choir and Strings. On-pedal response and player preference still need a listening pass.
+
+## Pedal build v82 Synth Tracking
+
+`node tools/op.mjs package-synth-tracking` builds test packages in `docs/firmware/synth-tracking/`. The test macro selects Square HQ-style pitch and gate with hard-mute detection for ANALOG follow patches and WHEEL organs. CHOIR and the other ENSEMBLE patches use the direct envelope with their existing pitch, onset and release handling. The envelope is converted to expression once per synth control block.
+
+For a dry comparison, bypass MOD, DELAY and REVERB in a working preset. Use the factory names below or select the matching effect in an existing preset. Repeat the same short phrase with each patch.
+
+| Patch | Play | Listen for |
+|---|---|---|
+| SQUARE LEAD, then ANALOG LEAD | Fast alternate picking on one note, then a run from low E up the neck | Lost or merged picks, wrong starting pitch, lag against Square |
+| ANALOG LEAD | Alternate low E and the E an octave up, then bend, slide and pull off | Hanging on the first pitch, octave bleeps, audible steps during the glide |
+| JAZZ ORGAN | Hard mute a note. Re-pick softly right away, then repeat with palm-muted eighths. | Ghost notes after the mute, a lost soft re-pick, delayed cutoff |
+| CHOIR AAH | Alternate soft and hard notes, then try OO>AH and repeat the same phrase | Pick dynamics, clicks, and whether the vowel restarts sound musical |
+| STRING ENSEMB | Hold a note, cut it dead, then play a short separated pair and a legato pair | Swell and tail length, missing second notes, big volume dips |
