@@ -1,14 +1,19 @@
 # OpenPocket Synth2
 
-OpenPocket Synth2 is guitar-synth and multi-effects firmware for the **Donner Pocket X** and
-**M-VAVE BlackBox**. It turns a standard guitar signal into synth voices, keyboard sounds and octave effects.
-It runs on the pedals' JieLi AC791N chip and uses their built-in controls, USB MIDI and browser-based preset editor.
+OpenPocket Synth2 is firmware for the **Donner Pocket X** and **M-VAVE BlackBox** focused on **guitar synths,
+octavers, and boosts**. It covers single-note synth and keyboard sounds, chord-friendly octave and pitch effects,
+and a dedicated preamp and boost block.
 
-[Install build 981](#install) · [What’s new in v81](docs/WHATS-NEW-v81.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
+Synth2 removes the original **DRIVE**, **AMP**, and **CAB** blocks, including **NAM amp models** and **user cabinet IRs**.
+It also retires the older synth catalogue, the earlier delay-line poly octaver, and the **Applause** effect from a
+Synth2 test build. Gate, compression, EQ, modulation, delay, and reverb are still available, alongside selected
+special effects and dedicated sounds such as **Fuzz Face** and **Acoustic Drive**.
 
-## Build 981 compared with upstream v42
+[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v81](docs/WHATS-NEW-v81.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
 
-The features below use [upstream OpenPocket v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) as the baseline. The [v76 release notes](docs/WHATS-NEW-v76.md) cover the earlier boosts, acoustic tools, and tuner changes.
+## Sounds and effects
+
+This is the feature set in **v81 (build 981)** compared with upstream OpenPocket v42. [Upstream v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) · [v76 release notes](docs/WHATS-NEW-v76.md)
 
 ### Guitar synths
 
@@ -27,53 +32,75 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 | **CHOIR** | Tracked vocal formants with selectable vowels and singer stacks. VOWEL, SINGERS, SPREAD, TONE and LEVEL. |
 | **POLY OCT FUZZ** | Mixes guitar with octave-down and octave-up voices before a two-stage germanium-style Fuzz Face model. DOWN, UP, FUZZ, TONE and LEVEL. |
 
-### Octave, gate and special effects
+### Octave and pitch
 
 - **POLY OCTAVE HQ** supplies polyphonic octave-up and octave-down voices, with an independent two-octave-down
   level. RANGE tapers the one-octave-down voice above a selected note from B1 to E5. FULL keeps the full range.
 - **LOWEST OCTAVE HQ** takes its octave-down voice from the lowest sounding band. It adds RANGE and make-up gain
   for low-note reinforcement under chords.
-- **SMART GATE** learns the background level while closed using a filtered detector. Adjust sensitivity, hold time,
-  release and reduction.
-- **SQUARE SYNTH HQ** in SPECIAL FX adds a pitch-tracked square wave and sub voice with SWEEP, RESO, SUB and MIX.
-- **POLY SHIFTER** transposes chords in the OCTAVE block. **HUM FILTER** in EQ notches mains hum and its harmonics.
-- **PRE / BOOST** includes **FUZZ FACE**, **FIXED WAH**, **ENHANCE**, and **ACOUSTIC PRE** for piezo pickups.
-  **ACOUSTIC DRIVE** in SPECIAL FX adds piezo-voiced drive with a dry blend.
+- **POLY SHIFTER** transposes chords up to an octave in either direction. It has fine tuning, dry/wet mix, and attack controls. [Poly Shifter guide](docs/POLY-SHIFTER.md)
+- **OCTAVER** provides one- and two-octave-down voices and an octave-up voice. **WHAMMY**, **HARMONIZER**, and
+  **DETUNE** cover pitch sweeps, fixed intervals, and doubling.
+
+### Preamp, boosts, and effects
+
+| PRE / BOOST model | Sound |
+| --- | --- |
+| **RANGEMASTER** | Treble booster with pickup and body controls. |
+| **EP BOOST** | Preamp boost with selectable voicing. |
+| **MAXIMIZER** | Low Contour and Process controls for tone shaping. |
+| **FIXED WAH** | Parked wah with adjustable position, peak, and output boost. |
+| **ENHANCE** | Harmonic enhancement and compression with up to +12 dB of clean boost. |
+| **FUZZ FACE** | Germanium or silicon Fuzz Face circuit model with pickup loading and bias controls. |
+| **ACOUSTIC PRE** | Piezo preamp with low cut, dequack, body, feedback notch, and level. |
+
+- **Valve** is a separate 12AX7 input stage that runs before the reorderable effects and can run alongside COMP. Each
+  preset saves on/off and Drive. It defaults to off at +12 dB. Drive ranges from 0 to +24 dB with automatic output
+  compensation.
+- **SMART GATE** learns the background level while closed. The global **Smart Gate Hush** setting controls its dynamic
+  hiss filter. **HUM FILTER** in EQ notches mains hum and its harmonics at 50 Hz or 60 Hz, with an Auto setting.
+- **SPECIAL FX** includes **SQUARE SYNTH HQ**, a tracked square wave and sub voice, and **ACOUSTIC DRIVE**, a piezo-voiced
+  drive with a dry blend. Envelope wah, auto wah, ring mod, bitcrushing, slicing, lo-fi radio, and the original square
+  synth are also available. [Full effects catalogue](docs/SOUNDS-AND-CONTROLS.md) · [Boost and pedal models](docs/PEDALS.md)
 
 ### Signal chain, controls and presets
 
-- **Ten reorderable blocks** run in the order stored with each preset. The default is GATE → BST (PRE / BOOST) → COMP →
-  OCTAVE → SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB. The synth firmware drops DRIVE, AMP, CAB, NAM and user cabinet
-  IRs, along with their editor controls. POLY OCT FUZZ retains the Fuzz Face sound inside SYNTH.
-- **Valve** models a single 12AX7 stage at the input, ahead of the reorderable effects. Each preset saves its own
-  on/off state and Drive, with up to +24 dB of internal gain and automatic output compensation. The default is off at +12 dB. Valve and COMP can run
-  together. Saved presets that used the older COMP → VALVE model carry their Valve settings forward.
+- **Ten reorderable blocks** run in the order stored with each preset. The default is GATE → PRE / BOOST (BST) → COMP →
+  OCTAVE → SYNTH → SPECIAL FX → EQ → MOD → DELAY → REVERB.
 - **Pedal layout** shows the SYNTH and OCTAVE types under the preset number. The physical AMP and CAB buttons
-  open SYNTH and OCTAVE, respectively. FX cycles through the utility blocks.
+  open SYNTH and OCTAVE, respectively. FX cycles through the utility blocks and then opens VALVE INPUT.
 - **STOMP mode** gives each footswitch a per-preset assignment. Hold CAB to switch between STOMP and PATCH.
   In STOMP, hold a footswitch and press a block button to assign it directly, or tap FX to cycle through Valve, all ten
-  blocks, global bypass and unassigned. Hold PARA to open SAVE, then press PARA to confirm. Block lights follow bypass state.
-- **Preset compatibility** uses 52 slots in the synth bank. Updating from the original multi-effects preset format
-  retains global settings and starts with the synth factory slots. Back up your presets before switching firmware.
-  Existing synth-format presets with a retired SYNTH type keep their stored type and settings and load that block
-  bypassed. The pedal and editor skip retired types, and MIDI model selection skips them. The first save on v75 or later
-  converts the preset store to format 7, which older firmware cannot read: back up your presets first.
+  blocks, global bypass, and unassigned. The editor sets per-preset double-tap and hold actions. Hold PARA to open SAVE,
+  then press PARA to confirm.
+- **Tuner** covers 25 Hz to 1.5 kHz with adjustable reference A and blink, needle, or strobe lights. **Diagnostics**
+  shows DSP load and system readings. The load safeguard sheds expensive blocks when the pedal exceeds its DSP
+  budget. The pedal shows SHED and the editor can bring those blocks back.
+- **52 factory presets** cover synth, pitch, boost, acoustic, and conventional effects. Updating from the original
+  multi-effects preset format retains global settings and starts with the Synth2 factory bank. A retired SYNTH type
+  loads switched off with its parameter values retained. Older **COMP → VALVE** presets carry on/off, Drive, and
+  Valve footswitch assignments forward. Earlier boost presets can migrate their SPECIAL FX settings to PRE / BOOST.
+  Export your presets before changing firmware. Older firmware cannot read the preset store format written by v75 and later.
 - **USB MIDI and USB audio** carry over from upstream. USB MIDI handles preset selection, block controls and delay
   clock. Enable USB AUDIO to record and play back stereo 16-bit audio at 44.1 kHz. See [MIDI](docs/MIDI.md) and
   [USB audio](docs/USB-AUDIO.md).
 
 ## Install
 
-1. Run `make package`, then `make serve`. Open the localhost address printed in the terminal in desktop Chrome or Edge.
-2. Power on the pedal and connect it with a USB data cable. Click **Connect**, allow MIDI access, and check the detected model and **Available firmware**.
-3. Click **Install**. The installer transfers the matching package and verifies the reported version after restart. Keep the pedal powered and connected until it finishes.
+1. Open the [web installer](https://daverage.github.io/openpocket/) in desktop Chrome or Edge.
+2. Power on the pedal and connect it with a USB data cable. Click **Connect**, allow MIDI access, and confirm the model
+   and **v81 · build 981** under **Available firmware**.
+3. Click **Install** and leave the pedal powered and connected until the installer verifies the firmware after restart.
 
-Build 981 packages are `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox. After installation, open the preset editor or read the release notes. The installer can also restore the manufacturer’s official `.fwsc`. [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
+Build 981 packages are `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox.
+The installer can also restore the manufacturer’s official `.fwsc`. For a local install, run `make package` and
+`make serve`, then open the localhost address it prints. [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
 
 ## Preset editor
 
-Open [the preset editor](docs/editor.html) from the local installer in Chrome or Edge and connect the pedal
+Open the editor from the installer or directly in Chrome or Edge and connect the pedal
 over USB. The editor uses the ten-block layout and the pedal's own model catalogue, and has a Stage view and a Global settings panel.
+[Open the preset editor](https://daverage.github.io/openpocket/editor.html)
 
 - **Presets** browses, loads, renames, copies and moves the 52 slots. Export or import JSON to back up and restore
   presets.
@@ -82,6 +109,9 @@ over USB. The editor uses the ten-block layout and the pedal's own model catalog
   Stomp/Patch mode and the current preset's press, double-tap and hold assignments.
 - **MIDI** shows the current preset's Control Change mappings and lets you learn controls from a MIDI controller
   connected to the computer.
+- **Stage** gives you a larger view of the current preset, effect and footswitch states, and the tuner.
+- **Global** adjusts settings across presets. Changes apply live and save automatically in the editor. **Tails** lets
+  delay and reverb play out when switched off or when changing presets.
 
 Edits take effect live and changes on the pedal appear in the editor. See the
 [editor protocol](docs/EDITOR-PROTOCOL.md).
