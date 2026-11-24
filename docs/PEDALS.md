@@ -60,6 +60,12 @@ The germanium values (Is 3.1e-7, beta 70 and 120) were fitted to land on the ana
 
 Heard on the pedal: FUZZ did nothing below about 80 %, and the guitar's volume did not clean it up. Two causes, both fixed. (1) The FUZZ pot was linear in resistance, but the gain follows 1 / (emitter resistance), so everything happened in the last fifth: the pot now has a law (the resistance falls as (1 - FUZZ)^3, a 1k audio pot; the total stays 1k so the bias is unchanged). (2) The circuit was fed 2 V of EMF per engine unit, so a normal guitar level drove it into hard clipping at every FUZZ: now 0.25 V per unit. Measured with a 196 Hz sine (THD = harmonics 2..5 against the fundamental): at a guitar's level (0.125) FUZZ 0 / 25 / 50 / 75 give -63 / -17 / -9 / -8 dB, and at FUZZ 60 the same note is -8.6 dB at full level, -15 dB 12 dB lower and clean (-45 dB) at 24 dB lower. The make-up gain now follows FUZZ so the loudness stays within about 6 dB across the travel. The cleanup is still more abrupt than a real pedal's (a knee within about 12 dB); loading of the pickup by the guitar's own volume pot is not modelled.
 
+## Fuzz Face and Rangemaster in v89
+
+Both effects use a shared lookup table for the transistor junction curves. The circuit solvers still update pickup and
+capacitor states from the incoming signal. Fuzz Face keeps 2× oversampling and its germanium and silicon settings.
+Rangemaster keeps its BODY and PICKUP controls. See the [v89 hardware measurements](WHATS-NEW-v89.md#boost-dsp-load).
+
 ## ACOUSTIC PRE (BST) and ACOUSTIC DRIVE (SFX), v76
 
 For a piezo pickup into a PA or a recorder; the research and its sources are in [research/ACOUSTIC-BOOSTS-RESEARCH.md](research/ACOUSTIC-BOOSTS-RESEARCH.md). They sit in different blocks so they can be used together. Starting points were set from that research and a synthetic test, **not tuned on a real piezo**: set them by ear.

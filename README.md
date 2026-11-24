@@ -9,11 +9,11 @@ It also retires the older synth catalogue, the earlier delay-line poly octaver, 
 Synth2 test build. Gate, compression, EQ, modulation, delay, and reverb are still available, alongside selected
 special effects and dedicated sounds such as **Fuzz Face** and **Acoustic Drive**.
 
-[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v81](docs/WHATS-NEW-v81.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
+[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v89](docs/WHATS-NEW-v89.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
 
 ## Sounds and effects
 
-This is the feature set in **v81 (build 981)** compared with upstream OpenPocket v42. [Upstream v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) · [v76 release notes](docs/WHATS-NEW-v76.md)
+This is the feature set in **v89 (build 989)** compared with upstream OpenPocket v42. [Upstream v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) · [v76 release notes](docs/WHATS-NEW-v76.md)
 
 ### Guitar synths
 
@@ -55,13 +55,17 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 | **ACOUSTIC PRE** | Piezo preamp with low cut, dequack, body, feedback notch, and level. |
 
 - **Valve** is a separate 12AX7 input stage that runs before the reorderable effects and can run alongside COMP. Drive
-  ranges from 0 to +24 dB with automatic output compensation. Current source builds add independent output **Level**
+  ranges from 0 to +24 dB with automatic output compensation. Independent output **Level** ranges
   from −12 to +12 dB in 0.5 dB steps. Presets save both controls. Valve defaults to off, with +12 dB Drive and 0 dB Level.
 - **SMART GATE** learns the background level while closed. The global **Smart Gate Hush** setting controls its dynamic
   hiss filter. **HUM FILTER** in EQ notches mains hum and its harmonics at 50 Hz or 60 Hz, with an Auto setting.
 - **SPECIAL FX** includes **SQUARE SYNTH HQ**, a tracked square wave and sub voice, and **ACOUSTIC DRIVE**, a piezo-voiced
   drive with a dry blend. Envelope wah, auto wah, ring mod, bitcrushing, slicing, lo-fi radio, and the original square
   synth are also available. [Full effects catalogue](docs/SOUNDS-AND-CONTROLS.md) · [Boost and pedal models](docs/PEDALS.md)
+
+Build 989 uses a shared lookup table for the Fuzz Face and Rangemaster transistor curves. On a one-core BlackBox,
+median total DSP load fell from 49% to 39% with Fuzz Face alone in a live comparison.
+[Performance details](docs/WHATS-NEW-v89.md#boost-dsp-load)
 
 ### Signal chain, controls and presets
 
@@ -90,12 +94,12 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 
 1. Open the [web installer](https://daverage.github.io/openpocket/) in desktop Chrome or Edge.
 2. Power on the pedal and connect it with a USB data cable. Click **Connect**, allow MIDI access, and confirm the model
-   and **v81 · build 981** under **Available firmware**.
+   and **v89 · build 989** under **Available firmware**.
 3. Click **Install** and leave the pedal powered and connected until the installer verifies the firmware after restart.
 
-Build 981 packages are `PocketX_981.fwsc` for the Donner Pocket X and `BlackBox_981.fwsc` for the M-VAVE BlackBox.
-The installer can also restore the manufacturer’s official `.fwsc`. To try Valve Level in the current source build,
-run `make package` and `make serve`, then open the localhost address it prints.
+Build 989 packages are `PocketX_989.fwsc` for the Donner Pocket X and `BlackBox_989.fwsc` for the M-VAVE BlackBox.
+The installer can also restore the manufacturer’s official `.fwsc`. For a local build, run `make package` and `make serve`,
+then open the localhost address it prints.
 [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
 
 ## Preset editor
@@ -121,7 +125,7 @@ Edits take effect live and changes on the pedal appear in the editor. See the
 ### Editing from the pedal
 
 - **Valve**. Tap FX until **VALVE INPUT** appears. Turn PARA to adjust Drive (0 to +24 dB).
-  On a current source build, tap FX once more and turn PARA to adjust output Level (−12 to +12 dB, 0 dB for unity).
+  Tap FX once more and turn PARA to adjust output Level (−12 to +12 dB, 0 dB for unity).
   Press PARA to toggle Valve.
   Hold PARA to open SAVE, select the destination if needed, and press PARA to confirm. Both controls are also in the editor's Valve panel.
 - **Footswitches**. From the home screen, hold CAB to enter STOMP. Hold either footswitch and tap FX until its assignment shows **VLV**,
