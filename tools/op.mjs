@@ -94,6 +94,8 @@ const commands = {
   "package-synth2": () => inContainer(["sh", "-c", `OP_CHANNEL=synth2 OP_TEST_VERSION=${process.env.OP_TEST_VERSION || 22} sh firmware/build.sh && mkdir -p build && sha256sum ${SYNTH2} > build/SHA256SUMS-synth2 && cat build/SHA256SUMS-synth2`]),
   "package-synth-tracking": () => inContainer(["sh", "-c",
     "OP_CHANNEL=synth-tracking OP_TEST_VERSION=82 OP_DSP_EXTRA=-DPX_SYNTH_TRACKING_TEST sh firmware/build.sh"]),
+  "package-fuzzface-perf": () => inContainer(["sh", "-c",
+    "OP_CHANNEL=fuzzface-perf OP_TEST_VERSION=88 OP_DSP_EXTRA=-DPXP_FF_TABLE_EXP sh firmware/build.sh"]),
   "package-test": () => inContainer(["sh", "-c", `OP_CHANNEL=midi-test sh firmware/build.sh && mkdir -p build && sha256sum ${TEST} > build/SHA256SUMS-midi-test && cat build/SHA256SUMS-midi-test`]),
   clean() {
     for (const p of ["build", "firmware/build", "firmware/build-ble", "firmware/openpocket.bin", "firmware/openpocket-ble.bin", "firmware/openpocket-midi-test.bin", "docs/firmware/midi-test", "firmware/openpocket-synth2.bin", "docs/firmware/synth2", "docs/firmware/manifest.json", "engine/px_render"]) {

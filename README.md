@@ -98,6 +98,18 @@ The installer can also restore the manufacturer’s official `.fwsc`. To try Val
 run `make package` and `make serve`, then open the localhost address it prints.
 [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
 
+### Fuzz Face performance test (v88)
+
+The v88 test build uses an interpolated table for the Fuzz Face transistor junction curves. It keeps the pickup and
+capacitor states, both transistor settings, and 2× oversampling. Rolling down the guitar volume still reduces distortion
+through the circuit model.
+
+On a BlackBox running on one core, median total DSP load with the same high-FUZZ silicon settings fell from
+49% to 39% with Fuzz Face alone and from 56% to 49% with Valve enabled. These were live readings without a fixed input signal.
+
+Build the test firmware with `node tools/op.mjs package-fuzzface-perf`. It writes `BlackBox_988.fwsc`,
+`PocketX_988.fwsc`, and their manifest to `docs/firmware/fuzzface-perf/`. The web installer still offers v81.
+
 ## Preset editor
 
 Open the editor from the installer or directly in Chrome or Edge and connect the pedal
