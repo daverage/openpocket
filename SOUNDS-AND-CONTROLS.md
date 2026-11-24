@@ -189,7 +189,7 @@ the main Global page to save and go back to PLAY. Open **Diagnostics** from the 
 On **VALVE INPUT**, turn PARA to adjust Drive (0 to +24 dB), and press it to toggle Valve. The stage sits ahead of the
 effects chain and can run with COMP.
 
-Current source builds add **Level**. Tap FX once more to select it, then turn PARA to adjust the valve output from −12
+In v89, tap FX once more to select **Level**, then turn PARA to adjust the valve output from −12
 to +12 dB in 0.5 dB steps. Level changes the gain after the valve stage. Set it to 0 dB for unity or raise it for a boost
 at low Drive. Press PARA from either setting to toggle Valve, or hold PARA to save the preset. Presets saved before
 Level was added load at 0 dB. In the browser editor, open **Sound → Valve**. The Level slider appears on supported firmware.
@@ -252,7 +252,7 @@ guitar). **The knob sets the reference A** (415 to 466 Hz, one hertz a detent; t
 
 ## Global settings
 
-These settings apply across presets. On v81, open **GLOBAL** from the tuner with another HOME hold and press HOME from the main list to save and exit. In the web editor, open **Global** in the header. Changes apply live and the editor saves them automatically.
+These settings apply across presets. In v81 and later, open **GLOBAL** from the tuner with another HOME hold and press HOME from the main list to save and exit. In the web editor, open **Global** in the header. Changes apply live and the editor saves them automatically.
 
 | Setting | What it does |
 |---|---|

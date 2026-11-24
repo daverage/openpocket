@@ -59,10 +59,10 @@ The `.bat` files `makeimage.bat` and `render.bat` only check that Node is instal
 
 ## Installing from the browser
 
-1. Run `make package` to build the two model-specific packages and their manifest in `docs/firmware/`. For v81 they are `PocketX_981.fwsc` and `BlackBox_981.fwsc`.
+1. Run `make package` to build the two model-specific packages and their manifest in `docs/firmware/`. For v89 they are `PocketX_989.fwsc` and `BlackBox_989.fwsc`.
 2. Run `make serve` and open the localhost address it prints in desktop Chrome or Edge. The default is [localhost:8765](http://localhost:8765/). On Windows, `INSTALL-OFFLINE.bat` can serve the same files.
 3. Power on your pedal, connect it with a USB data cable, close other MIDI apps, and click **Connect**. Allow MIDI access. The page shows the detected model and the firmware it currently reports.
-4. Check the **Available firmware** version and click **Install**. The installer picks the package for the detected model. Keep the pedal powered and connected while it writes and restarts. Confirm the reported identity ends in `_981` for v81.
+4. Check the **Available firmware** version and click **Install**. The installer picks the package for the detected model. Keep the pedal powered and connected while it writes and restarts. Confirm the reported identity ends in `_989` for v89.
 
 If the installer reports **update mode** after a disconnect, use **Resume the update**. The same page can restore the manufacturer’s official `.fwsc`. [Recovery guide](RESCUE.md)
 
