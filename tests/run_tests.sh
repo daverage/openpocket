@@ -48,6 +48,8 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pedals_test.c fi
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/voxwah_test.c firmware/px_math.c -lm -o build/voxwah_test && build/voxwah_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/fuzzface_test.c firmware/px_math.c -lm -o build/fuzzface_test && build/fuzzface_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/acoustic_test.c firmware/px_math.c -lm -o build/acoustic_test && build/acoustic_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/signature_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/signature_test
+build/signature_test
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hum_test.c firmware/px_math.c -lm -o build/hum_test && build/hum_test | tail -1
 $CC -O2 -w tests/tunersim.c -lm -o build/tunersim && build/tunersim | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pv_test.c firmware/px_math.c -lm -o build/pv_test && build/pv_test | tail -1

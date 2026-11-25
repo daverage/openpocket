@@ -72,6 +72,16 @@ ok(withTexts > 0 && cat.blocks[7].types[0].params.some((p) => p.texts && p.texts
 let st = await ed.state();
 ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st.preset.name}", not changed`);
 
+{
+  const signature = cat.blocks[9].types[7];
+  ok(signature?.name === "SIGNATURE" && signature.params.map((p) => p.name).join() === "BODY,FOCUS,RICHNESS,PUNCH,LEVEL" &&
+    signature.params[4].texts[50] === "0", "SIGNATURE: catalogue and LEVEL at unity");
+  await ed.set(9, 2, 0, 7);
+  const selected = (await ed.state()).preset;
+  ok(selected.type[9] === 7 && selected.p[9].join() === "60,55,25,30,50", "SIGNATURE: selecting the model loads its voicing");
+  await ed.select(st.slot);
+}
+
 // v48 (protocol 5): FOOTSWITCH, the current preset's footswitches in STOMP mode
 {
   const f0 = await ed.footswitch();

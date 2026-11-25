@@ -524,6 +524,7 @@ static const char *const PN_BBE[] = {"LO CONTOUR", "PROCESS"};   /* MAXIMIZER: t
 static const char *const PN_VW[] = {"POSITION", "PEAK", "LEVEL"};   /* BST VOX FIXED WAH: the parked pedal's position (heel .. toe, shown in Hz), the peak's Q and height (R7), the boost 0..+12 dB: engine/px_pedals.h */
 static const char *const PN_FF[] = {"FUZZ", "VOLUME", "PICKUP", "BIAS", "TRANSISTOR"};   /* BST FUZZ FACE: the 1k fuzz pot, the 500k volume, the source (single coil .. humbucker), the Q2 collector load (the bias trim), germanium or silicon */
 static const char *const PN_AP[] = {"LOW CUT", "DEQUACK", "BODY", "NOTCH", "LEVEL"};   /* BST ACOUSTIC PREAMP (v76): the high-pass (Hz), the piezo de-quack (dip + shelf + attack dip), the body (below 50 cuts the box, above adds low and air), the feedback notch (0 = off, else Hz), -12..+12 dB */
+static const char *const PN_SIGNATURE[] = {"BODY", "FOCUS", "RICHNESS", "PUNCH", "LEVEL"};
 static const char *const PN_AD[] = {"DRIVE", "BLEND", "PIEZO", "TONE", "LEVEL"};   /* SFX ACOUSTIC DRIVE (v76): the clipper, the dry blend, the pre-clip shaping for a piezo (high-pass, low-pass, dip), the post low-pass, -12..+12 dB */
 static const char *const PN_ENH[] = {"BETTER", "LOUDER"};   /* ENHANCE v4: amount (harmonics + compression), clean boost 0..+12 dB: engine/px_enhance.h */
 static const tdef T_SFX[PX_SFX_COUNT] = {
@@ -551,7 +552,7 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     {"ENSEMBLE", 5, PN_ENSEMBLE},
     {"CHOIR", 5, PN_CHOIR},
 };
-static const tdef T_BST[PX_BST_COUNT] = {{"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}, {"FIXED WAH", 3, PN_VW}, {"ENHANCE", 2, PN_ENH}, {"FUZZ FACE", 5, PN_FF}, {"ACOUSTIC PRE", 5, PN_AP}};
+static const tdef T_BST[PX_BST_COUNT] = {{"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}, {"FIXED WAH", 3, PN_VW}, {"ENHANCE", 2, PN_ENH}, {"FUZZ FACE", 5, PN_FF}, {"ACOUSTIC PRE", 5, PN_AP}, {"SIGNATURE", 5, PN_SIGNATURE}};
 /* v75: the SFX types that moved to the BST block and the BST type each became (-1: still an SFX type). The one place that lists them
  * (docs/pxedit.js MOVED is the browser's copy). */
 static int px_sfx_to_bst(int t)
@@ -824,7 +825,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_BST_EPBOOST && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "EARLY" : v < 67 ? "LATE" : "FAT"); return 1; }   /* VOICE */
         if (t == PX_BST_ACOUSTIC && k == 0) { put_int(buf, (int)(20.0f * powf(10.0f, x) + 0.5f), 0); return 1; }   /* LOW CUT in Hz */
         if (t == PX_BST_ACOUSTIC && k == 3) { if (x < 0.005f) put_str(buf, "OFF"); else put_int(buf, (int)(80.0f * powf(50.0f, x) + 0.5f), 0); return 1; }   /* NOTCH in Hz */
-        if (t == PX_BST_ACOUSTIC && k == 4) { put_int(buf, (int)((x - 0.5f) * 24.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* LEVEL in dB */
+        if ((t == PX_BST_ACOUSTIC || t == PX_BST_SIGNATURE) && k == 4) { put_int(buf, (int)((x - 0.5f) * 24.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* LEVEL in dB */
         if (t == PX_BST_RANGEMASTER && k == 2) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "TREBLE" : v < 67 ? "MID" : "FULL"); return 1; }   /* BODY */
         if (t == PX_BST_FUZZFACE && k == 2) { const int v2 = (int)(x * 100.0f + 0.5f); put_str(buf, v2 < 34 ? "SINGLE" : v2 < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
         if (t == PX_BST_FUZZFACE && k == 4) { const int v2 = (int)(x * 100.0f + 0.5f); put_str(buf, v2 > 50 ? "SILICON" : "GERMAN"); return 1; }   /* TRANSISTOR */
@@ -1192,6 +1193,7 @@ void px_type_defaults(int blk, int type, uint8_t *p)
     case PX_BST_VOXWAH: d[2] = 0; break;                                       /* LEVEL 0 = the guitar's loudness */
     case PX_BST_FUZZFACE: d[0] = 65; d[4] = 0; break;                          /* FUZZ, VOLUME 50, P90, BIAS 50, germanium */
     case PX_BST_ACOUSTIC: d[0] = 55; d[1] = 40; d[3] = 0; break;               /* LOW CUT about 70 Hz, DEQUACK 40, BODY flat, NOTCH off, LEVEL 0 dB */
+    case PX_BST_SIGNATURE: d[0] = 60; d[1] = 55; d[2] = 25; d[3] = 30; break;  /* BODY, FOCUS, RICHNESS, PUNCH, LEVEL 0 dB */
     }
     if (blk == PX_B_SFX && type == PX_SFX_ACOUSTIC) d[0] = 60;                 /* DRIVE: breaking up */
     if (blk == PX_B_EQ && type == PX_EQ_HUM) { d[1] = 60; d[3] = 50; d[4] = 0; }
@@ -1271,6 +1273,55 @@ static inline float ad_tick(px_ad *d, float x)
     d->lvl += (d->lvl_t - d->lvl) * d->kl;
     return (dry + (w - dry) * d->blend) * d->lvl;
 }
+static void signature_set(px_signature *s, float sr, const uint8_t *q)
+{
+    const float body = f01(q[0]), focus = f01(q[1]);
+    bq_lowshelf(&s->low, sr, 230.0f, -5.0f * focus);
+    bq_peak(&s->body, sr, 350.0f, 0.65f, 8.0f * (body - 0.5f));
+    bq_highshelf(&s->definition, sr, 2800.0f, 2.4f * focus);
+    s->color_k = onepole_k(sr, 1.0f / (2.0f * PI_F * 4000.0f));
+    s->dc_k = onepole_k(sr, 1.0f / (2.0f * PI_F * 20.0f));
+    s->fast_k = onepole_k(sr, 0.003f);
+    s->slow_k = onepole_k(sr, 0.045f);
+    s->glide_k = onepole_k(sr, 0.010f);
+    s->richness_target = 0.65f * f01(q[2]);
+    s->punch_target = 0.30f * f01(q[3]);
+    s->level_target = db2lin(24.0f * (f01(q[4]) - 0.5f));
+    if (s->level == 0.0f) {
+        s->richness = s->richness_target;
+        s->punch = s->punch_target;
+        s->level = s->level_target;
+    }
+}
+
+static inline float signature_tick(px_signature *s, float x)
+{
+    float y = bq_run(&s->body, bq_run(&s->low, x));
+    /* The AC-coupled quadratic residual of a common-source JFET, with unity
+     * small-signal gain. Low-pass the drive and bound the color on hot inputs. */
+    s->color_lp[0] += s->color_k * (y - s->color_lp[0]);
+    s->color_lp[1] += s->color_k * (s->color_lp[0] - s->color_lp[1]);
+    const float square = s->color_lp[1] * s->color_lp[1];
+    const float bounded = square < 0.25f ? square : 0.25f;
+    const float color = bounded * (1.0f - 2.0f * bounded);
+    s->color_dc += s->dc_k * (color - s->color_dc);
+    s->richness += s->glide_k * (s->richness_target - s->richness);
+    y += s->richness * (color - s->color_dc);
+
+    /* Add up to 2.3 dB on a rising envelope. The floor suppresses gain
+     * modulation on very quiet inputs and the slow envelope catches up on sustain. */
+    const float magnitude = px_abs(y);
+    s->fast += s->fast_k * (magnitude - s->fast);
+    s->slow += s->slow_k * (magnitude - s->slow);
+    const float rise = s->fast - 1.15f * s->slow;
+    const float attack = rise > 0.0f ? rise / (s->fast + 0.004f) : 0.0f;
+    s->punch += s->glide_k * (s->punch_target - s->punch);
+    y *= 1.0f + s->punch * attack;
+
+    s->level += s->glide_k * (s->level_target - s->level);
+    return s->level * bq_run(&s->definition, y);
+}
+
 static void rc_bst(px_engine *e)
 {
     const uint8_t *q = e->cur.p[PX_B_BST];
@@ -1280,6 +1331,7 @@ static void rc_bst(px_engine *e)
     case PX_BST_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOLUME, PICKUP, BODY: the state is kept on a knob move (the volume glides) */
     case PX_BST_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER, LOUDER; the filter state is kept on a knob move (the mixes glide over 10 ms) */
     case PX_BST_ACOUSTIC: ap_set(&e->ap, e->sr, q); break;   /* LOW CUT, DEQUACK, BODY, NOTCH, LEVEL */
+    case PX_BST_SIGNATURE: signature_set(&e->signature, e->sr, q); break;
     case PX_BST_FUZZFACE: pxp_ff_set(&e->ff, (float)q[0], (float)q[1], (float)q[2], (float)q[3], (float)q[4]); break;   /* FUZZ, VOLUME, PICKUP, BIAS, TRANSISTOR (a new transistor, bias or pickup: the operating point again) */
     default: pxp_vw_set(&e->vw, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOX FIXED WAH: POSITION, PEAK, LEVEL */
     }
@@ -1773,10 +1825,11 @@ void px_engine_globals(px_engine *e, const px_global_t *g)
     e->g_lim_g = 1.0f;
 }
 
-/* v75 BST (RANGEMASTER, EP BOOST, MAXIMIZER, VOX FIXED WAH, ENHANCE): every pedal's state back to rest */
+/* Return the PRE / BOOST models to rest. */
 static void bst_reset(px_engine *e)
 {
     pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); pxp_ep_init(&e->ep, e->sr); pxp_bbe_init(&e->bbe, e->sr); pxp_vw_init(&e->vw, e->sr); pxp_ff_init(&e->ff, e->sr, 0); memset(&e->ap, 0, sizeof e->ap);
+    memset(&e->signature, 0, sizeof e->signature);
 }
 /* v75: tails. A delay or reverb that was running and is now off (the user switched it, or the new preset has it off) plays out for a few seconds instead of
  * stopping, if the global TAILS setting is on: its input is muted, its settings stay as they were, and the block ends after the time (px_tick). A block
@@ -3195,6 +3248,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             case PX_BST_ENHANCE: x = pxe_tick(&e->enh, x); break;
             case PX_BST_FUZZFACE: x = pxp_ff_tick(&e->ff, x); break;
             case PX_BST_ACOUSTIC: x = ap_tick(&e->ap, x); break;
+            case PX_BST_SIGNATURE: x = signature_tick(&e->signature, x); break;
             default: x = pxp_vw_tick(&e->vw, x); break;
             }
         break;
