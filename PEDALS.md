@@ -8,7 +8,7 @@ Four types model analogue pedals as **circuits and structures**, not as fitted w
 |---|---|---|---|
 | **ENHANCE** (Better Box) | BETTER, LOUDER | a compander gain cell: the gain follows a fast rectified copy of the signal (no threshold, works at every level); harmonics without clipping | the mechanism is a hypothesis from the maker's words; every constant is a guess. No real unit was measured |
 | **RANGEMASTER** | VOLUME, PICKUP, BODY | the Dallas Rangemaster solved as a circuit: germanium Ebers-Moll stage, R1 470k, R2 68k, R3 3.9k, C1 5n, C3 47u, RV 10k, 9 V, and the guitar's pickup as the source (series R and L) | high for the circuit (reproduces ElectroSmash's numbers); the transistor is a typical part (Is, bf, br are choices) |
-| **EP BOOST** | GAIN, VOICE | an EP-3-style JFET stage (2N5484 numbers measured by Aion FX, 18 V, drain 22k, source 3.3k bypassed by 22 nF..470 nF) | **low**: the Xotic EP Booster's schematic is not published (others call it "inspired by" the EP-3); topology and values are a family guess |
+| **EP BOOST** | GAIN, VOICE | an EP-3-style JFET stage (2N5484 numbers measured by Aion FX, 18 V, drain 22k, source 3.3k bypassed by 22 nF..470 nF) | based on the EP-3 circuit family. Aion FX has since published a [trace of the Xotic EP Booster V2](https://aionfx.com/news/tracing-journal-xotic-ep-booster-v2/) |
 | **FIXED WAH** | POSITION, PEAK, LEVEL | the Vox V847 wah with the pedal parked: one peaking filter swept 450 Hz (POSITION 0, heel) to 1.6 kHz (100, toe), about 750 Hz at mid travel, up to 18 dB, with the low end cut below it. PEAK is the height (8..18 dB) and sharpness of the peak (the V847's R7); the sharpness follows the position as in a real wah (Q about 1/frequency: -3 dB Q 2.4..3.3 at the toe, 8.5..11.7 at the heel), LEVEL 0..+12 dB over the guitar's own loudness. POSITION shows the peak's frequency in Hz | the frequency range, the mid point and the 18 dB figure are from the ElectroSmash analysis of the V847; the Q law comes from measurements of Vox-style wahs on the music-electronics-forum thread "a Vox wah project: some circuit analysis and measuring results" (-3 dB Q about 2.3..3.3 at the treble end, 8..11 at the bass end, Q = Rp*sqrt(C/L)), and ElectroSmash gives no Q; the position law and the peak height range (8..18 dB) are fits to the ElectroSmash figures. **None of it measured on a unit**: check it against a recorded sweep |
 | **MAXIMIZER** (BBE) | LO CONTOUR, PROCESS | the BBE process as a structure: three bands, the low and mid bands delayed against the high band, band gains | structure from the published description; crossovers, delays and gains fitted to the real BBE 882i's measured response (0.76 dB RMS); the split of the two knobs is an assumption (only LO = PROCESS was measured) |
 
@@ -76,8 +76,16 @@ For a piezo pickup into a PA or a recorder; the research and its sources are in 
 
 Host cost 0.45 ms/s (PRE) and 0.56 ms/s (DRIVE) against RANGEMASTER's 1.9 (12 % on the pedal), so a few per cent each is expected; **not read on a pedal yet** (the cost table's 6 to 8 % is the scaled estimate). Tests: `tests/engine/acoustic_test.c`.
 
+## SIGNATURE (BST)
+
+SIGNATURE is a selectable preamp voicing for electric guitar. BODY shapes the low mids. FOCUS tightens the bass before coloration and adds a gentle high shelf at the end. RICHNESS adds an even-order component. PUNCH follows the difference between fast and slow envelopes to lift the pick attack. LEVEL applies independent output gain from −12 to +12 dB. The default voicing is BODY 60, FOCUS 55, RICHNESS 25, PUNCH 30 and LEVEL 0 dB. For always-on use, enable PRE / BOOST in the preset. Valve can be enabled independently and runs ahead of PRE / BOOST.
+
+The color stage uses an AC-coupled, bandwidth-limited square-law residual inspired by the common-source MMBF5457 in the traced Xotic EP Booster V2. Its 4.7 kΩ source resistor and gain-dependent bypass establish the circuit context. The residual's strength and bandwidth are prototype voicing choices. A circuit-level fit would need to account for the source bypass setting, device bias and input calibration. [Aion FX circuit trace](https://aionfx.com/app/files/schematics/xotic-ep-booster-trace-schematic.pdf)
+
+Three biquads handle the tonal shaping, with a broad low-mid bell and shelves for bass and definition. The Maximizer influence is spectral. The target is under 5% of the BlackBox's audio processing budget, pending pedal measurement.
+
 ## Not done / open
 * None of this has been **heard or measured on the pedal**. Level matching between the types and the factory presets is not done (their SFX trim is 0).
-* EP BOOST's circuit is a guess for the family; a real schematic, or a clean DI A/B of the Xotic, would replace it.
+* EP BOOST uses the EP-3 circuit family. The Xotic V2 trace and a level-matched DI comparison could inform a future model.
 * The BBE's phase behaviour is in the delays, but the real unit's dynamic high-frequency stage (if any) was not found in the captures; LO CONTOUR and PROCESS separately were not measured.
 * The Better Box has no capture or schematic: the detector mix, time constants and the 2:1 law are the maker's words turned into a mechanism.

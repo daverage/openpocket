@@ -67,6 +67,7 @@ export const COST = {
   "BST:ENHANCE": 4.5,
   "BST:FUZZ FACE": 35.0,
   "BST:ACOUSTIC PRE": 6.2,
+  "BST:SIGNATURE": 5.9,
 };
 // the estimate for a block's type (0 for one that is not listed: the gate, a retired type)
 export const costPct = (blockLabel, typeName) => COST[`${blockLabel}:${typeName}`] || 0;
