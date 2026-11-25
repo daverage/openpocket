@@ -92,9 +92,11 @@ typedef struct {
     float Is, bf, br, R3, RV, Vcc, Rbb, Vth;                  /* parts */
     float gL, gC1, gC3, Rtot, Rpar, Ge, invGe;                /* trapezoid conductances and the base / emitter equivalents at the circuit rate */
     float i, vL, vC, ve, iC3, vbe, vbc, vc_dc, pvbe, pvbc;      /* states (pvbe, pvbc: the previous sample's junction voltages, for the predictor) */
-    float x, x_t, kx, hp_k, hp_z, hp_y;                       /* volume (the wiper fraction, glided) and the output DC block */
-    float Rs, L, C1, sr2, pk, pk_t, body;                  /* C1: the input capacitor (5 nF .. 100 nF with BODY) */
+    float x, x_t, kx, hp_k, hp_z;                       /* volume (the wiper fraction, glided) and the output DC block */
+    float sr2, pk, body;
+#if PXP_OS == 2
     pxp_os os;
+#endif
 } px_rm;
 static inline void pxp_bjt(const px_rm *r, float vbe, float vbc, float *ic, float *ib, float *gbe, float *gbc)
 {
@@ -122,7 +124,7 @@ static inline void pxp_newton(const px_rm *r, float ab, float rbb, float rbc, fl
 }
 static inline void pxp_rm_coeffs(px_rm *r, float sr2, float Rs, float L, float C1)      /* the circuit-rate constants (outside the sample loop) */
 {
-    r->Rs = Rs; r->L = L; r->C1 = C1; r->sr2 = sr2; const float dt = 1.0f / sr2;
+    r->sr2 = sr2; const float dt = 1.0f / sr2;
     r->gL = dt / (2.0f * L); r->gC1 = 2.0f * C1 / dt; r->gC3 = 2.0f * 47e-6f / dt;
     r->Rtot = Rs + 1.0f / r->gL + 1.0f / r->gC1; r->Rpar = r->Rtot * r->Rbb / (r->Rtot + r->Rbb);
     r->Ge = 1.0f / r->R3 + r->gC3; r->invGe = 1.0f / r->Ge;
@@ -138,7 +140,6 @@ static inline void pxp_rm_init(px_rm *r, float sr)
     pxp_newton(r, r->Vth, r->Rbb + r->R3, r->R3, r->Vth - r->Vcc, r->Rbb, -r->RV, &vbe, &vbc, &ib, &ic);
     const float vb = r->Vth - r->Rbb * ib; r->ve = r->R3 * (ib + ic); r->vc_dc = r->Vcc - r->RV * ic; r->vbe = r->pvbe = vbe; r->vbc = r->pvbc = vbc; r->vC = -vb;
     r->kx = 1.0f - expf(-1.0f / (sr * 0.010f)); r->hp_k = 1.0f - expf(-6.2831853f * 16.0f / sr); r->x = r->x_t = 0.001f;
-    r->pk = r->pk_t = 0.0f; pxp_os_reset(&r->os);
 }
 /* VOLUME 0..100: unity at 50, +12 dB at 100 (a pot is an attenuator on the stage's own level, so the taper is written in dB: +0.24 dB per step above 50, 0.8 dB per step below it, silent at 0);
  * PICKUP 0..100 (single coil .. humbucker); BODY 0..100: the input capacitor C1 from the original 5 nF (a treble booster, corner 2.6 kHz) to 100 nF (a full-range boost, corner about 130 Hz): the
@@ -154,7 +155,6 @@ static inline void pxp_rm_set(px_rm *r, float volume, float pickup, float body)
     const float db = v >= 50.0f ? (v - 50.0f) * 0.24f : (v - 50.0f) * 0.8f;
     r->x_t = v < 1.0f ? 0.0f : powf(10.0f, (db - 12.0f - pxp_rm_body_db(pxp_clamp(body, 0.0f, 100.0f) * 0.01f)) * 0.05f);
     const float p = pxp_clamp(pickup, 0.0f, 100.0f) * 0.01f, w = pxp_clamp(body, 0.0f, 100.0f) * 0.01f;
-    r->pk_t = p;
     if (fabsf(p - r->pk) > 1e-4f || fabsf(w - r->body) > 1e-4f) { r->pk = p; r->body = w; pxp_rm_coeffs(r, r->sr2, 6000.0f + 3000.0f * p, 2.5f + 3.0f * p, 5e-9f * powf(20.0f, w)); }
 }
 static inline float pxp_rm_core(px_rm *r, float e)                         /* one circuit-rate step: EMF volts in, the wiper's AC volts out (inverted, as the stage is) */
@@ -174,7 +174,7 @@ static inline float pxp_rm_tick(px_rm *r, float in)
 {
     r->x += r->kx * (r->x_t - r->x);
 #if PXP_OS == 2
-    float e0, e1; pxp_up(&r->os, in * PXP_FF_IN, &e0, &e1);
+    float e0, e1; pxp_up(&r->os, in * PXP_EMF_PER_UNIT, &e0, &e1);
     pxp_push(&r->os, pxp_rm_core(r, e0)); pxp_push(&r->os, pxp_rm_core(r, e1));
     const float y = pxp_down(&r->os);
 #else
@@ -194,7 +194,7 @@ static inline float pxp_rm_tick(px_rm *r, float in)
 #endif
 typedef struct {
     float Idss, Vp, lam, Rd, Rs, Vcc, Rg, beta;
-    float gL, gC1, gCs, Rtot, Rpar, Ge, invGe;
+    float gL, gC1, gCs, Rpar, invGe, invGL, invGC1, invRtot, drain_r, inv_drain_r;
     float i, vL, vC, vs, iCs, id, vd_dc, x, x_t, kx, hp_k, hp_z, voice;
 } px_ep;
 static inline float pxp_jfet(const px_ep *r, float vgs, float vds, float *dgs, float *dds)
@@ -210,12 +210,12 @@ static inline float pxp_jfet(const px_ep *r, float vgs, float vds, float *dgs, f
 /* solve Id = f(Vgs = vg - Vs0 - Id/Ge, Vds = Vcc - Rd Id - Vs0 - Id/Ge) by a safeguarded Newton step from the previous Id */
 static inline float pxp_ep_solve(const px_ep *r, float vg, float vs0, float id0)
 {
-    const float idmax = (r->Vcc - vs0) / (r->Rd + r->invGe); float lo = 0.0f, hi = idmax > 0.0f ? idmax : 0.0f, id = id0 < lo ? lo : id0 > hi ? hi : id0;
+    const float idmax = (r->Vcc - vs0) * r->inv_drain_r; float lo = 0.0f, hi = idmax > 0.0f ? idmax : 0.0f, id = id0 < lo ? lo : id0 > hi ? hi : id0;
     for (int it = 0; it < 20; it++) {
         const float vs = vs0 + id * r->invGe, vgs = vg - vs, vds = r->Vcc - r->Rd * id - vs; float dgs, dds;
         const float f = pxp_jfet(r, vgs, vds, &dgs, &dds), F = id - f;
         if (F > 0.0f) hi = id; else lo = id;
-        const float dF = 1.0f + dgs * r->invGe + dds * (r->Rd + r->invGe);
+        const float dF = 1.0f + dgs * r->invGe + dds * r->drain_r;
         float nid = id - F / dF; if (nid < lo || nid > hi) nid = 0.5f * (lo + hi);
         if (fabsf(nid - id) < 1e-6f) { id = nid; break; } id = nid;   /* v75: was 1e-9 A; 1 uA is 0.1 % of the bias current: 1.0-1.5 iterations per sample instead of 2.0-2.3, the output within -99 dB */
     }
@@ -224,7 +224,14 @@ static inline float pxp_ep_solve(const px_ep *r, float vg, float vs0, float id0)
 static inline void pxp_ep_coeffs(px_ep *r, float sr, float Rs_pk, float L, float Cs)
 {
     const float dt = 1.0f / sr; r->gL = dt / (2.0f * L); r->gC1 = 2.0f * 100e-9f / dt; r->gCs = 2.0f * Cs / dt;
-    r->Rtot = Rs_pk + 1.0f / r->gL + 1.0f / r->gC1; r->Rpar = r->Rtot * r->Rg / (r->Rtot + r->Rg); r->Ge = 1.0f / r->Rs + r->gCs; r->invGe = 1.0f / r->Ge;
+    r->invGL = 1.0f / r->gL;
+    r->invGC1 = 1.0f / r->gC1;
+    const float rtot = Rs_pk + r->invGL + r->invGC1;
+    r->Rpar = rtot * r->Rg / (rtot + r->Rg);
+    r->invRtot = 1.0f / rtot;
+    r->invGe = 1.0f / (1.0f / r->Rs + r->gCs);
+    r->drain_r = r->Rd + r->invGe;
+    r->inv_drain_r = 1.0f / r->drain_r;
 }
 static inline void pxp_ep_init(px_ep *r, float sr)
 {
@@ -247,10 +254,10 @@ static inline float pxp_ep_tick(px_ep *r, float in)
 {
     r->x += r->kx * (r->x_t - r->x);
     const float e = in * PXP_EMF_PER_UNIT;
-    const float hL = r->i + r->gL * r->vL, hC = r->gC1 * r->vC + r->i, hS = r->gCs * r->vs + r->iCs, Ah = hL / r->gL - hC / r->gC1;
-    const float vg = r->Rpar * ((e + Ah) / r->Rtot), vs0 = hS / r->Ge;
-    const float id = pxp_ep_solve(r, vg, vs0, r->id), vs = vs0 + id * r->invGe, i = (e - vg + Ah) / r->Rtot;
-    r->vL = (i - hL) / r->gL; r->vC = (i + hC) / r->gC1; r->i = i; r->iCs = r->gCs * vs - hS; r->vs = vs; r->id = id;
+    const float hL = r->i + r->gL * r->vL, hC = r->gC1 * r->vC + r->i, hS = r->gCs * r->vs + r->iCs, Ah = hL * r->invGL - hC * r->invGC1;
+    const float vg = r->Rpar * ((e + Ah) * r->invRtot), vs0 = hS * r->invGe;
+    const float id = pxp_ep_solve(r, vg, vs0, r->id), vs = vs0 + id * r->invGe, i = (e - vg + Ah) * r->invRtot;
+    r->vL = (i - hL) * r->invGL; r->vC = (i + hC) * r->invGC1; r->i = i; r->iCs = r->gCs * vs - hS; r->vs = vs; r->id = id;
     float y = r->x * ((r->Vcc - r->Rd * id) - r->vd_dc);
     r->hp_z += r->hp_k * (y - r->hp_z);
     return -(y - r->hp_z) * PXP_EP_OUT;
@@ -332,7 +339,7 @@ static inline float pxp_bbe_tick(px_bbe *b, float x)
  * The position law (fc = 450 * (1600/450)^(pos^1.3), which puts mid travel at 757 Hz) and the peak height range (8 .. 18 dB) are fits to the
  * ElectroSmash figures, not measurements of a unit: check them against a recorded sweep. POSITION never moves while playing,
  * so the coefficients are only recomputed (every 16 samples, glided) after a knob move. */
-typedef struct { float b0, b1, b2, a1, a2, z1, z2, hx, hy, hk, pos, tgt, peak, g, gt, sr; unsigned n, dirty; } px_vw;
+typedef struct { float b0, b1, b2, a1, a2, z1, z2, hx, hy, hk, pos, tgt, peak, peak_a, peak_q_div, g, gt, sr; unsigned n, dirty; } px_vw;
 static inline float pxp_vw_hz(float pos) { return 450.0f * powf(1600.0f / 450.0f, powf(pos, 1.3f)); }
 static inline float pxp_vw_peak_db(float peak) { return 8.0f + 10.0f * peak; }
 static inline float pxp_vw_q3(float fc, float peak) { return (2.4f + 0.9f * peak) * (1600.0f / fc); }   /* the -3 dB Q of the peak: 1/fc */
@@ -347,15 +354,26 @@ static inline float pxp_vw_makeup_db(float pos, float peak)      /* the loudness
     const float a = G[j][i] + (G[j][i + 1] - G[j][i]) * fx, b = G[j + 1][i] + (G[j + 1][i + 1] - G[j + 1][i]) * fx;
     return a + (b - a) * fy;
 }
-static inline void pxp_vw_design(px_vw *v)
+static inline void pxp_vw_cache_peak(px_vw *v)
+{
+    const float A = powf(10.0f, pxp_vw_peak_db(v->peak) * 0.025f), A2 = A * A;
+    v->peak_a = A;
+    v->peak_q_div = sqrtf(A2 * A2 - 2.0f);
+}
+static inline void pxp_vw_update_position(px_vw *v)
 {
     const float fc = pxp_vw_hz(v->pos), w0 = 6.2831853f * fc / v->sr;
-    const float A = powf(10.0f, pxp_vw_peak_db(v->peak) * 0.025f), A2 = A * A;
-    const float Q = pxp_vw_q3(fc, v->peak) * A / sqrtf(A2 * A2 - 2.0f);   /* the biquad's Q for that -3 dB Q (A^4 >= 6.3 for 8 dB) */
+    const float A = v->peak_a;
+    const float Q = pxp_vw_q3(fc, v->peak) * A / v->peak_q_div;
     const float al = sinf(w0) / (2.0f * Q), c = cosf(w0);
     const float a0 = 1.0f + al / A, r = 1.0f / a0;
     v->b0 = (1.0f + al * A) * r; v->b1 = -2.0f * c * r; v->b2 = (1.0f - al * A) * r;
     v->a1 = -2.0f * c * r; v->a2 = (1.0f - al / A) * r;
+}
+static inline void pxp_vw_design(px_vw *v)
+{
+    pxp_vw_cache_peak(v);
+    pxp_vw_update_position(v);
 }
 static inline void pxp_vw_init(px_vw *v, float sr)
 {
@@ -367,7 +385,11 @@ static inline void pxp_vw_init(px_vw *v, float sr)
 static inline void pxp_vw_set(px_vw *v, float pos, float peak, float level)
 {
     v->tgt = pxp_clamp(pos, 0.0f, 100.0f) * 0.01f;
-    v->peak = pxp_clamp(peak, 0.0f, 100.0f) * 0.01f;
+    const float new_peak = pxp_clamp(peak, 0.0f, 100.0f) * 0.01f;
+    if (new_peak != v->peak) {
+        v->peak = new_peak;
+        pxp_vw_cache_peak(v);
+    }
     v->gt = powf(10.0f, (pxp_vw_makeup_db(v->tgt, v->peak) + pxp_clamp(level, 0.0f, 100.0f) * 0.12f) * 0.05f);   /* LEVEL 0 = the same loudness, 100 = +12 dB */
     v->dirty = 1;
 }
@@ -376,7 +398,7 @@ static inline float pxp_vw_tick(px_vw *v, float x)
     if (v->dirty && (++v->n & 15u) == 0) {
         v->pos += (v->tgt - v->pos) * 0.1f;
         if (fabsf(v->tgt - v->pos) < 1e-4f) { v->pos = v->tgt; v->dirty = 0; }
-        pxp_vw_design(v);
+        pxp_vw_update_position(v);
     }
     const float h = v->hk * (v->hy + x - v->hx); v->hx = x; v->hy = h;
     const float y = v->b0 * h + v->z1;
@@ -506,6 +528,13 @@ static inline void pxp_ff_pot(px_ff *r, float fz)               /* the 1k pot: R
     const float u = 1.0f - fz, rt = powf(u, PXP_FF_TAPER);
     r->Rt = 1000.0f * rt + 1.0f; r->Rb = 1001.0f - 1000.0f * rt;
 }
+/* During a FUZZ glide only the emitter pot and its companion change. */
+static inline void pxp_ff_emitter(px_ff *r)
+{
+    const float Rt = r->Rt, Rb = r->Rb; r->iRt = 1.0f / Rt;
+    const float D = 1.0f / (r->iRt + 1.0f / Rb + r->gW); r->kD = D;                             /* the wiper node: Rt from the emitter, Rb to ground, C2 to ground */
+    r->ge2 = r->iRt * (1.0f - D * r->iRt); r->khw = D * r->iRt;
+}
 static inline void pxp_ff_coeffs(px_ff *r)                      /* the circuit-rate constants for the present FUZZ (Rt, Rb) and the pickup (Rs, L) */
 {
     const float dt = 1.0f / r->sr2;
@@ -514,9 +543,8 @@ static inline void pxp_ff_coeffs(px_ff *r)                      /* the circuit-r
     r->Rtot = r->Rs + r->igL + r->igC1; r->gsrc = 1.0f / r->Rtot;
     r->gR1 = 1.0f / r->R1; r->gR4 = 1.0f / r->R4; r->gRc = 1.0f / r->Rc;
     r->Isbf1 = r->Is / r->bf1; r->Isbf2 = r->Is / r->bf2; r->Isbr = r->Is / r->br; r->ibf1 = 1.0f / r->bf1; r->ibf2 = 1.0f / r->bf2; r->ibr = 1.0f / r->br;
-    const float Rt = r->Rt, Rb = r->Rb; r->iRt = 1.0f / Rt;
-    const float D = 1.0f / (r->iRt + 1.0f / Rb + r->gW); r->kD = D;                             /* the wiper node: Rt from the emitter, Rb to ground, C2 to ground */
-    r->ge2 = r->iRt * (1.0f - D * r->iRt); r->khw = D * r->iRt; r->ge2dc = 1.0f / (Rt + Rb);
+    r->ge2dc = 1.0f / (r->Rt + r->Rb);
+    pxp_ff_emitter(r);
 }
 static inline void pxp_ff_dc(px_ff *r)                          /* the quiescent point: the capacitors open, no signal */
 {
@@ -576,7 +604,6 @@ static inline void pxp_ff_set(px_ff *r, float fuzz, float vol, float pickup, flo
     const int t = trans > 50.0f;                                     /* TRANSISTOR: germanium up to 50, silicon above */
     if (t != r->trans || fabsf(b - r->bias) > 1e-4f || fabsf(p - (r->Rs - 6000.0f) / 3000.0f) > 1e-4f) {
         const float keep = r->fz; pxp_ff_params(r, t, f, b, p); r->bias = b; r->fz = keep;        /* (a new transistor set, bias or pickup: the operating point is found again) */
-        if (t != r->trans) {}
     }
     r->fz_t = f;
 }
@@ -585,7 +612,7 @@ static inline float pxp_ff_tick(px_ff *r, float in)
     r->vol += r->kv * (r->vol_t - r->vol);
     if (r->fz != r->fz_t && (++r->tick & 7) == 0) {            /* FUZZ glides: the emitter network again every 8 samples while it moves */
         r->fz += (r->fz_t - r->fz) * 0.15f; if (fabsf(r->fz_t - r->fz) < 1e-4f) r->fz = r->fz_t;
-        pxp_ff_pot(r, r->fz); pxp_ff_coeffs(r);
+        pxp_ff_pot(r, r->fz); pxp_ff_emitter(r);
     }
 #if PXP_FF_OS == 2
     float e0, e1; pxp_up(&r->os, in * PXP_FF_IN, &e0, &e1);

@@ -1185,6 +1185,11 @@ static void ap_set(px_ap *a, float sr, const uint8_t *q)
     else { bq_lowshelf(&a->b1, sr, 160.0f, 10.0f * (body - 0.5f)); bq_highshelf(&a->b2, sr, 8000.0f, 6.0f * (body - 0.5f)); }   /* above: low body and air */
     a->nt_on = nt > 0.005f;
     if (a->nt_on) { const float f = 80.0f * powf(50.0f, nt); bq_notch(&a->nt, sr, f, f * 0.125f, 24.0f); }   /* the feedback notch, 80 Hz .. 4 kHz, Q 8, 24 dB */
+    if (a->amt <= 0.01f && dq > 0.01f) {
+        /* The dynamic filter was paused. Fade in from a fresh state. */
+        bq_reset(&a->dyn);
+        a->tr = 0.0f;
+    }
     a->amt = dq;
     a->kef = onepole_k(sr, 0.003f); a->kes = onepole_k(sr, 0.06f); a->kta = onepole_k(sr, 0.002f); a->ktr = onepole_k(sr, 0.05f); a->kl = onepole_k(sr, 0.01f);
     a->lvl_t = db2lin((f01(q[4]) - 0.5f) * 24.0f + 0.8f);                    /* (+0.8 dB: the default dips cost that much loudness on the guitar loops) */

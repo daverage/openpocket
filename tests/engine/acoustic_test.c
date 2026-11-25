@@ -64,6 +64,18 @@ int main(void)
         printf("attack against sustain at 2.9 kHz: DEQUACK 0 %.2f, 100 %.2f\n", ratio[0], ratio[1]);
         CHECK(ratio[1] < ratio[0] * 0.9f, "the attack dip: %.2f against %.2f", ratio[1], ratio[0]);
     }
+    {
+        px_ap a = {0};
+        const uint8_t enabled[PX_NPAR] = {55, 100, 50, 0, 50};
+        const uint8_t disabled[PX_NPAR] = {55, 0, 50, 0, 50};
+        ap_set(&a, FS, enabled);
+        for (int i = 0; i < 120; i++) ap_tick(&a, 0.08f * sinf(6.2831853f * 2900.0f * i / FS));
+        CHECK(a.tr > 0.0f && fabsf(a.dyn.z1) > 0.0f, "transient filter has state before DEQUACK is turned off");
+        ap_set(&a, FS, disabled);
+        for (int i = 0; i < 120; i++) ap_tick(&a, 0.0f);
+        ap_set(&a, FS, enabled);
+        CHECK(a.tr == 0.0f && a.dyn.z1 == 0.0f && a.dyn.z2 == 0.0f, "DEQUACK re-enables with fresh filter and blend state");
+    }
     /* ---- DRIVE ---- */
     drv(&p, 50, 0, 50, 50, 50); const float d0 = gain_db(&p, 200, 0.1f), d1 = gain_db(&p, 4000, 0.1f);
     CHECK(fabsf(d0) < 1.5f && fabsf(d1) < 1.5f, "BLEND 0 is the dry guitar (delayed, level kept): %.2f dB at 200 Hz, %.2f dB at 4 kHz", d0, d1);
