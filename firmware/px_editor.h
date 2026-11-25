@@ -33,9 +33,8 @@
 typedef char ed_size_check[sizeof(px_preset_t) == ED_P_SIZE + 3u ? 1 : -1];
 enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_ORDER, ED_NAME, ED_PUT, ED_SELECT,
        ED_FOCUS, ED_LIST, ED_SLOT_GET, ED_SLOT_PUT, ED_COMMIT, ED_SAVE, ED_WATCH, ED_PING,
-       ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,   /* 19..22: NAM retired (v70) */
-       ED_IR_LIST, ED_IR_WRITE, ED_IR_COMMIT, ED_IR_ERASE,     /* v38: 24..27, retired (v70) */
-       ED_USB_AUDIO,                                           /* v42: 28 */
+       ED_DIAG = 23,                                          /* 19..22 reserved (retired NAM) */
+       ED_USB_AUDIO = 28,                                     /* 24..27 reserved (retired IR) */
        ED_FOOTSWITCH,                                          /* v48: 29 */
        ED_SHED,                                                /* v75: 30 */
        ED_GLOBAL, ED_TUNER };                                  /* v75: 31, 32 */
@@ -182,7 +181,6 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
             const uint8_t was_t = PRESET.type[b];
             PRESET.type[b] = (uint8_t)(v < nt ? v : nt - 1u);
             if (b == PX_B_COMP && PRESET.type[b] == PX_CMP_VALVE) PRESET.type[b] = was_t;
-            px_block_canonical((int)b, &PRESET.type[b], PRESET.p[b]);
             if (PRESET.type[b] != was_t) px_type_defaults((int)b, PRESET.type[b], PRESET.p[b]);   /* v76: a new type starts at its own settings */
             v = PRESET.type[b];
             ed_ui_fix();
@@ -358,7 +356,7 @@ static void ed_service(uint32_t now)
     if (!ota_frame_get(&p, &n) || n < 4u || p[0] != ED_H0 || p[1] != ED_H1 || p[2] != ED_H2)
         return;
     {
-        static uint8_t f[160];                         /* the longest requests: NAM_WRITE 4 + 1 + 2 + 128, SLOT_PUT */
+        static uint8_t f[160];                         /* decoded editor request including header and CRC */
         uint32_t k = n > sizeof f ? sizeof f : n, i;
         for (i = 0; i < k; i++) f[i] = p[i];
         ota_frame_done();                              /* free the frame buffer before replying */

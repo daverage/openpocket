@@ -50,8 +50,7 @@ enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, 
        PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_EPBOOST, PX_SFX_MAXIMIZER, PX_SFX_ACOUSTIC, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
- * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
- * type, and the UI skips it (px_type_name is ""). New Synth2 types are appended after PX_SYN_STRING_DUO. */
+ * UI skips the reserved values (px_type_name is ""). New Synth2 types are appended after PX_SYN_STRING_DUO. */
 enum { PX_SYN_X_ORGAN, PX_SYN_X_CHURCH, PX_SYN_X_STRINGS, PX_SYN_X_CHOIR, PX_SYN_X_MONO, PX_SYN_X_PWM,
        PX_SYN_X_12STR, PX_SYN_X_ACOUSTIC, PX_SYN_X_SITAR, PX_SYN_X_BARI, PX_SYN_X_BRASS, PX_SYN_X_STRINGS_HQ,
        PX_SYN_X_CHOIR_HQ, PX_SYN_X_ORGAN_HQ, PX_SYN_X_CHURCH_HQ, PX_SYN_X_BASS_HQ,
@@ -98,7 +97,7 @@ typedef struct {
 int px_valve_drive_db(int control);
 
 void px_preset_base(px_preset_t *p);        /* v75: the blank sound every factory preset starts from (the gate on, the rest off, LEVEL 0 dB), for tests and tools that need a plain starting point */
-void px_preset_canonical(px_preset_t *p);   /* v75: the three pedals that were SFX types move to the BST block (an SFX type that is a tombstone now), then px_block_canonical for every block */
+void px_preset_canonical(px_preset_t *p);   /* Migrate moved effects and bypass unsupported catalogue entries. */
 void px_order_default(uint8_t *order);
 int  px_order_valid(const uint8_t *order);   /* 1 = a permutation of 0..PX_NBLK-1 */
 
@@ -106,9 +105,7 @@ int  px_order_valid(const uint8_t *order);   /* 1 = a permutation of 0..PX_NBLK-
 const char *px_block_label(int blk);
 const char *px_block_name(int blk);
 int         px_ntypes(int blk);
-int         px_type_canonical(int blk, int type);
 void px_type_defaults(int blk, int type, uint8_t *p);   /* v76: the settings a type starts with when it is picked: every one at 50 (a mix and a level at the middle), except the types listed in px_dsp.c; not the gate block */
-void px_block_canonical(int blk, uint8_t *type, uint8_t *p);   /* v64: px_type_canonical, and the retired type's controls */
 const char *px_type_name(int blk, int type);
 int         px_nparams(int blk, int type);
 const char *px_param_name(int blk, int type, int k);
@@ -128,9 +125,8 @@ typedef struct { px_bq hp, lp, dip, tone; float g, bias, off, blend, wet_n, lvl,
 typedef struct { float x[6], y[6]; } px_hb;           /* v38: a half-band filter's all-pass sections (x2 up or down) */
 
 typedef struct {
-    px_bq hp, shelf, lp, mid, t1, t2, t3;
-    float gain, level, blend, bias, off, gate, dcs, dck, shelf_lo, mix;
-    int   clip, tm, np, pre, dcb;
+    px_bq hp, lp, t1;
+    float gain, level, dcs, dck;
 } px_drive_state;
 
 /* v49: the HQ octave's analysis: 29 complex band-pass filters from 60 Hz to 2.05 kHz, each 37.5 Hz + 4 % of its
@@ -209,15 +205,18 @@ typedef struct px_engine_s {
     px_synth_tracking sfx_track;
     int sfx_track_active;
     uint8_t ord[PX_NBLK];
-    /* SYNTH block: POLY OCT FUZZ (the only type that runs; Synth2 types are added here) */
-    px_bbe bbe;                                        /* SFX MAXIMIZER: three bands, two delay lines (about 1 KB) */
-    px_ep ep;                                          /* SFX EP BOOST: the JFET stage (about 100 bytes) */
-    px_vw vw;                                          /* BST VOX FIXED WAH: one biquad (about 70 bytes) */
-    px_ap ap;                                          /* BST ACOUSTIC PREAMP (v76): seven biquads, about 250 bytes */
-    px_ad ad;                                          /* SFX ACOUSTIC DRIVE (v76): four biquads and the oversampling filter, about 450 bytes */
-    px_ff ff;                                          /* BST FUZZ FACE: the two-transistor circuit, solved per sample (engine/px_pedals.h) */
-    px_rm rm;                                          /* SFX RANGEMASTER: the circuit (about 700 bytes), set up by pxp_rm_init like ENHANCE */
-    px_enhance enh;                                    /* SFX ENHANCE v4 (about 40 bytes); set up by pxe_init in px_engine_init and when the SFX type or on/off changes */
+    /* The BOOST block runs one model. Preset/type changes select its state. */
+    union {
+        px_bbe bbe;
+        px_ep ep;
+        px_vw vw;
+        px_ap ap;
+        px_ff ff;
+        px_rm rm;
+        px_enhance enh;
+    };
+    px_ad ad;                                          /* SFX ACOUSTIC DRIVE can run alongside BOOST */
+    /* POLY OCT FUZZ */
     px_hb syn_fuzz_os[4];
     px_drive_state syn_fuzz;
     float syn_fuzz_tone;

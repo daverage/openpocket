@@ -2,7 +2,6 @@
  * POLY OCT FUZZ (16) runs; the 27 others are tombstones. Checks:
  *  - the catalogue size and POLY OCT FUZZ's id are the v73 ones; the ids Synth2 appends (ANALOG 28, ARCADE 29) come after STRING DUO (27)
  *  - a tombstone has an empty name (the UI skips it), no controls, and px_type_retired says so
- *  - px_block_canonical leaves a stored tombstone untouched (the type and its five settings are kept)
  *  - a tombstone on the block is bypassed: its output is bit for bit the output with the block off (and no NaN, whatever
  *    its settings), for every id 0..255 (an id beyond the catalogue is a tombstone too, never another sound)
  *  - POLY OCT FUZZ does run (the output differs from the block off) */
@@ -31,8 +30,6 @@ int main(void)
     for (int t = 0; t < 256; t++) {
         px_preset_t p = off; p.on[PX_B_SYN] = 1; p.type[PX_B_SYN] = (uint8_t)t;
         for (int k = 0; k < 5; k++) p.p[PX_B_SYN][k] = (uint8_t)(10 + 17 * k + t % 7);
-        px_preset_t q = p; px_block_canonical(PX_B_SYN, &q.type[PX_B_SYN], q.p[PX_B_SYN]);
-        CHECK(!memcmp(&p, &q, sizeof p), "px_block_canonical keeps a stored type and its settings");
         render(&p, out);
         int nan = 0, same = !memcmp(out, ref, sizeof out);
         for (int i = 0; i < 2048; i++) if (out[i] != out[i] || fabsf(out[i]) > 50.0f) nan = 1;

@@ -497,7 +497,6 @@ static const tdef T_COMP[PX_CMP_COUNT] = {
 static int cmp_type(uint8_t t) { return t % PX_CMP_VALVE; }
 
 static const char *const PN_OCT[] = {"DRY", "SUB -1", "SUB -2", "UP +1", "TONE"};
-static const char *const PN_POLY[] = {"DRY", "OCT -1", "OCT +1"};
 static const char *const PN_POLY_HQ[] = {"DRY", "OCT -1", "OCT +1", "RANGE", "OCT -2"};   /* v64: OCT -2 (PX_SUB2_TEST) */
 static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
@@ -581,24 +580,6 @@ int px_live_index(int b, int type)
     return 0;
 }
 
-/* ============================================================== drives ===== */
-enum { CL_SOFT, CL_ASYM, CL_HARD, CL_GE, CL_LED, CL_MOS, CL_MUFF, CL_FUZZ, CL_OCTA, CL_BOOST, CL_FUZZ_FACE };
-enum { TM_LP, TM_MUFF, TM_HM2, TM_MT2 };
-typedef struct {
-    float hp, shelf, lp, mid, mid_db, mid_q10;                       /* pre-clip (base rate) */
-    float g0, g1;                                                    /* gain range, dB */
-    uint8_t clip, tm; float t0, t1;                                  /* clipper, post tone (oversampled) */
-    float p2, p2db;                                                  /* fixed post filter (0 dB = low-pass) */
-    float blend, bias, gate;                                         /* /100 */
-} drv_v;          /* (floats: fitted to a capture in v34, the fitting tool since removed) */
-/* the Fuzz Face voicing (v34 fit): POLY OCT FUZZ's clipper */
-static const drv_v FUZZ_FACE = {28.0f, 0.0f, 7200.0f, 0.0f, 0.0f, 7.0f, 12.0f, 44.0f, CL_FUZZ_FACE, TM_LP, 6100.0f, 6100.0f,
-                                0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-
-static float drive_gain(const drv_v *drive, float setting)
-{
-    return db2lin(drive->g0 + (drive->g1 - drive->g0) * setting);
-}
 
 /* ================================================================== EQ ===== */
 static const char *const PN_EQ5[] = {"100 HZ", "400 HZ", "1 KHZ", "2.5 KHZ", "6 KHZ"};
@@ -652,10 +633,6 @@ int px_ntypes(int b)
                                        PX_EQ_COUNT, PX_MOD_COUNT, PX_DLY_COUNT, PX_REV_COUNT, PX_BST_COUNT};
     return (b >= 0 && b < PX_NBLK) ? N[b] : 1;
 }
-/* v70: the retired types (v63/64: BASS SYNTH, PWM SYNTH HQ, TRUMPET MODEL, the delay-line POLY OCTAVE) are removed, so
- * every type is its own; kept for the callers (the store, MIDI, the screen) */
-int px_type_canonical(int b, int t) { (void)b; return t; }
-void px_block_canonical(int b, uint8_t *type, uint8_t *p) { (void)b; (void)type; (void)p; }
 /* v75: ENHANCE (SFX type 9), RANGEMASTER, EP BOOST and MAXIMIZER (SFX types 10..12, test builds 929..931); they live in the BST block now. A preset that still holds one has it
  * moved (type, on/off and settings) when the BST block is still as the factory and the older formats leave it (RANGEMASTER, off, default settings); the SFX
  * block is then an ENVELOPE WAH, off, with its default settings. With BST already used (on, or another type or settings), the old SFX pedal stays as a
@@ -675,7 +652,6 @@ void px_preset_canonical(px_preset_t *p)
         p->type[PX_B_COMP] = PX_CMP_SQUASH;
         px_type_defaults(PX_B_COMP, PX_CMP_SQUASH, p->p[PX_B_COMP]);
     }
-    for (int b = 0; b < PX_NBLK; b++) px_block_canonical(b, &p->type[b], p->p[b]);
     const int to = px_sfx_to_bst(p->type[PX_B_SFX]);
     if (to >= 0 && bst_untouched(p)) {
         p->type[PX_B_BST] = (uint8_t)to;
@@ -1095,8 +1071,7 @@ static void rc_pitch(px_engine *e)
     const px_preset_t *p = &e->cur;
     float sr = e->sr;
     const uint8_t *q = p->p[PX_B_PITCH];
-    const int raw = p->type[PX_B_PITCH] % PX_PIT_COUNT;
-    int t = px_type_canonical(PX_B_PITCH, raw);
+    const int t = p->type[PX_B_PITCH] % PX_PIT_COUNT;
     int hq = t == PX_PIT_POLYOCT_HQ;
     hq |= t == PX_PIT_LOWEST_HQ;
     if (hq && !e->erb_pitch_active) {
@@ -1120,13 +1095,13 @@ static void rc_pitch(px_engine *e)
         e->ps_nv = hq ? 0 : 2; e->ps_dry = f01(q[0]);
         e->ps_W[0] = 1400.0f; e->ps_inc[0] = 0.5f / 1400.0f; e->ps_lvl[0] = octave_down_level(f01(q[1]), hq);
         e->ps_W[1] = 1000.0f; e->ps_inc[1] = -1.0f / 1000.0f; e->ps_lvl[1] = octave_up_level(f01(q[2]), hq);
-        e->erb_pitch.down2 = t == PX_PIT_POLYOCT_HQ && raw == t ? octave_down_level(f01(q[4]), 1) * PX_SUB2_LEVEL : 0.0f;
+        e->erb_pitch.down2 = t == PX_PIT_POLYOCT_HQ ? octave_down_level(f01(q[4]), 1) * PX_SUB2_LEVEL : 0.0f;
         /* v73: RANGE (and LOWEST OCTAVE HQ) no longer cut the bank at a fixed note, which left a chord over that
          * note silent: the octave-down follows the lowest sounding band (erb_bank), RANGE 1 the lowest note
          * alone, up to 100 nearly every note; the make-up gain keeps the level (tools/research/low_bench.py) */
         e->erb_pitch.low_sel = 0.0f;
         e->erb_pitch_range = ERB_FULL;
-        if (t == PX_PIT_POLYOCT_HQ) e->erb_pitch_range = erb_range_band(raw != t || q[3] > 100 ? (raw != t ? 0 : 100) : q[3]);   /* RANGE: the OC-3's note cut */
+        if (t == PX_PIT_POLYOCT_HQ) e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);   /* RANGE: the OC-3's note cut */
         else if (hq) {
             e->erb_pitch_range = erb_range_band(q[3] > 100 ? 100 : q[3]);                 /* LOWEST OCTAVE HQ has it too (FULL = 0): the octave-down follows the lowest sounding band (v73, erb_bank), with make-up gain */
             e->erb_pitch.low_sel = LOW_SEL_MIN;
@@ -1135,7 +1110,7 @@ static void rc_pitch(px_engine *e)
             const float rboost = v == 0 ? 1.0f : 1.0f + LOW_RANGE_BOOST * (1.0f - (float)(v - 1) / 99.0f);
             e->ps_lvl[0] *= LOW_MAKEUP * PX_LOWEST_HQ_GAIN * rboost; e->erb_pitch.down2 *= LOW_MAKEUP;
         }
-        if (t == PX_PIT_POLYOCT_HQ && raw == t && q[3] >= 1 && q[3] < 100) {
+        if (t == PX_PIT_POLYOCT_HQ && q[3] >= 1 && q[3] < 100) {
             /* RANGE engaged: the -1 gets (a) the make-up for what RANGE thins out, (100 / RANGE)^0.196 (a single low E was -7 dB at RANGE 1, -2.7 dB at 25; a chord -13 dB at 1), and (b) the volume LOWEST OCTAVE HQ
              * keeps (it is about 9 dB louder than this type on a single low note; owner: "still too quiet when RANGE is engaged"): + PX_POLY_RANGE_LIFT dB, reached by RANGE 90 and fading out to nothing at 100 (no jump) */
             const float fade = (float)(100 - q[3]) * 0.1f;
@@ -1351,26 +1326,16 @@ static void rc_sfx(px_engine *e)
     e->sfx_track_active = t == PX_SFX_SYNTH_HQ;
 }
 
-/* POLY OCT FUZZ's clipper: the Fuzz Face voicing (FUZZ_FACE) with FUZZ 0..1, TONE and LEVEL at noon. The same
- * arithmetic as the v66 drive setup for that row, so the sound is unchanged. */
+/* POLY OCT FUZZ retains the fitted v34 Fuzz Face voicing. */
 static void fuzz_setup(px_drive_state *state, float sr, int os, float fuzz)
 {
-    const drv_v *d = &FUZZ_FACE;
-    const float osr = sr * (float)os, tone = 0.5f, level = 0.5f;
-    state->gain = drive_gain(d, fuzz);
-    bq_hp1(&state->hp, sr, (float)d->hp);
-    state->pre = 0;
-    bq_lowpass(&state->lp, sr, (float)d->lp, 0.7f); state->pre |= 2;
-    state->clip = d->clip;
-    state->bias = (float)d->bias * 0.01f;
-    state->gate = 0.0f;
-    state->off = px_tanh(state->bias);
-    state->dcb = 1;
+    const float osr = sr * (float)os;
+    state->gain = db2lin(12.0f + 32.0f * fuzz);
+    bq_hp1(&state->hp, sr, 28.0f);
+    bq_lowpass(&state->lp, sr, 7200.0f, 0.7f);
     state->dck = 2.0f * PI_F * 12.0f / osr;
-    state->tm = d->tm; state->np = 1;
-    bq_lowpass(&state->t1, osr, (float)d->t0 * powf((float)d->t1 / (float)d->t0, tone), 0.7f);
-    state->blend = 0.0f;
-    state->level = 0.07f * 2.0f * level * powf(10.0f, -3.0f * 0.05f);   /* (v36 trim of the Fuzz Face row) */
+    bq_lowpass(&state->t1, osr, 6100.0f, 0.7f);
+    state->level = 0.07f * powf(10.0f, -3.0f * 0.05f);
 }
 
 static void lowest_pitch_reset(px_engine *e)
@@ -1679,7 +1644,6 @@ static void rc_reverb(px_engine *e)
     e->sh_hk = onepole_k(sr, 1.0f / (2.0f * PI_F * 300.0f));
 }
 
-
 /* ---- SYN: the SYNTH block (Synth2). Only POLY OCT FUZZ runs; every other legacy type is a tombstone (docs/research/synth2/SYNTH2-PLAN.md) ---- */
 static float opk(float sr, float hz) { float k = 2.0f * PI_F * hz / sr; return k > 0.9f ? 0.9f : k; }   /* one-pole */
 static void syn_fuzz_reset(px_engine *e)
@@ -1773,10 +1737,18 @@ void px_engine_globals(px_engine *e, const px_global_t *g)
     e->g_lim_g = 1.0f;
 }
 
-/* v75 BST (RANGEMASTER, EP BOOST, MAXIMIZER, VOX FIXED WAH, ENHANCE): every pedal's state back to rest */
-static void bst_reset(px_engine *e)
+/* Called before configuring a newly selected BOOST model. */
+static void bst_reset(px_engine *e, int type)
 {
-    pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); pxp_ep_init(&e->ep, e->sr); pxp_bbe_init(&e->bbe, e->sr); pxp_vw_init(&e->vw, e->sr); pxp_ff_init(&e->ff, e->sr, 0); memset(&e->ap, 0, sizeof e->ap);
+    switch (type % PX_BST_COUNT) {
+    case PX_BST_RANGEMASTER: pxp_rm_init(&e->rm, e->sr); break;
+    case PX_BST_EPBOOST: pxp_ep_init(&e->ep, e->sr); break;
+    case PX_BST_MAXIMIZER: pxp_bbe_init(&e->bbe, e->sr); break;
+    case PX_BST_ENHANCE: pxe_init(&e->enh, e->sr); break;
+    case PX_BST_ACOUSTIC: memset(&e->ap, 0, sizeof e->ap); break;
+    case PX_BST_FUZZFACE: pxp_ff_init(&e->ff, e->sr, 0); break;
+    default: pxp_vw_init(&e->vw, e->sr); break;
+    }
 }
 /* v75: tails. A delay or reverb that was running and is now off (the user switched it, or the new preset has it off) plays out for a few seconds instead of
  * stopping, if the global TAILS setting is on: its input is muted, its settings stay as they were, and the block ends after the time (px_tick). A block
@@ -1803,7 +1775,7 @@ void px_engine_init(px_engine *e, float sr)
     e->dly_type = -1;
     e->syn_type = -1;
     px_global_default(&e->glob); e->g_lim_g = 1.0f;
-    bst_reset(e);
+    e->cur.type[PX_B_BST] = PX_BST_COUNT;   /* force the initial BOOST model to be initialized */
     px_preset_t p; px_preset_factory(&p, 0);
     px_engine_set(e, &p);
 }
@@ -1816,7 +1788,7 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     if (p->valve_on && e->triode.mix == 0.0f) triode_reset(e);
     e->triode.mix = p->valve_on ? 1.0f : 0.0f;
     if (e->cur.type[PX_B_SFX] != p->type[PX_B_SFX] || e->cur.on[PX_B_SFX] != p->on[PX_B_SFX]) memset(&e->ad, 0, sizeof e->ad);   /* v76: ACOUSTIC DRIVE: no old state */
-    if (e->cur.type[PX_B_BST] != p->type[PX_B_BST] || e->cur.on[PX_B_BST] != p->on[PX_B_BST]) bst_reset(e);   /* a different pedal, or on/off: no old state */
+    if (e->cur.type[PX_B_BST] != p->type[PX_B_BST] || e->cur.on[PX_B_BST] != p->on[PX_B_BST]) bst_reset(e, p->type[PX_B_BST]);   /* a different pedal, or on/off: no old state */
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
@@ -1878,6 +1850,8 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     for (int i = 0; i < GL_N; i++) was[i] = *GLP(e, i);
     const px_preset_t old = e->cur;
     e->cur = *p;
+    const int bst_changed = old.type[PX_B_BST] != p->type[PX_B_BST];
+    if (bst_changed) bst_reset(e, p->type[PX_B_BST]);
     if (p->valve_on && !old.valve_on && e->triode.mix == 0.0f) triode_reset(e);
     e->triode.drive = 4.0f * db2lin(valve_drive_db(f01(p->valve_drive)));
     e->triode.level = valve_output_gain(p->valve_level);
@@ -1886,7 +1860,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         if (old.on[b] != p->on[b] || old.type[b] != p->type[b]) e->shed &= (uint16_t)~(1u << b);
     { const uint8_t wo[2] = {old.on[PX_B_DELAY], old.on[PX_B_REVERB]}, wt[2] = {e->run.type[PX_B_DELAY], e->run.type[PX_B_REVERB]}; px_spill_plan(e, p, wo, wt, 0); }   /* v75: a delay or reverb switched off plays out; one switched on is the user's again */
     for (int b = 0; b < PX_NBLK; b++) {
-        if (!memcmp(old.p[b], p->p[b], PX_NPAR)) continue;
+        if (!(b == PX_B_BST && bst_changed) && !memcmp(old.p[b], p->p[b], PX_NPAR)) continue;
         switch (b) {
         case PX_B_GATE: case PX_B_COMP: rc_dyn(e); break;
         case PX_B_PITCH: rc_pitch(e); break;
@@ -1997,45 +1971,6 @@ static inline float fuzz_face_clip(float input)
     return px_tanh(4.1f * first - 0.32f) + px_tanh(0.32f);
 }
 
-static inline float clip_run(const px_drive_state *state, float d)
-{
-    float a, y;
-    switch (state->clip) {
-    case CL_SOFT: return px_tanh(d);
-    case CL_ASYM: return px_tanh(d + state->bias) - state->off;
-    case CL_HARD:
-        a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
-        return d < 0.0f ? -y : y;
-    case CL_GE: return d / (1.0f + px_abs(d));
-    case CL_LED:
-        a = px_abs(d); y = a >= 1.0f ? 1.0f : a * (1.5f - 0.5f * a * a);
-        return d < 0.0f ? -y : y;
-    case CL_MOS:
-        a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
-        return 0.5f * (px_tanh(d) + (d < 0.0f ? -y : y));
-    case CL_MUFF:                                      /* two cascaded clipping stages */
-        d = px_tanh(d) * 3.0f;
-        a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
-        return d < 0.0f ? -y : y;
-    case CL_FUZZ:                                      /* starved transistor: asymmetric, optional gate */
-        if (state->gate > 0.0f) { a = px_abs(d); if (a < state->gate) d *= a / state->gate; }
-        d += state->bias;
-        return d >= 0.0f ? px_tanh(d) : 0.7f * px_tanh(1.4f * d);
-    case CL_OCTA:                                      /* full-wave rectifier: octave up, then fuzz */
-        a = px_abs(d); y = a < 0.7f ? a : 1.0f - 0.09f / (a - 0.4f);
-        return 0.7f * px_tanh(1.5f * a) + 0.3f * (d < 0.0f ? -y : y);
-    case CL_FUZZ_FACE: return fuzz_face_clip(d);
-    default: return px_tanh(d * 0.4f) * 2.5f;          /* clean boost */
-    }
-}
-static inline float drive_pre(px_drive_state *state, float x)   /* base rate */
-{
-    x = bq_run(&state->hp, x);
-    if (state->pre & 2) x = bq_run(&state->lp, x);
-    if (state->pre & 4) x = bq_run(&state->mid, x);
-    if (state->pre & 1) x = x * state->shelf_lo + bq_run(&state->shelf, x);
-    return x;
-}
 /* ---- v38: oversampling by polyphase IIR half-band filters (as the stock firmware does: two all-pass branches, each
  * section y = c (x - y1) + x1, one multiply; the branches run at the lower rate). x4 = two x2 stages: stage 1 (44.1 <->
  * 88.2 kHz) passes 0..20 kHz and stops 24.1..44.1 kHz by 78 dB with 6 sections; stage 2 (88.2 <-> 176.4 kHz) has 20..68.2
@@ -2197,33 +2132,21 @@ static __attribute__((noinline)) void triode_block(px_engine *e, float *samples,
     }
 }
 
-static void drive_block(px_drive_state *state, float *u, int n, int os, float *t, float *h)   /* (static buffers: off the interrupt's stack) */
-{
-    for (int i = 0; i < n; i++) {
-        const float dn = ((i / os) & 1) ? 1e-15f : -1e-15f;
-        float d = clip_run(state, u[i] * state->gain) + dn;
-        if (state->dcb) { state->dcs += (d - state->dcs) * state->dck; d -= state->dcs; }
-        t[i] = d;
-    }
-    if (state->tm == TM_MUFF) {
-        memcpy(h, t, (unsigned)n * sizeof(float));
-        bq_block(&state->t1, t, n);
-        bq_block(&state->t2, h, n);
-        for (int i = 0; i < n; i++) t[i] = t[i] + (h[i] - t[i]) * state->mix;
-    } else if (state->np & 2) {
-        bq_block2(&state->t1, &state->t2, t, n);
-    } else bq_block(&state->t1, t, n);
-    if (state->np & 4) bq_block(&state->t3, t, n);
-    for (int i = 0; i < n; i++) u[i] = t[i] * state->level + u[i] * state->blend;
-}
-/* POLY OCT FUZZ's clipper over a block, oversampled (shares px_os_* with VALVE) */
-static __attribute__((noinline)) void drive_buffer(px_drive_state *state, px_hb *filters, float *samples, int n, int os)
+/* POLY OCT FUZZ's clipper over a block, oversampled (shares px_os_* with VALVE). */
+static __attribute__((noinline)) void drive_buffer(px_drive_state *state, px_hb *filters, float *samples, int n)
 {
     float *up = px_os_u, *tone = px_os_t, *middle = px_os_m, *exchange = px_os_d;
-    for (int i = 0; i < n; ++i) samples[i] = drive_pre(state, samples[i]);
-    os_up(filters, samples, up, n, os, middle, exchange);
-    drive_block(state, up, os * n, os, tone, exchange);
-    os_down(filters, up, samples, n, os, middle, exchange);
+    for (int i = 0; i < n; ++i) samples[i] = bq_run(&state->lp, bq_run(&state->hp, samples[i]));
+    os_up(filters, samples, up, n, PX_OVERSAMPLE, middle, exchange);
+    for (int i = 0; i < PX_OVERSAMPLE * n; i++) {
+        const float dn = ((i / PX_OVERSAMPLE) & 1) ? 1e-15f : -1e-15f;
+        const float d = fuzz_face_clip(up[i] * state->gain) + dn;
+        state->dcs += (d - state->dcs) * state->dck;
+        tone[i] = d - state->dcs;
+    }
+    bq_block(&state->t1, tone, PX_OVERSAMPLE * n);
+    for (int i = 0; i < PX_OVERSAMPLE * n; i++) up[i] = tone[i] * state->level;
+    os_down(filters, up, samples, n, PX_OVERSAMPLE, middle, exchange);
 }
 
 static inline float rd_frac(const float *buf, int mask, float pos)   /* pos in [0, mask+1) */
@@ -2473,7 +2396,6 @@ PX_INL static inline float ps_voice_al(float *buf, int w, float *ph, float *off,
 static float px_ps_xs[2][32] PX_LO(px_ps_xs);          /* ps_align's reference samples: [0] PITCH, [1] SYN */
 static float px_run_y[2][32] PX_LO(px_run_y);          /* a run's output so far: [0] PITCH, [1] SYN */
 #endif
-
 
 /* ---- SYN: synth / instrument, one sample ---- */
 static inline float polyblep(float t, float dt)        /* band-limited step correction (saw / pulse edges) */
@@ -2913,7 +2835,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     const px_preset_t *p = &e->run;                    /* v38: with the blocks still fading out */
     const float sr = e->sr;
     const int cmp_t = cmp_type(p->type[PX_B_COMP]);
-    const int pit_t = px_type_canonical(PX_B_PITCH, p->type[PX_B_PITCH] % PX_PIT_COUNT);
+    const int pit_t = p->type[PX_B_PITCH] % PX_PIT_COUNT;
     const int sfx_t = p->type[PX_B_SFX] % PX_SFX_COUNT;
     const int mod_t = p->type[PX_B_MOD] % PX_MOD_COUNT;
     const int eq_t = p->type[PX_B_EQ] % PX_EQ_COUNT;
@@ -3005,7 +2927,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 const float x = xb[k];
                 xb[k] = x + erb_octaves(e, &e->erb_syn, x, e->syn_lvl[0], e->syn_lvl[1], ERB_FULL);
             }
-            drive_buffer(&e->syn_fuzz, e->syn_fuzz_os, xb, n, PX_OVERSAMPLE);
+            drive_buffer(&e->syn_fuzz, e->syn_fuzz_os, xb, n);
             for (int k = 0; k < n; ++k) {
                 const float x = xb[k];
                 e->syn_lp += e->syn_lpk * (x - e->syn_lp);
