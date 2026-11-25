@@ -107,13 +107,14 @@ footer a,.note a{color:inherit}
     </details>
   </section>
 
-  <section class="card" id="build989">
-    <h2>What’s new in build 989</h2>
+  <section class="card" id="build993">
+    <h2>What’s new in build 993</h2>
     <dl class="features">
+      <div><dt>SIGNATURE boost</dt><dd>A new PRE / BOOST model with BODY and FOCUS tone shaping, JFET-inspired RICHNESS, pick-attack PUNCH, and independent LEVEL from −12 to +12 dB. Valve can run independently before it.</dd></div>
       <div><dt>Lower Fuzz Face DSP load</dt><dd>The transistor lookup table cuts processing cost while keeping the pickup response and guitar-volume cleanup. Rangemaster shares the table.</dd></div>
       <div><dt>Valve output Level</dt><dd>Adjust the 12AX7 stage’s output from −12 to +12 dB without changing Drive. Tap FX from the Valve Drive page or open Valve in the editor’s Sound tab.</dd></div>
     </dl>
-    <div class="row links"><a href="WHATS-NEW-v89.md">Build 989 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
+    <div class="row links"><a href="WHATS-NEW-v93.md">Build 993 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
   </section>
 
   <section class="card">
@@ -220,7 +221,7 @@ let sawV21 = false;
 
 if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
 $("testchan").hidden = !CHANNEL;
-$("build989").hidden = !!CHANNEL;
+$("build993").hidden = !!CHANNEL;
 
 async function loadManifest() {
   try {
@@ -230,7 +231,7 @@ async function loadManifest() {
     if (!Number.isInteger(m.version) || !Array.isArray(m.packages) || !m.packages.length) throw new Error("Invalid firmware manifest");
     manifest = m;
     $("pkgver").textContent = `v${m.version} · build ${900 + m.version}` + (CHANNEL ? ` (${CHANNEL})` : "");
-    if (m.version < 89) $("build989").hidden = true;
+    if (m.version < 93) $("build993").hidden = true;
     for (const p of m.packages) {
       const link = document.createElement("a");
       link.href = FW + p.file;
