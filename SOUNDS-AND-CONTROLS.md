@@ -99,7 +99,7 @@ Dry and OCT +1 keep their full range.
 
 RANGEMASTER, EP BOOST, MAXIMIZER, FIXED WAH (the Vox V847 tone curve with the pedal parked; POSITION, PEAK, LEVEL), ACOUSTIC PRE (for a piezo pickup into a PA or a recorder: LOW CUT 20 to 200 Hz, DEQUACK, BODY, a feedback NOTCH 80 Hz to 4 kHz, LEVEL -12 to +12 dB), FUZZ FACE (the two-transistor circuit solved sample by sample, with FUZZ, VOLUME, PICKUP, BIAS and a germanium / silicon TRANSISTOR switch: it cleans up with the guitar's volume), and ENHANCE (moved here from SFX: BETTER adds second-harmonic warmth in parallel with the untouched signal, LOUDER is a clean 0 to +12 dB boost; [ENHANCE.md](ENHANCE.md)). Details in [PEDALS.md](PEDALS.md). It is reached with the FX button (GT, BST, CMP, SFX, EQ in the chain order), can be assigned to a footswitch in STOMP mode like any block, and is CC 29 (on/off), 61 (model), 97 and 102..105 (settings), toggle CC 17 in [MIDI.md](MIDI.md).
 
-SIGNATURE combines broad tone shaping, JFET-inspired harmonic color, pick attack enhancement and clean output gain. Its controls are BODY, FOCUS, RICHNESS, PUNCH and LEVEL (−12 to +12 dB). [SIGNATURE in the pedal guide](PEDALS.md#signature-bst)
+SIGNATURE combines broad tone shaping, JFET-inspired harmonic color, pick attack enhancement and clean output gain. Its controls are BODY, FOCUS, RICHNESS, PUNCH and LEVEL (−12 to +12 dB). Build 994 widens FOCUS to −8 dB bass / +4.8 dB treble, triples RICHNESS strength, and makes PUNCH stronger and longer. BODY is neutral at 50; 0 cuts the low mids. Existing presets retain their values with the stronger voicing. [SIGNATURE in the pedal guide](PEDALS.md#signature-bst)
 
 ### Effects
 
