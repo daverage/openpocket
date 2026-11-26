@@ -57,6 +57,10 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/global_test.c fi
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/triode_test.c firmware/px_math.c -lm -o build/triode_test
 build/triode_test
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/tails_test.c firmware/px_math.c -lm -o build/tails_test && build/tails_test | tail -1
+for runs in 0 1; do
+  $CC -O2 -w -fno-builtin -ffp-contract=off -DPX_RUNS=$runs -Iengine tests/engine/suppressor_test.c firmware/px_math.c -lm -o build/suppressor_test
+  build/suppressor_test
+done
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hush_test.c firmware/px_math.c -lm -o build/hush_test && build/hush_test | tail -1
 $CC -O2 -w -Iengine tests/engine/factory_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/factory_test && build/factory_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/shed_test.c firmware/px_math.c -lm -o build/shed_test && build/shed_test | tail -1

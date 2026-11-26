@@ -21,7 +21,7 @@
  * AMP CAB DLY REV MOD = that block's page (press again = on/off); FX = the next of GT, BST, CMP, SFX, EQ in the
  * preset's chain order (v42). Hold PUSH = SAVE (into one of the 52 slots, in flash). Hold FX = MIDI.
  * Double-click PUSH on PLAY = MOVE the selected block: KNOB moves it along the chain, PUSH drops it, HOME puts it back.
- * The preset LEVEL (v36) is the GT page's 3rd setting ("PRESET LVL").
+ * Patch volume is independent of the gate, on PATCH SETTINGS (FX after Valve Level).
  * v48: hold CAB = STOMP mode on / off (PATCH mode: the footswitches change presets). In STOMP mode each footswitch
  * switches what the preset assigns it: a block on / off, or BYPASS (the dry guitar, DSP off); both together = tuner.
  * To assign: hold the footswitch and press a block button (MOD AMP CAB DLY REV), or FX to step through GT BST CMP PIT SYN SFX EQ
@@ -29,7 +29,7 @@
  */
 #pragma once
 
-enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_VALVE, M_GLOBAL };
+enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_VALVE, M_GLOBAL, M_PATCH };
 static uint32_t st_gen;                 /* bumped on each save: the "EDITED" reference reloads */
 static void st_get(uint32_t k, px_preset_t *p);
 static int st_save(uint32_t k, const px_preset_t *p);
@@ -479,12 +479,34 @@ static void ui_valve_draw(void)
     ft_box(0, 143, 240, level, &FT_MD, edit_level ? BLK : UI_TXT, edit_level ? UI_ACC : UI_BG, 1);
     ft_box(0, F_Y + 3u, 240, edit_level ? "FX: NEXT   PUSH: ON/OFF" : "FX: LEVEL   PUSH: ON/OFF", &FT_SM, UI_DIM, UI_PANEL, 1);
 }
+static void ui_patch_draw(void)
+{
+    static unsigned shown = ~0u;
+    if (uc.screen != 3 || uc.full) {
+        uc.screen = 3; uc.full = 0; shown = ~0u;
+        lcd_rect(0, 0, 240, 240, UI_BG);
+        ft_box(0, 4, 240, "PATCH SETTINGS", &FT_MD, BLK, UI_ACC, 1);
+        ft_box(0, 85, 240, "PATCH VOLUME", &FT_MD, UI_TXT, UI_BG, 1);
+        ft_box(0, F_Y + 3u, 240, "KNOB: VOLUME   FX: NEXT", &FT_SM, UI_DIM, UI_PANEL, 1);
+    }
+    if (shown != PRESET.patch_volume) {
+        shown = PRESET.patch_volume;
+        char value[16] = "";
+        int db = ((int)shown - 50) * 3;
+        if (db) b_str(value, db < 0 ? "-" : "+");
+        unsigned v = (unsigned)(db < 0 ? -db : db);
+        b_num(value, v / 10u); if (v % 10u) { b_str(value, "."); b_num(value, v % 10u); }
+        b_str(value, " DB");
+        ft_box(0, 125, 240, value, &FT_MD, BLK, UI_ACC, 1);
+    }
+}
 static void ui_render(void)
 {
     if (ui_mode == M_TUNER || ui_mode == M_DIAG) return;   /* (the main loop draws them every 100 ms: tuner_draw, diag_draw) */
     if (ui_mode == M_SAVE) { save_draw(); return; }
     if (ui_mode == M_MIDI) { midi_draw(); return; }
     if (ui_mode == M_LIST) { list_draw(); return; }
+    if (ui_mode == M_PATCH) { ui_patch_draw(); return; }
     if (ui_mode == M_VALVE) { ui_valve_draw(); return; }
     if (ui_mode == M_GLOBAL) { global_draw(); return; }
     int scr = UI_PAGE ? 1 : 0;
@@ -573,6 +595,7 @@ static void ui_knob(int dd, int fast)
 }
 static void ui_push(void)
 {
+    if (ui_mode == M_PATCH) return;
     if (ui_mode == M_VALVE) { PRESET.valve_on ^= 1u; return; }
     if (ui_mode == M_MOVE) { ui_move_drop(); return; }
     if (ui_mode == M_CHAIN) { ui_mode = M_BLOCK; ui_item = 0; }
@@ -768,6 +791,8 @@ static const uint8_t UI_FXB[UI_NFX] = {PX_B_GATE, PX_B_BST, PX_B_COMP, PX_B_SFX,
 static int ui_is_fx(uint32_t b) { for (int i = 0; i < UI_NFX; i++) if (UI_FXB[i] == b) return 1; return 0; }
 static void ui_fx_cycle(void)          /* FX: the next of its blocks along the preset's chain, as the tiles read (v42), else the first */
 {
+    if (ui_mode == M_VALVE && ui_item == 1u) { ui_mode = M_PATCH; ui_item = 0; return; }
+    if (ui_mode == M_PATCH) { ui_mode = M_CHAIN; ui_blk = PX_NBLK; }
     if (ui_mode == M_VALVE && ui_item == 0u) { ui_item = 1; return; }
     ui_order_fix();
     int from = ui_mode != M_VALVE && ui_is_fx(ui_blk) ? ui_pos_of(ui_blk) + 1 : 0;
@@ -792,7 +817,7 @@ static void list_open(void)
     lcd_rect(0, 0, 240, 4, UI_ACC); lcd_rect(0, 27, 240, 3, UI_ACC); lcd_rect(0, 4, 8, 23, UI_ACC);
     ft_box(8, 4, 232, "PRESETS", &FT_MD, BLK, UI_ACC, 0);
     lcd_rect(0, F_Y, 240, 240u - F_Y, UI_PANEL);
-    ft_box(0, F_Y + 3u, 240, "KNOB: PRESET   PUSH: LOAD", &FT_SM, UI_DIM, UI_PANEL, 1);
+    ft_box(0, F_Y + 3u, 240, "PUSH: LOAD   FX: VOLUME", &FT_SM, UI_DIM, UI_PANEL, 1);
     uc.screen = -1;
 }
 static void list_draw(void)
@@ -812,7 +837,12 @@ static void list_draw(void)
         ui_rbox(4, y, 232, LS_ROW - 2u, 5, bg, UI_BG);
         if (sel) lcd_rect(4, y + 10u, 3, 14, UI_ACC);
         ft_box(12, y + 5u, 40, b, &FT_MD, k == cur_preset ? UI_ACC : sel ? UI_TXT : UI_DIM, bg, 0);
-        ft_box(52, y + 5u, 180, q.name, &FT_MD, sel ? WHT : UI_DIM, bg, 0);
+        ft_box(52, y + 5u, 135, q.name, &FT_MD, sel ? WHT : UI_DIM, bg, 0);
+        char vol[12] = ""; int db = ((int)q.patch_volume - 50) * 3;
+        if (db) b_str(vol, db < 0 ? "-" : "+");
+        unsigned v = (unsigned)(db < 0 ? -db : db); b_num(vol, v / 10);
+        if (v % 10) { b_str(vol, "."); b_num(vol, v % 10); }
+        ft_box(186, y + 9u, 44, vol, &FT_SM, UI_DIM, bg, 2);
     }
 }
 static void list_knob(int dd) { int n = px_preset_count(); ls_at = (uint32_t)(((int)ls_at + n + dd) % n); }
@@ -1168,7 +1198,7 @@ static void ui_action(int a)
     case UA_STOMP: ui_stomp_toggle(); break;
     case UB_PUSH: if (ui_mode == M_LIST) list_load(); else ui_push(); break;
     case UB_HOME: if (ui_mode == M_CHAIN) list_open(); else if (ui_mode == M_LIST) list_close(); else ui_home(); break;
-    case UB_FX: ui_fx_cycle(); break;
+    case UB_FX: if (ui_mode == M_LIST) { list_load(); ui_mode = M_PATCH; ui_item = 0; } else ui_fx_cycle(); break;
     case UA_SAVE: save_open(); break;
     case UA_MOVE: if (ui_mode == M_CHAIN) ui_move_start(); break;
     case UA_TUNER: case UA_FEET: tuner_open(); break;
@@ -1197,6 +1227,10 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
     else if (ui_mode == M_DIAG) diag_turn();
     else if (ui_mode == M_TUNER) tuner_ref_turn(dd);              /* v75: the reference A */
     else if (ui_mode == M_GLOBAL) global_turn(dd, fast);
+    else if (ui_mode == M_PATCH) {
+        int v = (int)PRESET.patch_volume + dd * (fast ? 5 : 1);
+        PRESET.patch_volume = (uint8_t)(v < 0 ? 0 : v > 100 ? 100 : v);
+    }
     else if (ui_mode == M_VALVE) {
         uint8_t *knob = ui_item ? &PRESET.valve_level : &PRESET.valve_drive;
         const int max = ui_item ? (int)PX_VALVE_LEVEL_MAX : 100;

@@ -40,14 +40,14 @@ enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SYN, PX_B_SFX, PX_B_EQ, PX_B_MOD, 
 enum { PX_BST_RANGEMASTER, PX_BST_EPBOOST, PX_BST_MAXIMIZER, PX_BST_VOXWAH, PX_BST_ENHANCE, PX_BST_FUZZFACE, PX_BST_ACOUSTIC, PX_BST_SIGNATURE, PX_BST_COUNT };   /* stored PRE / BOOST type IDs */
 #define PX_NPAR 5
 
-enum { PX_GATE_NORMAL, PX_GATE_SMART, PX_GATE_COUNT };
+enum { PX_GATE_NORMAL, PX_GATE_SUPPRESSOR, PX_GATE_COUNT };
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_VALVE, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ,
        PX_PIT_LOWEST_HQ,
        PX_PIT_POLYSHIFT,                                /* v75: POLY SHIFTER, a phase-vocoder shifter for chords (engine/px_pv.h) */
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
-       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_EPBOOST, PX_SFX_MAXIMIZER, PX_SFX_ACOUSTIC, PX_SFX_COUNT };   /* APPLAUSE is RETIRED (removed after test build 922): a tombstone like the retired SYNTH types - the id is kept so stored presets keep their type numbers, the UI skips it, the engine bypasses it. ENHANCE (clean harmonic/tonal enhancer, engine/px_enhance.h) is appended after it */
+       PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_EPBOOST, PX_SFX_MAXIMIZER, PX_SFX_ACOUSTIC, PX_SFX_PULSE, PX_SFX_CHIP, PX_SFX_CROSS, PX_SFX_FORMANT, PX_SFX_CROSS_SAW, PX_SFX_CROSS_TRI, PX_SFX_CROSS_OSC, PX_SFX_COUNT };
 /* SYNTH block type ids. Synth2 (docs/research/synth2/SYNTH2-PLAN.md): the ids below are the catalogue of every firmware up to v73 and are never
  * renumbered or reused. Only POLY OCT FUZZ keeps running; every other legacy id is a TOMBSTONE: the block is bypassed, the
  * stored type and its five settings are kept as they are (px_block_canonical changes nothing) until the user picks a new
@@ -73,7 +73,7 @@ int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI
 int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
 int         px_live_type(int blk, int i);              /* the i-th live type's id (0..px_nlive-1) */
 int         px_live_index(int blk, int type);          /* a live type's place among the live types; 0 for a tombstone */
-enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_HUM, PX_EQ_COUNT };   /* v75: HUM FILTER (mains notches: 50 Hz, 60 Hz or detected) */
+enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
        PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO, PX_MOD_COUNT };
 enum { PX_DLY_DIGITAL, PX_DLY_ANALOG, PX_DLY_MEMORY, PX_DLY_TAPE, PX_DLY_SPACE, PX_DLY_REVERSE, PX_DLY_LOFI,
@@ -88,7 +88,7 @@ typedef struct {
     uint8_t type[PX_NBLK];
     uint8_t p[PX_NBLK][PX_NPAR];   /* 0..100 */
     uint8_t order[PX_NBLK];        /* processing (and display) order: a permutation of the block indices */
-    uint8_t valve_on, valve_drive, valve_level;
+    uint8_t valve_on, valve_drive, valve_level, patch_volume;
 } px_preset_t;
 #define PX_PRESET_BASE_SIZE (14u + (3u + PX_NPAR) * PX_NBLK)
 #define PX_VALVE_DEFAULT 71u       /* about +12 dB */
@@ -113,7 +113,7 @@ const char *px_type_name(int blk, int type);
 int         px_nparams(int blk, int type);
 const char *px_param_name(int blk, int type, int k);
 /* text for a knob value when a bare 0..100 says little ("+5TH", "440" ms...); returns 0 = show the number */
-#define PX_PATCH_LEVEL 2                /* the preset LEVEL: p[PX_B_GATE][2] ("PRESET LVL" on the GT page), 50 = 0 dB (v36) */
+#define PX_PATCH_ACTION 11u             /* editor setting, independent of blocks; 0..100, 50 = unity */
 int         px_dly_value_for_ms(int type, float ms);   /* the TIME value nearest to a delay of ms (MIDI clock sync) */
 int         px_param_text(int blk, int type, int k, int v, char *buf8);
 int         px_preset_count(void);
@@ -174,10 +174,9 @@ typedef struct {
  *   eq[5]   output EQ, the gain of each band in half-dB steps from -12 to +12 dB, 24 = flat (80 Hz shelf, 250 Hz, 1 kHz, 3.5 kHz, 9 kHz shelf)
  *   lim     output limiter: 0 off, else its ceiling is -lim / 2 dB (so 1 .. 24: -0.5 .. -12 dB)
  *   tails   1: a delay or reverb that is switched off, or left by a preset change, plays out instead of stopping (px_engine_set / px_engine_knobs)
- *   hush    0 .. 100: the SMART GATE's dynamic hiss filter: a low-pass that closes as the note dies away, so the gate's tails lose their hiss and not the note's brightness
  * All zero (eq 24) is the engine as it was: nothing runs. */
 struct px_engine_s;
-typedef struct { uint8_t hpf, eq[5], lim, tails, hush; } px_global_t;
+typedef struct { uint8_t hpf, eq[5], lim, tails; } px_global_t;
 void px_global_default(px_global_t *g);
 void px_engine_globals(struct px_engine_s *e, const px_global_t *g);
 
@@ -190,12 +189,14 @@ typedef struct px_engine_s {
     /* gate */
     float gate_env, gate_g, gate_thr, gate_rel;
     struct {
-        float dc, split, band[2], floor[2], slow[2], gain;
-        float dc_k, split_k, env_k, slow_k, learn_k, fast_k, attack, range, sensitivity;
-        float hush, lp;                                /* v75: the hiss filter's amount (0..1) and state */
+        float peak, mean, sustain, floor, gain, hf_split, hf_env, hf_floor, hf_gain, output_lp;
+        float peak_rel, sustain_rel, learn, fall, attack, release, sensitivity, split_k, hush;
         unsigned hold, remaining;
-        int open, active;
-    } smart_gate;
+        int open, active, disabled;
+    } suppressor;
+    px_bq hum[3], hum_old[3];
+    float hum_fade;
+    int hum_mode, hum_pending, hum_current;
     /* comp */
     float cmp_env, cmp_slow, cmp_att, cmp_rel, cmp_k, cmp_make, cmp_mix, cmp_sw, cmp_thr, cmp_rise, cmp_slowk;
     /* pitch: delay-line shifters (2 voices) + analog octaver */
@@ -209,7 +210,7 @@ typedef struct px_engine_s {
     float oct_env, oct_ff, oct_ff2, oct_prev, oct_dry, oct_s1, oct_s2, oct_up;
     /* special fx */
     float sfx_lo, sfx_bp, sfx_env, sfx_ph, sfx_ph2, sfx_inc, sfx_ff, sfx_prev, sfx_g;
-    float sfx_a, sfx_b, sfx_c, sfx_d, sfx_mix, sfx_qd;
+    float sfx_a, sfx_b, sfx_c, sfx_d, sfx_mix, sfx_qd, sfx_sync_phase, sfx_sync_inc, sfx_sync_freq, sfx_sync_age;
     int   sfx_pat, crush_n, crush_k; float crush_v, crush_q;
     px_bq sfx_f1, sfx_f2;
     px_synth_tracking sfx_track;

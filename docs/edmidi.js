@@ -23,6 +23,7 @@ function saveCfg() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } cat
 
 // ---- names ----
 function tgtName(t) {
+  if (t.b === 11) return "Patch volume";
   if (t.kind === "preset") return t.step > 0 ? "Next preset" : "Previous preset";
   const B = blk(t.b);
   if (t.kind === "on") return `${B.label} on / off`;
@@ -200,6 +201,7 @@ function renderMap() {
       Array.from({ length: NPAR }, (_, k) => h("td", {}, T.params[k] ? cell({ kind: "param", b, k }, T.params[k].name, ccParam(b, k))
         : h("span", { class: "cc-cell none", title: `${T.name} has no setting ${k + 1}: the pedal stores CC ${ccParam(b, k)} and ignores it.` }, h("span", { class: "cc-n", text: "–" }), h("span", { class: "cc-c", text: `CC ${ccParam(b, k)}` })))));
   });
+  rows.unshift(h("tr", {}, h("th", { scope: "row", text: "PATCH" }), h("td"), h("td"), h("td", {}, cell({ kind: "param", b: 11, k: 0 }, "Patch volume", 3))));
   const learned = cfg.mappings;
   el.append(
     h("div", { class: "card-head" }, h("h2", { id: "midimap-h", text: "Controls" })),

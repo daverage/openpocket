@@ -9,11 +9,11 @@ It also retires the older synth catalogue, the earlier delay-line poly octaver, 
 Synth2 test build. Gate, compression, EQ, modulation, delay, and reverb are still available, alongside selected
 special effects and dedicated sounds such as **Fuzz Face** and **Acoustic Drive**.
 
-[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v94](docs/WHATS-NEW-v94.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
+[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v95](docs/WHATS-NEW-v95.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
 
 ## Sounds and effects
 
-This is the feature set in **v94 (build 994)** compared with upstream OpenPocket v42. [Upstream v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) · [v76 release notes](docs/WHATS-NEW-v76.md)
+This is the feature set in **v95 (build 995)** compared with upstream OpenPocket v42. [Upstream v42](https://github.com/isod89/openpocket/tree/995c84b5df53aace5d83478e66e85b37d0fa4372) · [v76 release notes](docs/WHATS-NEW-v76.md)
 
 ### Guitar synths
 
@@ -58,13 +58,10 @@ ENSEMBLE adds intervals and detuned copies around that one tracked note. POLY OC
 - **Valve** is a separate 12AX7 input stage that runs before the reorderable effects and can run alongside COMP. Drive
   ranges from 0 to +24 dB with automatic output compensation. Independent output **Level** ranges
   from −12 to +12 dB in 0.5 dB steps. Presets save both controls. Valve defaults to off, with +12 dB Drive and 0 dB Level.
-- **SMART GATE** learns the background level while closed. The global **Smart Gate Hush** setting controls its dynamic
-  hiss filter. **HUM FILTER** in EQ notches mains hum and its harmonics at 50 Hz or 60 Hz, with an Auto setting.
-- **SPECIAL FX** includes **SQUARE SYNTH HQ**, a tracked square wave and sub voice, and **ACOUSTIC DRIVE**, a piezo-voiced
-  drive with a dry blend. Envelope wah, auto wah, ring mod, bitcrushing, slicing, lo-fi radio, and the original square
-  synth are also available. [Full effects catalogue](docs/SOUNDS-AND-CONTROLS.md) · [Boost and pedal models](docs/PEDALS.md)
+- **NOISE SUPPRESSOR** combines the threshold/release gate, mains HUM reduction and per-preset HUSH. HUM can target 50 Hz, 60 Hz, or Auto; HUSH reduces high-frequency hiss as notes decay. The original NOISE GATE remains available.
+- **SPECIAL FX** includes **CROSS OSC**, an experimental input-tracked oscillator with square, pulse, triangle, saw, brass, string and flute modes. Envelope wah, auto wah, ring mod, bitcrushing, slicing, lo-fi radio, the original square synth, and ACOUSTIC DRIVE are also available. [Full effects catalogue](docs/SOUNDS-AND-CONTROLS.md) · [Boost and pedal models](docs/PEDALS.md)
 
-Build 994 retains the shared lookup table introduced in build 989 for the Fuzz Face and Rangemaster transistor curves. On a one-core BlackBox,
+Build 995 retains the shared lookup table introduced in build 989 for the Fuzz Face and Rangemaster transistor curves. On a one-core BlackBox,
 median total DSP load fell from 49% to 39% with Fuzz Face alone in a live comparison.
 [Performance details](docs/WHATS-NEW-v89.md#boost-dsp-load)
 
@@ -86,7 +83,7 @@ median total DSP load fell from 49% to 39% with Fuzz Face alone in a live compar
   loads switched off with its parameter values retained. Older **COMP → VALVE** presets carry on/off, Drive, and
   Valve footswitch assignments forward. Presets saved before Level was added load at 0 dB Level.
   Earlier boost presets can migrate their SPECIAL FX settings to PRE / BOOST.
-  Export your presets before changing firmware. Older firmware cannot read the preset store format written by v75 and later.
+  Each preset also has independent Patch volume. Export your presets before changing firmware. Older firmware cannot read the preset store format written by v75 and later.
 - **USB MIDI and USB audio** carry over from upstream. USB MIDI handles preset selection, block controls and delay
   clock. Enable USB AUDIO to record and play back stereo 16-bit audio at 44.1 kHz. See [MIDI](docs/MIDI.md) and
   [USB audio](docs/USB-AUDIO.md).
@@ -95,10 +92,10 @@ median total DSP load fell from 49% to 39% with Fuzz Face alone in a live compar
 
 1. Open the [web installer](https://daverage.github.io/openpocket/) in desktop Chrome or Edge.
 2. Power on the pedal and connect it with a USB data cable. Click **Connect**, allow MIDI access, and confirm the model
-   and **v94 · build 994** under **Available firmware**.
+   and **v95 · build 995** under **Available firmware**.
 3. Click **Install** and leave the pedal powered and connected until the installer verifies the firmware after restart.
 
-Build 994 packages are `PocketX_994.fwsc` for the Donner Pocket X and `BlackBox_994.fwsc` for the M-VAVE BlackBox.
+Build 995 packages are `PocketX_995.fwsc` for the Donner Pocket X and `BlackBox_995.fwsc` for the M-VAVE BlackBox.
 The installer can also restore the manufacturer’s official `.fwsc`. For a local build, run `make package` and `make serve`,
 then open the localhost address it prints.
 [Installation guide](docs/BUILDING.md#installing-from-the-browser) · [Recovery guide](docs/RESCUE.md)
@@ -133,7 +130,7 @@ Edits take effect live and changes on the pedal appear in the editor. See the
   or select another assignment the same way. Tap the footswitch to toggle its assignment while playing. Use the editor
   to change the double-tap and hold actions.
 - **Global settings**. Hold HOME to open the tuner, release it, then hold HOME again for **GLOBAL**. Use PARA to select,
-  edit and confirm a setting. Adjust the five-band output EQ, input high-pass, Smart Gate Hush, limiter, tails, tuner
+  edit and confirm a setting. Adjust the five-band output EQ, input high-pass, limiter, tails, tuner
   lights and button lights. HOME goes back from EQ and saves when leaving the main Global page. Diagnostics is the last item.
   Turn PARA in the tuner to adjust reference A. Hold FX for MIDI and USB audio settings. The web editor’s **Global** panel edits the same settings.
 

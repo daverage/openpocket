@@ -340,6 +340,12 @@ int main(void)
         ok(px_blem_parse(&b, full, sizeof full, o, 2) == 2, "BLE: never more than the room given");
     }
 
+    {
+        px_preset_t p; px_preset_base(&p);
+        uint32_t master = 72; int master_set = 0;
+        ok(px_midi_cc_apply(&p, 3, 127, &master, &master_set) && p.patch_volume == 100 && master == 72 && !master_set,
+           "CC 3 changes patch volume independently of MASTER");
+    }
     printf("\n%s\n", failed ? "MIDI tests FAILED" : "all MIDI tests passed");
     return failed ? 1 : 0;
 }

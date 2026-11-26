@@ -143,7 +143,8 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     if (PX_MONO_SLUR > 0.0f && m->lay.onset && m->was) {
         /* the note's expression when this pick began: the layer speaks it wait_n frames (1.45 ms) after the pick, and its own expression has risen with it by then, so read the history that far back (plus 6 ms) */
         int back = (int)((float)m->lay.wait_n * 1.45e-3f * sr / 16.0f + 0.006f * sr / 16.0f);
-        if (back < 1) back = 1; if (back > 191) back = 191;
+        if (back < 1) back = 1;
+        if (back > 191) back = 191;
         int ix = m->exh_w - back; if (ix < 0) ix += 192;
         const float ex_pre = m->exh[ix];
         if (m->lay.vel + PX_MONO_SLUR < ex_pre) { slur_now = 1; m->lay.vel = vel_b; m->lay.peak_ref = pr_b; }   /* a slur (fix pass 6): the note's level reference stays */

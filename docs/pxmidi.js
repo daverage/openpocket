@@ -18,6 +18,7 @@ export const ccType = (b) => CC_TYPE0 + b;
 // what a Control Change number means to the pedal: { kind: "master" | "toggle" | "on" | "type" | "param", b, k } or null
 // nblk: the pedal's own block count (an older pedal has nine: the numbers of the tenth block mean nothing there)
 export function ccTarget(cc, nblk = NBLK) {
+  if (cc === 3) return { kind: "param", b: 11, k: 0 };
   if (cc === CC_MASTER) return { kind: "master" };
   if (cc >= CC_TOGGLE0 && cc < CC_TOGGLE0 + nblk) return { kind: "toggle", b: cc - CC_TOGGLE0 };
   if (cc >= CC_ON0 && cc < CC_ON0 + nblk) return { kind: "on", b: cc - CC_ON0 };
@@ -95,7 +96,7 @@ export function cleanMappings(list) {
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   return list.filter((m) => m && m.src && int(m.src.ch, 1, 16) && int(m.src.cc, 0, 127) && m.tgt &&
     (m.slot === null || int(m.slot, 0, 126)) &&
-    ((m.tgt.kind === "param" && int(m.tgt.b, 0, NBLK - 1) && int(m.tgt.k, 0, NPAR - 1)) ||
+    ((m.tgt.kind === "param" && ((int(m.tgt.b, 0, NBLK - 1) && int(m.tgt.k, 0, NPAR - 1)) || (m.tgt.b === 11 && m.tgt.k === 0))) ||
      (m.tgt.kind === "on" && int(m.tgt.b, 0, NBLK - 1) && (m.tgt.mode === "follow" || m.tgt.mode === "toggle")) ||
      (m.tgt.kind === "type" && int(m.tgt.b, 0, NBLK - 1)) ||
      (m.tgt.kind === "preset" && (m.tgt.step === 1 || m.tgt.step === -1))));

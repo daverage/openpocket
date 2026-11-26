@@ -76,8 +76,8 @@ check("Valve input: Drive sets coloration, Level sets output gain, and bypass st
   boost.preset(preset(1, 0, false, 48));
   const boosted = tail(run(boost, input)), ratio = 10 ** (12 / 20);
   boosted.forEach((v, i) => assert.ok(Math.abs(v - mellow[i] * ratio) < 1e-5, "Level applies a linear gain after the valve"));
-  boost.preset(preset(1, 0).slice(0, 96));
-  assert.ok(Math.abs(peak(tail(run(boost, input))) / peak(mellow) - 1) < 1e-4, "older preset bytes restore unity Level");
+  boost.preset(preset(1, 0));
+  assert.ok(Math.abs(peak(tail(run(boost, input))) / peak(mellow) - 1) < 1e-4, "current preset restores unity Level");
   boost.preset(preset(0, 0, false, 48));
   const switchedOff = tail(run(boost, input)), dryOut = tail(run(dry, input));
   switchedOff.forEach((v, i) => assert.ok(Math.abs(v - dryOut[i]) < 1e-7, "Valve off ignores Level"));
@@ -129,7 +129,7 @@ check("Synth2: ANALOG and ARCADE play the guitar's note in the WebAssembly engin
 check("a block switched off changes the sound", () => {
   const s = new PxEngine(module);
   s.factory(15);
-  const bytes = new Uint8Array(s.x.memory.buffer, s.x.px_preset(), 97).slice(), amp = 14 + 5;
+  const bytes = new Uint8Array(s.x.memory.buffer, s.x.px_preset(), 98).slice(), amp = 14 + 5;
   const a = run(s, IN);
   bytes[amp] = 0;
   s.preset(bytes);

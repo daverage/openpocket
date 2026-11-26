@@ -80,6 +80,10 @@ static inline float px_s2_relcap(float ms) { return (PX_S2_REL_SPAN > 0.0f && ms
 
 typedef struct {
     px_mono mono;                                      /* the tracker (px_mono.h) */
+#if defined(PX_SYNTH_TRACKING_TEST)
+    float input_env;
+    uint8_t choir_envelope;
+#endif
     int type;                                          /* PX_SYN_ANALOG, PX_SYN_ARCADE or PX_SYN_ARCADE_SPLIT */
     int arc;                                           /* 1: Felucca LOFI (ARCADE, ARCADE SPLIT) */
     uint8_t sq[5]; int split_note, upper;              /* ARCADE SPLIT: its settings, the split note, which range the sounding note is in */
@@ -220,6 +224,8 @@ static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
     memset(drw_t, 0, sizeof drw_t); memset(drw_v, 0, sizeof drw_v);
     formant_nz = 0x2545F491;                                                              /* the VOICE engine's breath-noise seed (eng_formant.c) */                     /* WHEEL's own state (eng_wheel.c: rotors, bar gains, phases) */
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
+#if defined(PX_SYNTH_TRACKING_TEST)
+#endif
     for (int i = 0; i < PX_S2_NV; i++) { s->vcut[i] = -1; s->grp[i] = (uint8_t)i; }
     px_s2_set(s, type, q);
     s->dry_c = s->dry;
@@ -378,9 +384,15 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     }
     if (s->pend_on || s->pend_off) s->pick_accent = 0.0f;
     if (s->follow && s->pend_on && t->v[0].active && (t->v[0].stage == 1 || t->v[0].stage == 2)) {
+#if defined(PX_SYNTH_TRACKING_TEST)
+        if (!s->choir_envelope)
+#endif
         s->pick_accent = 0.25f * s->vel;
         s->pend_on = 0;
     }
+#if defined(PX_SYNTH_TRACKING_TEST)
+    if (s->choir_envelope) s->expr_a = pxt_pick_velocity(1.6f * s->input_env);
+#endif
     s->pick_accent *= 1.0f - (float)CTL / (FS * 0.018f);  /* 18 ms decay, with the voice's usual block ramp */
     if (s->pend_on && s->f0 > 0.0f) {
         if (!(t->v[0].active && t->v[0].stage != 0)) { s->vage = 0; for (int g = 0; g < PX_S2_NV; g++) { s->vph[g] = 0.37f * (float)g; s->vib[g] = 0.0f; } }   /* a new note starts its vibrato over */
@@ -407,9 +419,24 @@ static inline void px_s2_dry(float *g0, float *g1) { px_s2 *s = &px_s2_st; *g0 =
 PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n)
 {
     px_s2 *s = &px_s2_st;
+#if defined(PX_SYNTH_TRACKING_TEST)
+    const int choir = s->type == PX_SYN_CHOIR;
+    if (choir && !s->choir_envelope) {
+        s->input_env = 0.0f;
+        s->pick_accent = 0.0f;
+    }
+    s->choir_envelope = (uint8_t)choir;
+    const float rise = 1.0f / (0.002f * e->sr), fall = 1.0f / (0.020f * e->sr);
+#endif
     for (int k = 0; k < n; k++) {
         px_mono_out o;
         px_mono_run(e, &s->mono, in[k], &o);
+#if defined(PX_SYNTH_TRACKING_TEST)
+        if (choir) {
+            const float a = px_abs(in[k]);
+            s->input_env += (a - s->input_env) * (a > s->input_env ? rise : fall);
+        }
+#endif
         if (o.release) { s->pend_off = 1; if (o.damp) s->damped = 1; }
         if (o.onset) { s->pend_on = 1; s->pend_re = o.retrigger; s->vel = o.vel; s->pend_off = 0; s->damped = 0; }   /* (a note that starts on the sample of a release wins: fix pass 5) */
         s->f0 = o.f0; s->gate = (float)o.gate; s->expr_r = o.vel > 0.0f ? o.expr / o.vel : 1.0f; s->expr_a = o.expr;

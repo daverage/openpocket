@@ -49,7 +49,7 @@ static int midi_saved;
 static void midi_persist(void) { midi_saved++; }
 #include "ui_text.h"
 #include "ui.h"
-static struct { px_global_t g; uint8_t lights; } st_cfg = {{0, {24, 24, 24, 24, 24}, 0, 1, 0}, 1};
+static struct { px_global_t g; uint8_t lights; } st_cfg = {{0, {24, 24, 24, 24, 24}, 0, 1}, 1};
 static void audio_globals(const px_global_t *g) { (void)g; }
 static int st_commit(void) { return 0; }
 #include "ui_global.h"
@@ -299,7 +299,15 @@ static int overhaul(const char *d)
     CHECK(PRESET.valve_level == PX_VALVE_LEVEL_UNITY + 3u && PRESET.valve_drive == PX_VALVE_DEFAULT + 8,
           "F10: PARA changes Level independently of Drive");
     tap(UB_PUSH); CHECK(!PRESET.valve_on, "F10: PARA also switches Valve on the Level page");
+    tap(UB_FX); CHECK(ui_mode == M_PATCH, "F10: independent patch settings after Valve Level");
+    poison(); ui_invalidate(); ui_render(); shot(d, "patch_settings");
+    uint8_t gateControls[PX_NPAR]; memcpy(gateControls, PRESET.p[PX_B_GATE], PX_NPAR);
+    ui_turn(4, 0); ui_render();
+    CHECK(!memcmp(gateControls, PRESET.p[PX_B_GATE], PX_NPAR), "patch volume does not alter gate controls");
     tap(UB_FX); CHECK(ui_mode == M_BLOCK && ui_pos_of(ui_blk) < 3, "F10: after Valve, FX starts again from the first utility block");
+    ui_home(); list_open();
+    tap(UB_FX); CHECK(ui_mode == M_PATCH, "patch list FX opens patch volume independently of effects");
+    ui_render(); shot(d, "patch_volume_from_list");
     /* F17: SYN's page is SYNTH. v50 gave NOISE GATE a second model (SMART GATE), so no block has a single
      * model any more: check the other side, a block of several models shows its arrows */
     CHECK(!strcmp(ui_block_name(PX_B_SYN), "SYNTH"), "F17: SYN's page is SYNTH");
@@ -385,7 +393,7 @@ int main(int argc, char **argv)
     ui_enter_block(PX_B_DELAY); poison(); ui_render(); status(); shot(d, "edit_delay");
     ui_knob(1, 0); ui_render(); shot(d, "edit_delay_onoff_selected");
     ui_enter_block(PX_B_DELAY); ui_render(); shot(d, "edit_delay_off");
-    ui_home(); ui_blk = PX_B_GATE; ui_mode = M_BLOCK; full(); shot(d, "edit_gate_preset_level");
+    ui_home(); ui_blk = PX_B_GATE; ui_mode = M_BLOCK; full(); shot(d, "edit_gate");
     ui_home(); cur_preset = 13; load_preset(13); ui_blk = PX_B_REVERB; poison(); ui_render(); status(); shot(d, "play_smooth_lead");
     ui_move_start(); ui_knob(-1, 0); ui_render(); shot(d, "play_move");
     ui_move_cancel(); cur_preset = 23; load_preset(23); master_vol = 100; bat_mv = 3640; full(); ui_status("PEAK 97%", UI_ST_BYPASS); ui_render(); shot(d, "play_acoustic_bypass_vol100_bat12");

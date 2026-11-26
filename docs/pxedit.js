@@ -11,6 +11,7 @@ export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 
 // px_preset_t: a 14-byte name, then on, type, 5 settings and the order for each block (v75: 10 blocks, 94 bytes; v70: 9, 86)
 export const presetSize = (nblk = 10, npar = 5, valveBytes = 0) => 14 + nblk * (3 + npar) + valveBytes;
 export const VALVE_ACTION = 10;
+export const PATCH_ACTION = 11;
 export const VALVE_DEFAULT = 71;
 export const VALVE_LEVEL_UNITY = 24;
 export const VALVE_LEVEL_MAX = 48;
@@ -37,7 +38,7 @@ export function decodePreset(b, nblk = 10, npar = 5) {
   const order = [...b.slice(i, i + nblk)];
   i += nblk;
   return { name, on, type, p, order, ...(b.length >= i + 2 && { valveOn: !!b[i], valveDrive: b[i + 1] }),
-    ...(b.length >= i + 3 && { valveLevel: b[i + 2] }) };
+    ...(b.length >= i + 3 && { valveLevel: b[i + 2] }), ...(b.length >= i + 4 && { patchVolume: b[i + 3] }) };
 }
 export function encodePreset(q, nblk = 10, npar = 5, valveBytes = 0) {
   const out = [];
@@ -49,6 +50,7 @@ export function encodePreset(q, nblk = 10, npar = 5, valveBytes = 0) {
   for (let k = 0; k < nblk; k++) out.push(q.order[k] & 0x7F);
   if (valveBytes >= 2) out.push(q.valveOn ? 1 : 0, valveValue(q.valveDrive ?? VALVE_DEFAULT));
   if (valveBytes >= 3) out.push(valveValue(q.valveLevel ?? VALVE_LEVEL_UNITY, VALVE_LEVEL_MAX));
+  if (valveBytes >= 4) out.push(valveValue(q.patchVolume ?? 50));
   return out;
 }
 export function cleanName(s, max = 13) {
@@ -188,7 +190,7 @@ export class Editor {
   // ---- the current sound ----
   get hasValve() { return this.info?.proto >= 10; }
   get hasValveLevel() { return this.info?.proto >= 11; }
-  get valveBytes() { return this.hasValveLevel ? 3 : this.hasValve ? 2 : 0; }
+  get valveBytes() { return this.info?.proto >= 12 ? 4 : this.hasValveLevel ? 3 : this.hasValve ? 2 : 0; }
   _readPreset(r) {
     const { nblk, npar } = this.info;
     return decodePreset(r.bytes(presetSize(nblk, npar, this.valveBytes)), nblk, npar);
@@ -280,14 +282,14 @@ export class Editor {
   get hasShed() { return !!(this.info && this.info.proto >= 8); }
   // v75 (protocol 9): the global settings, outside the presets. global() reads them; global(v) sets them (in the pedal's memory: commit() writes them with the store).
   // { tuner: the reference A in Hz (415..466), hpf: input high-pass Hz (0 off, 20..140), eq: five bands in dB (-12..12, 0.5 steps), lim: the limiter's ceiling in dB
-  //   (0 off, else -0.5..-12), tails (a delay or reverb plays out when switched off), hush: the smart gate's hiss filter 0..100,
+  //   (0 off, else -0.5..-12), tails (a delay or reverb plays out when switched off),
 //   tunerLights: how the button lights show the tuner (0 HOME blinks, 1 needle, 2 strobe), lightsOff: the lights are dark outside the tuner }
   get hasGlobal() { return !!(this.info && this.info.proto >= 9); }
   async global(v) {
     const args = v ? [v.tuner === 440 ? 0 : Math.max(1, Math.min(52, Math.round(v.tuner) - 414)), Math.round(v.hpf / 5), ...v.eq.map((d) => Math.max(0, Math.min(48, Math.round(d * 2) + 24))),
-      Math.max(0, Math.min(24, Math.round(-v.lim * 2) || 0)), v.tails ? 1 : 0, Math.max(0, Math.min(100, Math.round(v.hush))), (Math.max(0, Math.min(2, v.tunerLights | 0))) | (v.lightsOff ? 4 : 0)] : [];
+      Math.max(0, Math.min(24, Math.round(-v.lim * 2) || 0)), v.tails ? 1 : 0, 0, (Math.max(0, Math.min(2, v.tunerLights | 0))) | (v.lightsOff ? 4 : 0)] : [];
     const r = await this.request(C.GLOBAL, args);
-    return { tuner: r[0] ? 414 + r[0] : 440, hpf: r[1] * 5, eq: Array.from(r.slice(2, 7), (c) => (c - 24) / 2), lim: r[7] ? -r[7] / 2 : 0, tails: !!r[8], hush: r[9], tunerLights: r[10] & 3, lightsOff: !!(r[10] & 4) };
+    return { tuner: r[0] ? 414 + r[0] : 440, hpf: r[1] * 5, eq: Array.from(r.slice(2, 7), (c) => (c - 24) / 2), lim: r[7] ? -r[7] / 2 : 0, tails: !!r[8], tunerLights: r[10] & 3, lightsOff: !!(r[10] & 4) };
   }
   // what the pedal's tuner hears now: { hz (0 none), open (its tuner page is open), ref (the reference A) }
   // tuner(true) opens the pedal's tuner page (its output is muted, as when the player opens it), tuner(false) closes it
@@ -306,8 +308,9 @@ export class Editor {
 export function presetToJSON(q, cat, slot) {
   return {
     slot: slot === undefined ? undefined : slot + 1,
-    v: 36,                                                       // v36 (preset LEVEL); v35 scales (delay TIME up to 2 s)
+    v: 82,                                                       // patch-level volume; suppressor controls
     name: q.name,
+    patchVolume: q.patchVolume,
     blocks: cat.blocks.map((b, i) => ({ block: b.label, on: !!q.on[i], type: b.types[q.type[i]] ? b.types[q.type[i]].name : q.type[i], params: [...q.p[i]] })),
     order: q.order.map((i) => cat.blocks[i] ? cat.blocks[i].label : i),
     ...(q.valveOn !== undefined && { valve: { on: q.valveOn, drive: q.valveDrive, level: q.valveLevel } }),
@@ -319,6 +322,7 @@ export function filePresets(presets) { return { format: "openpocket-presets", ve
 export function presetFromJSON(o, cat, base) {
   const q = clonePreset(base), warn = [];
   q.name = cleanName(o.name || q.name);
+  q.patchVolume = valveValue(o.patchVolume ?? 50);
   if (q.valveOn !== undefined) {
     q.valveOn = !!o.valve?.on;
     q.valveDrive = valveValue(o.valve?.drive ?? VALVE_DEFAULT);

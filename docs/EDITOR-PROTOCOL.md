@@ -91,8 +91,8 @@ The editor saves presets as JSON: `{"format": "openpocket-presets", "version": 1
 "order": ["GATE", ...]}`. Blocks and types are written by name, so a file stays readable and survives a firmware
 that adds types; a single preset is the same object with one preset in `presets`.
 
-Each preset written by OpenPocket v36 carries `"v": 36` (v35: `35`). Older presets are converted on import: without
-`"v": 36`, the preset LEVEL (the GT block's 3rd setting, `PRESET LVL`, unused before) is set to 50 = 0 dB; without `"v": 35`,
-its delay TIME is moved to v35's scale (the same delay time; REVERSE excepted); amp / drive / cab types from before
-v34 (`"RECTIFIED"`...) become the nearest current type. Each change of the delay or the types is listed in the import
-notes.
+Protocol 12 uses the current 98-byte preset: the 94-byte block layout, Valve on/drive/level, then patch volume (0..100, 50 = 0 dB). Historical wire layouts are rejected rather than guessed.
+SET block/action 11, operation 0, parameter 0 edits patch volume independently of the catalogue. It is not a footswitch action.
+JSON presets carry `patchVolume` at patch level. GATE parameters are THRESH, RELEASE, HUM and HUSH; NOISE GATE exposes only the first two. GLOBAL byte 9 is reserved and returned as zero.
+
+Flash format 8 retains the 112-byte slots: the base preset and mark stay at 0..94, gestures at 95..98, Valve at 99..101, patch volume at 102, and footswitch assignment at 111. The transition build rewrites current format-7 slots once through the existing CRC-protected dual-copy commit. Unsupported older stores are retained read-only.

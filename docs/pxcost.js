@@ -27,12 +27,10 @@ export const COST = {
   "SFX:SLICER": 5.0,
   "SFX:LO-FI RADIO": 4.3,
   "SFX:SQUARE SYNTH": 5.2,
-  "SFX:SQUARE SYNTH HQ": 16.9,
   "SFX:ACOUSTIC DRIVE": 7.6,
   "EQ:5 BAND": 6.0,
   "EQ:GRAPHIC 5": 5.9,
   "EQ:PARAMETRIC": 4.7,
-  "EQ:HUM FILTER": 2.0,
   "MOD:CE CHORUS": 5.6,
   "MOD:DIMENSION": 6.3,
   "MOD:FLANGER": 5.4,
@@ -68,6 +66,7 @@ export const COST = {
   "BST:FUZZ FACE": 35.0,
   "BST:ACOUSTIC PRE": 6.2,
   "BST:SIGNATURE": 5.9,
+  "SFX:CROSS OSC": 8.0,
 };
 // the estimate for a block's type (0 for one that is not listed: the gate, a retired type)
 export const costPct = (blockLabel, typeName) => COST[`${blockLabel}:${typeName}`] || 0;

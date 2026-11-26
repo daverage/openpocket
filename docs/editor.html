@@ -89,12 +89,16 @@
         </div>
       </div>
 
+      <details class="fscard patch-options" id="patchrow" hidden>
+        <summary>Patch settings <span class="patch-value" id="patchsummary">0 dB</span></summary>
+        <label class="valve-param">Patch volume <input id="patchvolume" type="range" min="0" max="100" step="1" value="50"><output id="patchdb" for="patchvolume">0 dB</output></label>
+      </details>
       <details class="fscard patch-options" id="valverow" hidden>
         <summary>Valve <span class="patch-value" id="valvesummary"></span></summary>
         <div class="valve-controls" id="valvecontrols">
           <button type="button" class="switch" id="valveon" role="switch" aria-label="Valve on" aria-checked="false"><i></i><span>Off</span></button>
           <label class="valve-param">Drive <input id="valvedrive" type="range" min="0" max="100" step="1" value="71"><output id="valvedb" for="valvedrive">+12 dB</output></label>
-          <label class="valve-param" id="valvelevelrow" hidden title="Output level after the Valve stage">Level <input id="valvelevel" type="range" min="-12" max="12" step="0.5" value="0"><output id="valveleveldb" for="valvelevel">0 dB</output></label>
+          <label class="valve-param" id="valvelevelrow" hidden>Level <input id="valvelevel" type="range" min="-12" max="12" step="0.5" value="0"><output id="valveleveldb" for="valvelevel">0 dB</output></label>
         </div>
       </details>
       <div class="chain-wrap">

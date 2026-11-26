@@ -132,6 +132,8 @@ static int px_midi_cc_apply(px_preset_t *p, uint32_t cc, uint32_t val, uint32_t 
     uint32_t v;
     px_cc_build();
     if (cc > 127u || val > 127u) return 0;
+    if (cc == 3u) { uint8_t volume = (uint8_t)pxm_from_cc(val);
+        int changed = p->patch_volume != volume; p->patch_volume = volume; return changed; }
     t = px_cc_tab[cc];
     switch (t.kind) {
     case PXM_ON:
@@ -188,6 +190,10 @@ static uint32_t px_midi_tx_next(px_midi_tx_t *t, const px_midi_cfg_t *cfg, const
     if (t->slot != slot) {
         px_midi_tx_sync(t, cur, slot);
         return 0xCu | ((0xC0u | ch) << 8) | (slot << 16);
+    }
+    if (cur->patch_volume != t->seen.patch_volume) {
+        t->seen.patch_volume = cur->patch_volume;
+        return 0xBu | ((0xB0u | ch) << 8) | (3u << 16) | (pxm_to_cc(cur->patch_volume) << 24);
     }
     px_cc_build();
     for (b = 0; b < PX_NBLK; b++) {

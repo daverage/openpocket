@@ -20,7 +20,7 @@ static int poly_oct_fuzz_missing_at_minimum_level(void)
     preset.p[PX_B_SYN][2] = 50;
     preset.p[PX_B_SYN][3] = 70;
     preset.p[PX_B_SYN][4] = 0;                       /* lowest trim and legacy DRY = 0 */
-    preset.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    preset.patch_volume = 50;
     px_engine_set(&e, &preset);
 
     /* Measure how much energy remains after projection onto the input tone. */
@@ -52,7 +52,7 @@ static int hq_octave_inaccurate(float ratio)
     preset.p[PX_B_PITCH][0] = 0;
     preset.p[PX_B_PITCH][1] = ratio < 1.0f ? 100 : 0;
     preset.p[PX_B_PITCH][2] = ratio > 1.0f ? 100 : 0;
-    preset.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    preset.patch_volume = 50;
     px_engine_set(&e, &preset);
 
     float real[3] = {0}, imag[3] = {0}, energy = 0.0f;
