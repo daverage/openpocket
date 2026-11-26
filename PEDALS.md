@@ -60,12 +60,6 @@ The germanium values (Is 3.1e-7, beta 70 and 120) were fitted to land on the ana
 
 Heard on the pedal: FUZZ did nothing below about 80 %, and the guitar's volume did not clean it up. Two causes, both fixed. (1) The FUZZ pot was linear in resistance, but the gain follows 1 / (emitter resistance), so everything happened in the last fifth: the pot now has a law (the resistance falls as (1 - FUZZ)^3, a 1k audio pot; the total stays 1k so the bias is unchanged). (2) The circuit was fed 2 V of EMF per engine unit, so a normal guitar level drove it into hard clipping at every FUZZ: now 0.25 V per unit. Measured with a 196 Hz sine (THD = harmonics 2..5 against the fundamental): at a guitar's level (0.125) FUZZ 0 / 25 / 50 / 75 give -63 / -17 / -9 / -8 dB, and at FUZZ 60 the same note is -8.6 dB at full level, -15 dB 12 dB lower and clean (-45 dB) at 24 dB lower. The make-up gain now follows FUZZ so the loudness stays within about 6 dB across the travel. The cleanup is still more abrupt than a real pedal's (a knee within about 12 dB); loading of the pickup by the guitar's own volume pot is not modelled.
 
-## Fuzz Face and Rangemaster in v89
-
-Both effects use a shared lookup table for the transistor junction curves. The circuit solvers still update pickup and
-capacitor states from the incoming signal. Fuzz Face keeps 2× oversampling and its germanium and silicon settings.
-Rangemaster keeps its BODY and PICKUP controls. See the [v89 hardware measurements](WHATS-NEW-v89.md#boost-dsp-load).
-
 ## ACOUSTIC PRE (BST) and ACOUSTIC DRIVE (SFX), v76
 
 For a piezo pickup into a PA or a recorder; the research and its sources are in [research/ACOUSTIC-BOOSTS-RESEARCH.md](research/ACOUSTIC-BOOSTS-RESEARCH.md). They sit in different blocks so they can be used together. Starting points were set from that research and a synthetic test, **not tuned on a real piezo**: set them by ear.
@@ -78,11 +72,7 @@ Host cost 0.45 ms/s (PRE) and 0.56 ms/s (DRIVE) against RANGEMASTER's 1.9 (12 % 
 
 ## SIGNATURE (BST)
 
-SIGNATURE is a selectable preamp voicing for electric guitar. BODY shapes the low mids. FOCUS tightens the bass before coloration and adds a high shelf at the end. RICHNESS adds an even-order component. PUNCH follows the difference between fast and slow envelopes to lift the pick attack. LEVEL applies independent output gain from −12 to +12 dB. The default voicing is BODY 60, FOCUS 55, RICHNESS 25, PUNCH 30 and LEVEL 0 dB. For always-on use, enable PRE / BOOST in the preset. Valve can be enabled independently and runs ahead of PRE / BOOST.
-
-From **v94 (build 994)**, FOCUS sweeps from flat to a −8 dB low shelf at 230 Hz and a +4.8 dB high shelf at 2.8 kHz (v93: −5 / +2.4 dB). RICHNESS has three times the v93 harmonic strength, retaining the same bounded, bandwidth-limited shape and input-level dependence. PUNCH has three times the gain coefficient and a 70 ms slow envelope instead of 45 ms. It returns to unity on sustain, rather than compressing the whole note. BODY remains a broad −4 to +4 dB bell at 350 Hz, with 50 neutral; LEVEL is unchanged.
-
-At 44.1 kHz, with a 440 Hz sine at 0.12 peak (−18.4 dBFS), all other controls at 0 and LEVEL at 50, RICHNESS 25 / 50 / 100 produces 1.85 / 3.70 / 7.40% second harmonic. PUNCH 25 / 50 / 100 gives peak extra gain of 1.49 / 2.75 / 4.84 dB after a sudden onset. These are software measurements, not pedal readings. BODY 0 cuts the drive before these stages; BODY 50 is neutral. Existing presets keep their control values and therefore receive the stronger voicing after updating. See [v94 release notes](WHATS-NEW-v94.md).
+SIGNATURE is a selectable preamp voicing for electric guitar. BODY shapes the low mids. FOCUS tightens the bass before coloration and adds a gentle high shelf at the end. RICHNESS adds an even-order component. PUNCH follows the difference between fast and slow envelopes to lift the pick attack. LEVEL applies independent output gain from −12 to +12 dB. The default voicing is BODY 60, FOCUS 55, RICHNESS 25, PUNCH 30 and LEVEL 0 dB. For always-on use, enable PRE / BOOST in the preset. Valve can be enabled independently and runs ahead of PRE / BOOST.
 
 The color stage uses an AC-coupled, bandwidth-limited square-law residual inspired by the common-source MMBF5457 in the traced Xotic EP Booster V2. Its 4.7 kΩ source resistor and gain-dependent bypass establish the circuit context. The residual's strength and bandwidth are prototype voicing choices. A circuit-level fit would need to account for the source bypass setting, device bias and input calibration. [Aion FX circuit trace](https://aionfx.com/app/files/schematics/xotic-ep-booster-trace-schematic.pdf)
 
