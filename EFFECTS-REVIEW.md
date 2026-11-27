@@ -1,5 +1,7 @@
 # Effects review (synth4, BST build)
 
+> **Historical (superseded in v96).** This review describes the synth4 / BST build. Since v96 (build 996) the tracked synths (ANALOG, ARCADE, INSTRUMENT, ENSEMBLE, CHOIR), CROSS OSC and SQUARE SYNTH HQ are retired, and POLY SHIFTER runs on the filter bank rather than a phase vocoder. For current behaviour see [SOUNDS-AND-CONTROLS.md](SOUNDS-AND-CONTROLS.md), [POLY-SHIFTER.md](POLY-SHIFTER.md) and [WHATS-NEW-v96.md](WHATS-NEW-v96.md).
+
 What was checked, what was changed, what is left. The numbers come from `tools/research/level_audit.c` (every live type, one block on at a time, the five bundled guitar loops at the pedal's level, BS.1770 loudness against the same loop with the block off). They are reproducible: `python3 tools/research/level_trim.py` recalibrates `engine/px_trim.h`.
 
 ## 1. Blocks
