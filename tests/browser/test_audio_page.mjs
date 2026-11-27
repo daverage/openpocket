@@ -84,13 +84,15 @@ ok(near(dry, level + 20 * Math.log10(0.64), 1), `bypass passes the dry input, at
 ok(!near(dry, wet, 1), `and it differs from the chain (${wet.toFixed(1)} dB)`);
 await page.uncheck("#bypass");
 ok(await until(async () => (await state()).dsp.bypass === 0), "bypass comes off");
-await post("press/amp"); await post("knob/2"); await post("press/push"); await post("knob/-100");
+// the AMP button opens the SYNTH page (since v70); the block is switched on first over MIDI (SET block 3, on), so its setting is heard
+await fetch(sim.url + "/api/sysex", { method: "POST", body: JSON.stringify([0xF0, 0x7D, 0x4F, 0x50, 6, 3, 1, 0, 1, 0xF7]) });
+await post("press/amp"); await post("knob/4"); await post("press/push"); await post("knob/-100");   // (LEVEL: four settings down)
 await settle(600);
 const low = await loudest("#out-meter");
 await post("knob/100");
 await settle(600);
 const high = await loudest("#out-meter");
-ok(Math.abs(high - low) > 1, `a setting on the AMP page changes the sound (${low.toFixed(1)} to ${high.toFixed(1)} dB)`);
+ok(Math.abs(high - low) > 1, `a setting on the SYNTH page (the AMP button) changes the sound (${low.toFixed(1)} to ${high.toFixed(1)} dB)`);
 await post("press/push"); await post("press/home");
 
 await page.uncheck("#repeat");

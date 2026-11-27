@@ -148,23 +148,24 @@ ok(s.volume === 100, "MASTER in focus: End is 100");
 await page.locator("#master").blur();
 
 await post("/api/press/amp");
-await post("/api/knob/2");                             // (v42: down the page from MODEL: the NAM MODEL list, then GAIN)
+await post("/api/knob/2");                             // (the AMP button opens the SYNTH page since v70: two settings down the page)
 await post("/api/press/push");
 s = await until((x) => x.mode === "edit");
-const gain = s.preset.p[5][1], k0 = s.knob, pb = await box("#para");
+const synSum = (x) => x.preset.p[3].reduce((a, v) => a + v, 0);   /* (the SYNTH block's settings: whichever one the knob edits) */
+const gain = synSum(s), k0 = s.knob, pb = await box("#para");
 await page.mouse.move(para.x, para.y);
 await page.mouse.down();
 for (let i = 1; i <= 3; i++) { await page.mouse.move(para.x, para.y - (i + 0.2) * pb.width / 10); await page.waitForTimeout(70); }
 await page.mouse.up();
 s = await until((x) => x.knob === k0 + 3);
-ok(s.preset.p[5][1] === gain + 3 && s.mode === "edit", `PARA dragged three detents, slowly: GAIN ${gain} -> ${s.preset.p[5][1]}, and no PUSH`);
+ok(synSum(s) === gain + 3 && s.mode === "edit", `PARA dragged three detents, slowly: the setting +${synSum(s) - gain}, and no PUSH`);
 await page.mouse.wheel(0, NOTCH);
 s = await until((x) => x.knob === k0 + 2);
-ok(s.preset.p[5][1] === gain + 2, "PARA wheel: one detent back");
+ok(synSum(s) === gain + 2, "PARA wheel: one detent back");
 await page.waitForTimeout(60);                          // closer than 45 ms it would be a fast turn
 await page.keyboard.press("ArrowRight");
 s = await until((x) => x.knob === k0 + 3);
-ok(s.preset.p[5][1] === gain + 3, "the right arrow: one detent");
+ok(synSum(s) === gain + 3, "the right arrow: one detent");
 const turned = await page.locator("#para").evaluate((e) => e.style.getPropertyValue("--angle"));
 await post("/api/knob/1");
 await until((x) => x.knob === k0 + 4);
@@ -215,8 +216,8 @@ await post("/api/press/dly");
 ok(await litBecomes("dly", "focus") && await litBecomes("home", "on"), "the DLY page: DLY brightest, HOME back to lit");
 const sysex = async (bytes) => fetch(sim.url + "/api/sysex", { method: "POST", body: JSON.stringify([0xF0, 0x7D, 0x4F, 0x50, ...bytes, 0xF7]) });
 await post("/api/press/home");
-await sysex([6, 9, 1, 0, 1]); ok(await litBecomes("dly", "on"), "a block switched on over MIDI: its button lights");
-await sysex([6, 9, 1, 0, 0]); ok(await litBecomes("dly", "off"), "and off: it goes dark");
+await sysex([6, 7, 1, 0, 1]); ok(await litBecomes("dly", "on"), "a block switched on over MIDI: its button lights");
+await sysex([6, 7, 1, 0, 0]); ok(await litBecomes("dly", "off"), "and off: it goes dark");
 
 // ---- 9. scripts, and a small touch screen ----
 await page.evaluate(async () => { await pedal.tap("fs_up"); });
