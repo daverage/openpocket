@@ -23,17 +23,7 @@
 #define PXP_OS 1                    /* circuit-rate factor: 1 (the circuit at the audio rate) or 2 (half-band in and out, twice the cost). Measured (tests/engine, hard-played 1.5 kHz at 300 mV): the energy off the harmonic bins is -48 dB at 1x, -57 dB at 2x; at normal levels -87 / -97 dB; the harmonics are the same. 1x is enough for a boost */
 #endif
 #define PXP_VT 0.02585f
-/* exp by range reduction (2^n and a degree-6 polynomial on |r| <= 0.35: relative error about 1e-6); no libm call in the sample loop */
-static inline float pxp_exp(float x)
-{
-    if (x > 30.0f) x = 30.0f;
-    if (x < -30.0f) x = -30.0f;
-    const float t = x * 1.44269504f; const int n = (int)(t + (t >= 0.0f ? 0.5f : -0.5f)); const float r = x - (float)n * 0.69314718f;
-    const float p = 1.0f + r * (1.0f + r * (0.5f + r * (0.166666667f + r * (0.0416666667f + r * (0.00833333333f + r * 0.00138888889f)))));
-    union { float f; unsigned u; } v; v.u = (unsigned)(n + 127) << 23; return p * v.f;
-}
 static inline float pxp_clamp(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
-#if defined(PXP_FF_TABLE_EXP) || defined(PXP_RM_TABLE_EXP)
 /* exp(x) via 2^(x / ln 2), with the fractional power of two precomputed. */
 static inline float pxp_exp_table(float x)
 {
@@ -68,17 +58,12 @@ static inline float pxp_exp_table(float x)
     union { unsigned u; float f; } scale = { .u = ((index >> 7) + 127u - 48u) << 23 };
     return scale.f * (fraction[sample] + mix * (fraction[sample + 1u] - fraction[sample]));
 }
-#endif
 static inline float pxp_lerp3(const float *xs, const float *ys, float x) { return x <= xs[1] ? ys[0] + (ys[1] - ys[0]) * (x - xs[0]) / (xs[1] - xs[0]) : ys[1] + (ys[2] - ys[1]) * (x - xs[1]) / (xs[2] - xs[1]); }
 /* a junction's exponential with a straight-line continuation above x = 18 (0.465 V: 0.12 A in a germanium junction, far beyond this circuit): finite value and slope, so a Newton overshoot cannot run away */
 static inline float pxp_expl(float x, float *d)
 {
     if (x <= 18.0f) {
-#if defined(PXP_RM_TABLE_EXP)
         const float e = pxp_exp_table(x);
-#else
-        const float e = pxp_exp(x);
-#endif
         *d = e;
         return e;
     }
@@ -437,20 +422,11 @@ typedef struct {
 #ifdef PXP_FF_COUNT
 static long pxp_ff_iters;
 #endif
-static inline float pxp_ff_exp(float x)
-{
-#if defined(PXP_FF_TABLE_EXP)
-    return pxp_exp_table(x);
-#else
-    return pxp_exp(x);
-#endif
-}
-
 /* a junction's exponential, straight-lined above x = lim (the germanium's 18 = 0.465 V, the silicon's 30 = 0.78 V): finite, so Newton cannot run away, and never a false root */
 static inline float pxp_explim(float x, float lim, float *d)
 {
-    if (x <= lim) { const float e = pxp_ff_exp(x); *d = e; return e; }
-    const float e = pxp_ff_exp(lim); *d = e; return e * (1.0f + (x - lim));
+    if (x <= lim) { const float e = pxp_exp_table(x); *d = e; return e; }
+    const float e = pxp_exp_table(lim); *d = e; return e * (1.0f + (x - lim));
 }
 /* the junction currents and slopes of one transistor: be, bc = the junction voltages; Isbf = Is / beta_f, Isbr = Is / beta_r, ibr = 1 / beta_r */
 static inline void pxp_ff_bjt(float Is, float Isbf, float Isbr, float ibr, float lim, float be, float bc, float *ic, float *ib, float *gbe, float *gbc, float *dicbc)

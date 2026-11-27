@@ -107,14 +107,16 @@ footer a,.note a{color:inherit}
     </details>
   </section>
 
-  <section class="card" id="build981">
-    <h2>What’s new in build 981</h2>
+  <section class="card" id="build995">
+    <h2>What’s new in build 995</h2>
     <dl class="features">
-      <div><dt>Valve input stage</dt><dd>A 12AX7 model with up to +24 dB of Drive, saved per preset. Use it alongside your compressor. Tap FX until VALVE INPUT appears. Current source builds add independent output Level (−12 to +12 dB), also shown in the editor when supported by the connected firmware.</dd></div>
-      <div><dt>Footswitch control</dt><dd>Assign Valve to a footswitch in STOMP mode. In the preset editor, expand Valve or Footswitches in the Sound tab. Stage view shows the assignment.</dd></div>
-      <div><dt>Global settings on the pedal</dt><dd>Hold HOME for the tuner, release it, then hold HOME again. Adjust the five-band output EQ, input high-pass, limiter, Smart Gate Hush, tails, and lights.</dd></div>
+      <div><dt>Noise suppression and Patch volume</dt><dd>NOISE SUPPRESSOR combines threshold, release, mains HUM and per-preset HUSH. Patch volume now balances presets independently of effects.</dd></div>
+      <div><dt>Experimental CROSS OSC</dt><dd>One tracked SFX with square, pulse, triangle, saw, brass, string and flute modes.</dd></div>
+      <div><dt>Stronger SIGNATURE controls</dt><dd>FOCUS now reaches −8 dB bass / +4.8 dB treble. RICHNESS adds three times the harmonic coloration, and PUNCH gives a stronger, longer attack lift. BODY and independent LEVEL keep their existing ranges; Valve can run before SIGNATURE.</dd></div>
+      <div><dt>Lower Fuzz Face DSP load</dt><dd>The transistor lookup table cuts processing cost while keeping the pickup response and guitar-volume cleanup. Rangemaster shares the table.</dd></div>
+      <div><dt>Valve output Level</dt><dd>Adjust the 12AX7 stage’s output from −12 to +12 dB without changing Drive. Tap FX from the Valve Drive page or open Valve in the editor’s Sound tab.</dd></div>
     </dl>
-    <div class="row links"><a href="WHATS-NEW-v81.md">Build 981 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
+    <div class="row links"><a href="WHATS-NEW-v95.md">Build 995 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
   </section>
 
   <section class="card">
@@ -221,7 +223,7 @@ let sawV21 = false;
 
 if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
 $("testchan").hidden = !CHANNEL;
-$("build981").hidden = !!CHANNEL;
+$("build995").hidden = !!CHANNEL;
 
 async function loadManifest() {
   try {
@@ -231,7 +233,7 @@ async function loadManifest() {
     if (!Number.isInteger(m.version) || !Array.isArray(m.packages) || !m.packages.length) throw new Error("Invalid firmware manifest");
     manifest = m;
     $("pkgver").textContent = `v${m.version} · build ${900 + m.version}` + (CHANNEL ? ` (${CHANNEL})` : "");
-    if (m.version < 81) $("build981").hidden = true;
+    if (m.version < 95) $("build995").hidden = true;
     for (const p of m.packages) {
       const link = document.createElement("a");
       link.href = FW + p.file;

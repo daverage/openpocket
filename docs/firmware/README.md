@@ -2,7 +2,7 @@ The installer's packages land here when you run `build.bat` (or `firmware/build.
 `PocketX_9NN.fwsc`, `BlackBox_9NN.fwsc` and `manifest.json`. They are published with the release and on GitHub Pages
 by `PUBLISH-GITHUB.bat`, not kept in the repository.
 
-For build 981, the files are `PocketX_981.fwsc` for Donner Pocket X and `BlackBox_981.fwsc` for M-VAVE BlackBox.
+For build 995, the files are `PocketX_995.fwsc` for Donner Pocket X and `BlackBox_995.fwsc` for M-VAVE BlackBox.
 Run `make package` and `make serve` to use the browser installer. It reads `manifest.json` and selects the package for
 the pedal connected over USB. [Browser installation guide](../BUILDING.md#installing-from-the-browser)
 

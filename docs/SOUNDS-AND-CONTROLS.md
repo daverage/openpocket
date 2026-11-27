@@ -175,7 +175,7 @@ limiter (transparent up to -2 dBFS) instead of a hard clip.
 | FX | Cycles through GATE, PRE / BOOST, COMP, SPECIAL FX and EQ in chain order, then **VALVE INPUT**. Hold for 0.8 s for MIDI and USB audio settings. |
 | MASTER | output volume |
 
-On **GLOBAL**, turn PARA to select **Output EQ**, **Input High-Pass**, **Smart Gate Hush**, **Limiter**, **Tails**,
+On **GLOBAL**, turn PARA to select **Output EQ**, **Input High-Pass**, **Limiter**, **Tails**,
 **Tuner Lights**, or **Button Lights**. Press PARA to edit, turn it to adjust, and press it again to confirm. The effects
 apply live across presets. Output EQ opens a page for all five bands. Press HOME to go back from EQ, then press HOME on
 the main Global page to save and go back to PLAY. Open **Diagnostics** from the bottom of the Global list.

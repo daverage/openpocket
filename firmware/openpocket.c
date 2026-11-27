@@ -314,7 +314,7 @@ static void fm1_fault(const fm1_crash_t *c)
 #define PH_DIR  (*(volatile uint32_t *)0x501C8u)
 #define ENC_MASK 0x3u      /* PC0=A, PC1=B */
 #ifndef OP_VERSION_NUM                  /* a test channel build (firmware/build.sh, OP_CHANNEL) sets its own number and tag */
-#define OP_VERSION_NUM "81"   /* per-preset Valve input stage and on-device Global settings */
+#define OP_VERSION_NUM "96"   /* waveform-following synths, POLY SHIFTER on the bank, DROP TUNE */
 #endif
 #ifndef OP_TAG
 #define OP_TAG ""

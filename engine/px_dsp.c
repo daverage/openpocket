@@ -1297,16 +1297,16 @@ static inline float ad_tick(px_ad *d, float x)
 static void signature_set(px_signature *s, float sr, const uint8_t *q)
 {
     const float body = f01(q[0]), focus = f01(q[1]);
-    bq_lowshelf(&s->low, sr, 230.0f, -5.0f * focus);
+    bq_lowshelf(&s->low, sr, 230.0f, -8.0f * focus);
     bq_peak(&s->body, sr, 350.0f, 0.65f, 8.0f * (body - 0.5f));
-    bq_highshelf(&s->definition, sr, 2800.0f, 2.4f * focus);
+    bq_highshelf(&s->definition, sr, 2800.0f, 4.8f * focus);
     s->color_k = onepole_k(sr, 1.0f / (2.0f * PI_F * 4000.0f));
     s->dc_k = onepole_k(sr, 1.0f / (2.0f * PI_F * 20.0f));
     s->fast_k = onepole_k(sr, 0.003f);
-    s->slow_k = onepole_k(sr, 0.045f);
+    s->slow_k = onepole_k(sr, 0.070f);
     s->glide_k = onepole_k(sr, 0.010f);
-    s->richness_target = 0.65f * f01(q[2]);
-    s->punch_target = 0.30f * f01(q[3]);
+    s->richness_target = 1.95f * f01(q[2]);
+    s->punch_target = 0.90f * f01(q[3]);
     s->level_target = db2lin(24.0f * (f01(q[4]) - 0.5f));
     if (s->level == 0.0f) {
         s->richness = s->richness_target;
