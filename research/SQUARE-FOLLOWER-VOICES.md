@@ -1,0 +1,43 @@
+# More guitar synth voices from the original Square
+
+The player reports that the original SFX Square follows their playing better than all seven CROSS OSC modes on build 997. The next experiment should preserve the exact input crossings and volume response that earned that preference. Use the signal those crossings already produce as the source for several different sounds.
+
+## What Square supplies
+
+The original non-HQ SQUARE SYNTH takes its input at the SFX block. A 700 Hz low-pass (Q 0.7) conditions the detector input. A follower reads the absolute value of the unfiltered block input with 2 ms attack and 150 ms release. The filtered signal switches the square high above +10% of that envelope and low below −10%. Each rising switch flips the octave-down divider. The envelope scales both voices before the swept low-pass and Mix. The switches directly set the sign of the generated signal. They do not name notes, estimate a period, or start a separate oscillator. See [the detector setup and sample loop](../../engine/px_dsp.c).
+
+Build 997 CROSS OSC shares the switch detector, but its Pulse, Triangle, Saw, Brass, String and Flute calculate an interval from rising crossings and restart a phase counter. An extra or missing crossing can therefore affect both the perceived pitch and the shape of the output. Even its Square mode changes downstream gain and filtering. Its clean sine tests did not exercise the player's harmonics, slides, palm mutes or string overlap. Those are likely failure conditions, not a diagnosis of each glitch on the pedal.
+
+## What the hardware designs suggest
+
+- **Electro-Harmonix Micro Synth** mixes guitar, square, octave and sub-octave, then uses a fade-in and a resonant filter sweep. The controls set the starting and ending filter frequency and the rate of travel. The manual describes these controls in terms of attack and harmonic shape, and identifies its octave voices as single-note effects. The closest experiment for OpenPocket uses the Square and sub already available, plus a little guitar through the same voice filter. The EHX manual explains the voicing architecture, without establishing that its detector works the same way as ours. [Electro-Harmonix Micro Synth manual](https://www.ehx.com/wp-content/uploads/2021/07/micro-synth-manual.pdf)
+- **Roland GR-300** conditions six separate string signals and runs each through a fundamental detector and comparator. Its time-to-voltage stage makes a ramp between edges. A sample-and-hold measures that ramp for another oscillator, and in Duet mode the ramp itself can provide a voice. Roland also smooths detector filter changes to avoid audible clicks. The per-string inputs and conditioning make this a useful precedent for a future ramp voice, with a different starting signal from OpenPocket's mixed pickup. [Roland GR-300 service notes, pp. 3–5](https://www.gr300.com/service/G-303_G-808_GR-300_SERVICE_NOTES.pdf)
+- **Moog FreqBox** lets the input retrigger a separate VCO and uses a follower for dynamics and modulation. Its manual explicitly describes unpredictable retrigger rates on complex inputs and audible shifts when a guitar harmonic takes over. Hard sync can give a useful aggressive sound. It adds a failure mode to a voice that needs to follow single notes reliably. [Moog MF-107 manual, pp. 17–18](https://api.moogmusic.com/sites/default/files/2018-09/mf-107%20user%20manual_web.pdf)
+
+Listening experiments by Kazazis, Depalle and McAdams found that the shape of the amplitude envelope mattered when listeners ordered tones that differed in attack and decay time. The study supports treating articulation as a real voicing parameter. It does not establish which attack sounds like brass or strings on a guitar. [Timbral perception study](https://pubmed.ncbi.nlm.nih.gov/34852574/)
+
+## A first experiment
+
+Keep the original Square as the reference and feed a second, experimental voice from the same pre-filter square and sub. Use a bounded resonant low-pass with a darker resting cutoff and a smooth opening on a strong pick. Let part of the original guitar, with its lows rolled off gently, pass through the voice filter for the first part of the attack. A small amount of sub can make the note feel fuller. Start with **Tone, Resonance, Attack and Mix**. Set initial voicing by ear from the recordings, with no intentional swell at the default Attack and enough headroom before level matching.
+
+Keep the envelope for amplitude and colour separate from the detector. A slower pad attack or longer decay should change the wet signal after the square is made. If the note's brightness should peak on the attack and then settle even while the note sustains, use a smoothed fast/slow envelope difference on the audio input. That can be compared with the simpler continuous envelope sweep before adding an onset trigger. Start with one brass-like or analog lead voicing and build presets around a sound that is useful on the pedal.
+
+| Voice | Shaping after the same crossings | What to audition |
+|---|---|---|
+| Brass lead | Resonant low-pass opening on attack, then settling. Small filtered guitar blend. | Soft notes retain body, hard notes open up, bends keep their pitch. |
+| Reed lead | Darker main voice plus a modest, broad midrange peak. Try an asymmetric shaped guitar layer for even-harmonic colour. | Clear note centre and a different attack from brass without a thin, nasal peak. |
+| String ensemble | Darken and fade in the square. Add shallow chorus or two short modulated delays to the wet output. | Slow attack and width with the original carrier still present. A swell can hide fast notes, which is an articulation choice. |
+| Arcade bass | Shorter filter movement, stronger square and sub, and a quick amp response. | Tight repeated notes with the sub behaving through changes and mutes. |
+
+A linear filter can soften the existing square or emphasize its harmonics, with no new pitched clock. It can't independently control pulse width or turn an ideal symmetric square into a full saw spectrum. Genuine pulse, saw and triangle can be a separate experiment after the voicing proves itself. For a pulse, a pulse width proportional to the last reliable period needs a running timer. A leaky integrator can round the square into a triangle-like tone without measuring periods. The slopes are curved, and lower notes build more amplitude per half-cycle. For a reset ramp, integrating between edges preserves their timing, but amplitude depends on interval duration unless normalized, and surplus edges still interrupt it. An audio-derived layer that uses the guitar itself through filtering or bounded waveshaping is a separate way to enrich the spectrum while borrowing its natural articulation.
+
+The blended pickup cannot provide independent timing for each string. Overlapping notes may interfere with crossings, and no downstream filter can recover the missing string separation. Square-derived orchestral voices should be treated as synth colours first. Existing INSTRUMENT, ENSEMBLE and CHOIR voices can remain separate instruments because their note and envelope interface serves another purpose. Test any reuse as a parallel layer before considering a tracker change there.
+
+## How to decide whether it helped
+
+1. Capture the original Square and the new voice from the same DI, at the same SFX input level and with an identical chain. Log the sample positions of positive and negative crossings and sub flips. Compare the actual tap sequences after the split, and confirm the original effect still produces its reference render.
+2. Reamp quiet notes, bends, vibrato, fast alternate picks, string crossings, mutes, and overlapping notes separately. Use both pickup positions if available. Record the original, the new voice at 100% wet, and a practical mix with guitar. Sine checks can establish bounded gain and frequency response. The guitar examples are the main comparison.
+3. Loudness match the recordings with output trim. Compare onset delay, wrong or interrupted notes, click bursts, unwanted residual sound after a mute, and whether the two voices are worth using in different settings. A dark filter can bury an onset even when the crossings are identical, so verify the perceived response too.
+4. Run the leading voice on the pedal with the same input and chain as Square. Measure peak DSP load and late audio blocks. Check quiet legato and rapid picking by hand before calling it ready.
+
+The first milestone is one lead voice that feels like the original Square under the fingers and sounds distinct at matched level. Wider voicings and alternate waveforms are useful once that result holds on the pedal.
