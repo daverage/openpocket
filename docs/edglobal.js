@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // OpenPocket editor: the global settings (v75, protocol 9): what is set once for the pedal and the room, outside the presets.
-// A popover from the header: the tuner's reference A, the input high-pass, the output EQ, the limiter, the delay and reverb tails, the smart gate's hush.
+// A popover from the header: the tuner's reference A, the input high-pass, the output EQ, the limiter, the delay and reverb tails.
 // Changes go to the pedal at once (it plays them), and are written to its flash a moment after the last one (COMMIT: the presets are written with them).
 import { app, $, h, on, toast } from "./edcore.js";
 
 const HPF = [0, 20, 25, 30, 40, 55, 70, 80, 100, 120, 140];
 const LIM = [0, -0.5, -1, -2, -3, -4, -6, -9, -12];
 const BANDS = ["80 Hz", "250 Hz", "1 kHz", "3.5 kHz", "9 kHz"];
-const DEFAULTS = { tuner: 440, hpf: 0, eq: [0, 0, 0, 0, 0], lim: 0, tails: true, hush: 0, tunerLights: 1, lightsOff: false };
+const DEFAULTS = { tuner: 440, hpf: 0, eq: [0, 0, 0, 0, 0], lim: 0, tails: true, tunerLights: 1, lightsOff: false };
 const TLIGHTS = [0, 1, 2], TL_NAME = ["Blink", "Needle", "Strobe"];
 let v = null, sendTimer = 0, saveTimer = 0, saved = true, busy = false;
 
@@ -60,8 +60,7 @@ function render() {
     h("h3", { text: "Effects" }),
     h("label", { class: "gl-row" }, h("span", { class: "gl-l", text: "Tails" }), h("input", { type: "checkbox", checked: v.tails, onchange: (e) => change({ tails: e.target.checked }) }),
       h("small", { class: "dim", text: "A delay or reverb that is switched off, or left by a preset change, plays out instead of stopping." })),
-    h("label", { class: "gl-row" }, h("span", { class: "gl-l", text: "Smart gate hush" }), slider(0, 100, 1, v.hush, "Smart gate hush", (x) => `${x} %`, (x) => change({ hush: x })),
-      h("small", { class: "dim", text: "The gate's hiss filter: a low-pass that closes as a note dies away. Only with the SMART GATE." })),
+
     h("h3", { text: "Tuner" }),
     sel("Reference A", refs, v.tuner, (x) => `${x} Hz`, (x) => change({ tuner: x }), "Turn PARA on the pedal’s tuner page to adjust this on the pedal."),
     sel("Tuner lights", TLIGHTS, v.tunerLights, (x) => TL_NAME[x], (x) => change({ tunerLights: x }), "Blink: HOME blinks. Needle: one light moves along the row with the cents. Strobe: one light chases toward the side the note is out to; the middle three are steady when in tune."),

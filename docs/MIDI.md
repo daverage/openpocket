@@ -67,7 +67,7 @@ block with its on/off number.
 
 CC **7** (volume) sets the MASTER volume, 0 to 127 to 0 to 100, like the MASTER knob (turning the knob takes over again).
 
-What the "setting" numbers mean depends on the model (the screen shows the names): for SYNTH they are the synth's own controls; setting 3 of GATE is the preset LEVEL (50 = 0 dB); setting 1 of DELAY is TIME. Only the settings the model
+What the "setting" numbers mean depends on the model (the screen shows the names): for SYNTH they are the synth's own controls; CC 3 sets patch volume independently of GATE (0..100, 50 = 0 dB); GATE setting 3 is HUM and setting 4 is HUSH on NOISE SUPPRESSOR; setting 1 of DELAY is TIME. Only the settings the model
 has do anything; the others are stored and ignored. See [SOUNDS-AND-CONTROLS.md](SOUNDS-AND-CONTROLS.md) and
 [EDITOR-PROTOCOL.md](EDITOR-PROTOCOL.md).
 
@@ -207,3 +207,5 @@ open the normal page and press Install (v36), or use the official-firmware way b
 The USB code is felucca-bsp's (MPL-2.0, see [NOTICE.md](../NOTICE.md)); the MIDI code here is GPL-3.0-only like the rest of
 OpenPocket. The CC map is OpenPocket's own. Facts about the official firmware come from a private analysis of the captain's
 own device, used only to learn how it behaves, and no vendor code, bytes or tables are reproduced.
+
+Patch volume uses CC **3** (0..127 mapped to 0..100, −15..+15 dB). CC **7** remains MASTER. The editor also offers Patch volume as a learnable target.

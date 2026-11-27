@@ -78,14 +78,11 @@ static inline float px_s2_relcap(float ms) { return (PX_S2_REL_SPAN > 0.0f && ms
 #define PX_S2_DRIFT_K 0.0068f                          /* its corner: about 1.5 Hz (a one-pole per 32-sample block) */
 #define PX_S2_OUT 0.30f                                /* float output per Felucca full scale at LEVEL noon, trim 1.0 (set on the host against the loops' level) */
 
-#if defined(PX_SYNTH_TRACKING_TEST)
-enum { PX_S2_TRACK_CURRENT, PX_S2_TRACK_ENVELOPE, PX_S2_TRACK_FAST };
-#endif
 typedef struct {
     px_mono mono;                                      /* the tracker (px_mono.h) */
 #if defined(PX_SYNTH_TRACKING_TEST)
     float input_env;
-    int tracking_mode;
+    uint8_t choir_envelope;
 #endif
     int type;                                          /* PX_SYN_ANALOG, PX_SYN_ARCADE or PX_SYN_ARCADE_SPLIT */
     int arc;                                           /* 1: Felucca LOFI (ARCADE, ARCADE SPLIT) */
@@ -227,6 +224,8 @@ static void px_s2_reset(px_engine *e, int type, const uint8_t *q)
     memset(drw_t, 0, sizeof drw_t); memset(drw_v, 0, sizeof drw_v);
     formant_nz = 0x2545F491;                                                              /* the VOICE engine's breath-noise seed (eng_formant.c) */                     /* WHEEL's own state (eng_wheel.c: rotors, bar gains, phases) */
     px_mono_init(e, &s->mono, PX_MONO_GUITAR);
+#if defined(PX_SYNTH_TRACKING_TEST)
+#endif
     for (int i = 0; i < PX_S2_NV; i++) { s->vcut[i] = -1; s->grp[i] = (uint8_t)i; }
     px_s2_set(s, type, q);
     s->dry_c = s->dry;
@@ -386,13 +385,13 @@ static __attribute__((noinline)) void px_s2_block(px_s2 *s)
     if (s->pend_on || s->pend_off) s->pick_accent = 0.0f;
     if (s->follow && s->pend_on && t->v[0].active && (t->v[0].stage == 1 || t->v[0].stage == 2)) {
 #if defined(PX_SYNTH_TRACKING_TEST)
-        if (s->tracking_mode == PX_S2_TRACK_CURRENT)
+        if (!s->choir_envelope)
 #endif
         s->pick_accent = 0.25f * s->vel;
         s->pend_on = 0;
     }
 #if defined(PX_SYNTH_TRACKING_TEST)
-    if (s->tracking_mode != PX_S2_TRACK_CURRENT) s->expr_a = pxt_pick_velocity(1.6f * s->input_env);
+    if (s->choir_envelope) s->expr_a = pxt_pick_velocity(1.6f * s->input_env);
 #endif
     s->pick_accent *= 1.0f - (float)CTL / (FS * 0.018f);  /* 18 ms decay, with the voice's usual block ramp */
     if (s->pend_on && s->f0 > 0.0f) {
@@ -421,32 +420,19 @@ PX_HOT static void px_synth_run(px_engine *e, const float *in, float *out, int n
 {
     px_s2 *s = &px_s2_st;
 #if defined(PX_SYNTH_TRACKING_TEST)
-    const int fast = (s->type == PX_SYN_ANALOG && s->follow) || s->eng == &ENG_WHEEL;
-    const int direct = fast || s->type == PX_SYN_CHOIR || s->type == PX_SYN_ENSEMBLE;
-    if (fast != (s->tracking_mode == PX_S2_TRACK_FAST)) {
-        if (s->mono.was) { s->pend_on = 0; s->pend_off = 1; s->damped = 1; }
-        px_mono_init(e, &s->mono, PX_MONO_GUITAR);
-        if (fast) {
-            s->mono.lay.stabreq = s->mono.lay.minwait = s->mono.lay.minwait_lo = 0;
-            s->mono.trk.sensitive_picks = 0;
-        }
-    }
-    if (direct && s->tracking_mode == PX_S2_TRACK_CURRENT) {
+    const int choir = s->type == PX_SYN_CHOIR;
+    if (choir && !s->choir_envelope) {
         s->input_env = 0.0f;
         s->pick_accent = 0.0f;
     }
-    s->tracking_mode = fast ? PX_S2_TRACK_FAST : direct ? PX_S2_TRACK_ENVELOPE : PX_S2_TRACK_CURRENT;
+    s->choir_envelope = (uint8_t)choir;
     const float rise = 1.0f / (0.002f * e->sr), fall = 1.0f / (0.020f * e->sr);
 #endif
     for (int k = 0; k < n; k++) {
         px_mono_out o;
-#if defined(PX_SYNTH_TRACKING_TEST)
-        if (fast) px_mono_fast_run(e, &s->mono, in[k], &o);
-        else
-#endif
         px_mono_run(e, &s->mono, in[k], &o);
 #if defined(PX_SYNTH_TRACKING_TEST)
-        if (direct) {
+        if (choir) {
             const float a = px_abs(in[k]);
             s->input_env += (a - s->input_env) * (a > s->input_env ? rise : fall);
         }

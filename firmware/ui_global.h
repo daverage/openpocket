@@ -2,7 +2,7 @@
  * Global settings page. Shares the store and live audio settings with the USB editor. */
 #pragma once
 
-enum { GL_EQ, GL_HPF, GL_HUSH, GL_LIMITER, GL_TAILS, GL_TUNER_LIGHTS, GL_BUTTON_LIGHTS, GL_DIAG, GL_ROWS };
+enum { GL_EQ, GL_HPF, GL_LIMITER, GL_TAILS, GL_TUNER_LIGHTS, GL_BUTTON_LIGHTS, GL_DIAG, GL_ROWS };
 static uint8_t gl_row, gl_eq_page, gl_edit, gl_dirty, gl_redraw;
 static int gl_shown[GL_ROWS];
 
@@ -11,7 +11,6 @@ static unsigned global_value(unsigned row)
     if (gl_eq_page) return st_cfg.g.eq[row];
     switch (row) {
     case GL_HPF: return st_cfg.g.hpf;
-    case GL_HUSH: return st_cfg.g.hush;
     case GL_LIMITER: return st_cfg.g.lim;
     case GL_TAILS: return st_cfg.g.tails;
     case GL_TUNER_LIGHTS: return st_cfg.lights & 3u;
@@ -34,7 +33,6 @@ static void global_text(char *s, unsigned row, unsigned value)
     if (gl_eq_page) { global_db(s, (int)value - 24); return; }
     switch (row) {
     case GL_HPF: if (value) { b_num(s, value); b_str(s, " HZ"); } else b_str(s, "OFF"); break;
-    case GL_HUSH: b_num(s, value); b_str(s, "%"); break;
     case GL_LIMITER: if (value) global_db(s, -(int)value); else b_str(s, "OFF"); break;
     case GL_TAILS: case GL_BUTTON_LIGHTS: b_str(s, value ? "ON" : "OFF"); break;
     case GL_TUNER_LIGHTS: b_str(s, value == 2u ? "STROBE" : value == 1u ? "NEEDLE" : "BLINK"); break;
@@ -44,7 +42,7 @@ static void global_text(char *s, unsigned row, unsigned value)
 
 static void global_draw(void)
 {
-    static const char *const ROWS[GL_ROWS] = {"OUTPUT EQ", "INPUT HIGH-PASS", "SMART GATE HUSH", "LIMITER", "TAILS",
+    static const char *const ROWS[GL_ROWS] = {"OUTPUT EQ", "INPUT HIGH-PASS", "LIMITER", "TAILS",
                                             "TUNER LIGHTS", "BUTTON LIGHTS", "DIAGNOSTICS"};
     static const char *const BANDS[5] = {"80 HZ", "250 HZ", "1 KHZ", "3.5 KHZ", "9 KHZ"};
     if (gl_redraw) {
@@ -108,7 +106,6 @@ static void global_turn(int dd, int fast)
     if (gl_eq_page) st_cfg.g.eq[gl_row] = (uint8_t)global_clamp((int)before + dd, 48);
     else switch (gl_row) {
     case GL_HPF: st_cfg.g.hpf = (uint8_t)global_step(HPF, sizeof HPF, before, dd); break;
-    case GL_HUSH: st_cfg.g.hush = (uint8_t)global_clamp((int)before + dd * (fast ? 5 : 1), 100); break;
     case GL_LIMITER: st_cfg.g.lim = (uint8_t)global_step(LIMITER, sizeof LIMITER, before, dd); break;
     case GL_TAILS: st_cfg.g.tails = dd > 0; break;
     case GL_TUNER_LIGHTS: st_cfg.lights = (uint8_t)((st_cfg.lights & 4u) | global_clamp((int)before + dd, 2)); break;

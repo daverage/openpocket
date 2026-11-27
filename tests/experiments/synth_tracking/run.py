@@ -18,6 +18,7 @@ OUT = ROOT / "build/synth-tracking-prototype"
 SR = 44100
 MODES = ("Current", "Direct envelope", "Gate and pitch", "No harmonic hold")
 VOICES = ("Analog Classic", "Choir AH", "Ensemble Strings", "Ensemble Organ")
+SQUARE_VOICES = ("Analog Lead", "Instrument Jazz Organ", "Ensemble Strings")
 CASES = (
     ("Low E", .40, .220, 82.41),
     ("E3", 1.00, .220, 164.81),
@@ -41,7 +42,7 @@ def compile_renderers(scratch):
     prototype = source.replace(call, "proto_track(e, s, in[k], &o);")
     accent = "(1.0f + s->pick_accent)"
     assert prototype.count(accent) == 1
-    prototype = prototype.replace(accent, "(1.0f + ((proto_mode == ENVELOPE || proto_mode == GATE)"
+    prototype = prototype.replace(accent, "(1.0f + ((proto_mode == ENVELOPE || proto_mode == GATE || proto_mode == SQUARE_EDGES)"
                                   " ? 0.0f : s->pick_accent))")
     hook = "static void px_s2_voice("
     assert prototype.count(hook) == 1
@@ -175,15 +176,20 @@ def compare_truth(binaries, directory, raw):
     print(report, end="")
 
 
-def listening_page(clips):
+def listening_page(clips, square_edges):
     sections = []
     for clip in clips:
         label = html.escape(clip.stem)
         table = ["<table><thead><tr><th>Patch</th>" +
                  "".join(f"<th>{mode}</th>" for mode in MODES) + "</tr></thead><tbody>"]
-        for i, voice in enumerate(VOICES):
+        if square_edges:
+            table = ["<table><thead><tr><th>Patch</th><th>Current</th><th>Square edges</th></tr></thead><tbody>"]
+            table.append(f'<tr><th>Original SFX Square</th><td colspan="2"><audio controls preload="none" src="{label}-7-0.wav"></audio></td></tr>')
+        voices = enumerate(SQUARE_VOICES, 4) if square_edges else enumerate(VOICES)
+        modes = (0, 4) if square_edges else range(len(MODES))
+        for i, voice in voices:
             cells = "".join(f'<td><audio controls preload="none" src="{label}-{i}-{j}.wav">'
-                            f'</audio></td>' for j in range(len(MODES)))
+                            f'</audio></td>' for j in modes)
             table.append(f"<tr><th>{voice}</th>{cells}</tr>")
         sections.append(f"<h2>{label}</h2><audio controls preload='none' src='{label}-di.wav'>"
                         "</audio>" + "".join(table) + "</tbody></table>")
@@ -215,7 +221,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("di", nargs="*", type=Path, help="optional 44.1 kHz DI WAVs")
     parser.add_argument("--truth-dir", type=Path, help="prepared Guitar-TECHS directory")
+    parser.add_argument("--square-edges", action="store_true", help="compare three patches with original Square edges")
     args = parser.parse_args()
+    global OUT
+    if args.square_edges:
+        OUT = OUT.with_name("synth-square-edges")
     OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         scratch = Path(tmp)
@@ -232,8 +242,13 @@ def main():
             if sr != SR:
                 parser.error(f"{source} must be recorded at 44100 Hz")
             sf.write(OUT / f"{source.stem}-di.wav", dry[:, 0], SR, subtype="PCM_24")
-            for voice, patch in enumerate(VOICES):
-                for mode, name in enumerate(MODES):
+            if args.square_edges:
+                _, square = render(binaries, 0, 7, source, raw)
+                match_level(square, OUT / f"{source.stem}-7-0.wav")
+            voices = enumerate(SQUARE_VOICES, 4) if args.square_edges else enumerate(VOICES)
+            modes = ((0, "Current"), (4, "Square edges")) if args.square_edges else tuple(enumerate(MODES))
+            for voice, patch in voices:
+                for mode, name in modes:
                     trace, audio = render(binaries, mode, voice, source, raw)
                     match_level(audio, OUT / f"{source.stem}-{voice}-{mode}.wav")
                     if source == test:
@@ -243,7 +258,7 @@ def main():
         (OUT / "plucks.csv").write_text("\n".join(report) + "\n")
         if args.truth_dir:
             compare_truth(binaries, args.truth_dir, raw)
-    listening_page(cases)
+    listening_page(cases, args.square_edges)
     print(OUT / "index.html")
 
 

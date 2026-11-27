@@ -41,6 +41,69 @@ These were produced before the load was found, so the DSP-lower-than-SPICE gaps 
 | THD at 220 Hz, 0.05 units | DSP 0.73 / 1.50 / 3.23 / 5.22 / 23.0 %, SPICE 0.82 / 1.67 / 3.65 / 6.06 / 23.8 % | load; matches unloaded in Step 1 |
 | Aliasing (non-harmonic energy, 220 Hz to 1 kHz sines) | DSP −104 to −118 dBc | negligible |
 
+## Step 2: what the surrounding circuit adds (Dempwolf equations in every variant)
+
+`step2.py` builds the variants, `step2_analyze.py` measures them (`results/step2_ac.csv`, `results/step2_results.csv`, `figs/step2_*.png`). The tube equations, operating point and 33k / 100k / 1.5k ∥ 2.2 µF values are unchanged from the validated baseline. The input is the same band-limited sample stream as before, now applied as a source EMF. Frequency response comes from SPICE's small-signal AC analysis (no noise floor). Distortion and dynamics come from transient runs at 0, +6 and +12 dB.
+
+| Variant | Adds |
+|---|---|
+| A | the validated unloaded stage, ideal voltage source (control) |
+| B | grid-plate 1.7 pF, grid-cathode 1.6 pF, plate-cathode 0.46 pF (typical 12AX7 data-sheet values) |
+| C | B + 1 MΩ grid leak, and a source impedance of 0 Ω (C0), 10 kΩ (C10k) or a passive single-coil pickup with cable (Cpu: 6 kΩ, 2.5 H, 500 pF) |
+| D | C + 22 nF input coupling capacitor, and 22 nF output coupling into a 1 MΩ external load (D0, D10k, Dpu) |
+
+### Frequency response (plate, relative to A)
+
+| Circuit | 1 kHz | 10 kHz | 20 kHz | Phase at 10 kHz | −3 dB point |
+|---|---|---|---|---|---|
+| B (parasitics) | 0.00 dB | −0.24 dB | −0.91 dB | −13.7° | 41 kHz |
+| C10k (10 kΩ source) | −0.08 dB | −0.49 dB | −1.52 dB | −17.5° | 33 kHz |
+| Cpu (pickup, with parasitics) | +0.5 dB | −14.3 dB | −27.9 dB | n/a (resonant) | 6.3 kHz, +14.6 dB peak at 4.0 kHz |
+| Cpu without valve capacitances | +0.4 dB | −11.9 dB | −25.4 dB | n/a (resonant) | 7.1 kHz, +15.8 dB peak at 4.5 kHz |
+
+- **The valve's own parasitics are minor.** The Miller effect costs 0.9 dB at 20 kHz and nothing audible below 5 kHz.
+- **The source impedance dominates.** A 10 kΩ source costs 1.5 dB at 20 kHz. A passive pickup produces a resonant peak of about +15 dB near 4 kHz followed by a steep roll-off, and that is **independent of the valve**: the pickup, cable and grid leak give the same shape with no valve capacitances at all. The valve's Miller capacitance (about 100 pF at the grid) moves that peak from 4.5 kHz to 4.0 kHz and trims it by 1.1 dB. The pickup model has no eddy-current losses, so its peak is probably exaggerated.
+- That input-side behaviour happened before the Blackbox's ADC, so no software valve stage downstream can recreate it. It only matters if you choose to emulate a pickup/input-network.
+
+### Nonlinearity at 220 Hz and IMD (0, +6, +12 dB; deltas against A)
+
+| Circuit | Gain vs A | THD vs A | IMD vs A |
+|---|---|---|---|
+| B, C0 (parasitics, grid leak) | +0.01 dB | +0.2 % | 0 % |
+| C10k | −0.08 dB | −1 % | −1 % |
+| Cpu | −0.02 dB | 0 % | +1 to +2 % |
+| D0, D10k, Dpu | +0.27 to +0.38 dB | +16 to +19 % | +15 to +19 % |
+
+The 220 Hz and 440 + 660 Hz distortion is **unchanged by capacitances or source impedance**. All the change comes with variant D. Its output load is 1 MΩ, the same load that produced +0.47 dB and +12 % THD in Step 1. Variant D also adds an input capacitor, but I did not run the two separately, so I can't apportion the change; the size and sign match the load.
+
+### Loud-burst bias behaviour (+12 dB, 0.3-unit burst at 220 Hz: peaks around 4.8 V at the grid)
+
+| Circuit | Cathode shift during burst | Recovery |
+|---|---|---|
+| A, B, C0, C10k, Cpu | +0.09 to +0.11 V (up) | 1.66 ms time constant, identical |
+| D0, D10k, Dpu | **−0.37 to −0.39 V (down)** | about 25 ms |
+
+The input coupling capacitor reverses the bias shift. Grid conduction on the positive peaks charges the 22 nF capacitor (grid DC about −3.1 V during the burst, against −0.8 V without it), and the capacitor then discharges through the 1 MΩ leak over about 22 ms. This is real circuit behaviour (blocking distortion) and it is absent from the DSP and from variants A–C. It needs positive grid excursions, so it should not appear at normal clean levels. The single-exponential fit is poor for D (15–18 mV residual), so treat the 25 ms as approximate. `figs/step2_bias_burst.png` shows it.
+
+### Hard pick transient (1.5 kHz, 10 ms burst, +12 dB)
+
+Peak amplitude changes by at most 0.3 dB for every variant. A 10 kΩ source delays the current by 1 µs, and the pickup by 32 to 50 µs. The pickup raises the grid peak from 6.4 V to 10.1 V (resonant ringing), which is an input-network effect.
+
+### What Step 2 means for the DSP
+
+1. **The valve's own parasitic capacitances are not worth modelling.** The loss is under 1 dB at 20 kHz and the distortion is untouched.
+2. **Loading and coupling are the circuit choices that change level and distortion by tenths of a dB and roughly 15 %**, and they are choices about the next stage, not valve physics. No correction filter is proposed.
+3. **A candidate for a real difference: grid-conduction bias shift** from an input coupling capacitor, but only on hard peaks. Whether it is audible at the intended clean-to-lightly-driven range is a listening question for Step 3.
+4. **The largest spectral effect is the pickup interacting with the input network**, outside the valve and outside the Blackbox's reach.
+
+### Limits of Step 2
+
+- Dempwolf only. The independent Koren repeat is not done.
+- The pickup is a simple lumped model (no eddy losses, no tone or volume pot), and capacitances are typical data-sheet values with no stray wiring. Treat the pickup numbers as an upper bound on the effect.
+- Distortion was measured at 220 Hz and 440 + 660 Hz only, not at high frequencies where capacitances matter most.
+- Variant D bundles input coupling and an output load, so their effects are not separated. The bias fit for D is poor.
+- The hard-pick transient and the burst were run at +12 dB only.
+
 ## Dempwolf vs Koren (model difference, not a DSP fault)
 
 An independent Koren 12AX7 model gives a different valve, as expected for a different fit:
@@ -85,6 +148,8 @@ python3 run_all.py -j 8 [name ...] # DSP + SPICE (ngspice 47; set OMP_NUM_THREAD
 python3 analyze.py                 # results/*.csv
 OMP_NUM_THREADS=1 python3 step1_run.py   # the six short unloaded, DSP-fed runs -> data/spice_hiZ
 python3 step1_analyze.py                 # results/step1_results.csv
+python3 step2.py ac; python3 step2.py run   # step 2 circuits -> data/step2
+python3 step2_analyze.py                 # results/step2_*.csv, figs/step2_*.png
 python3 make_figs_audio.py         # figs/*.png, audio/named, audio/blind + blind_key.json
 ```
 

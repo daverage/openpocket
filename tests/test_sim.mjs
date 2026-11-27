@@ -146,14 +146,13 @@ const setGlobal = async (detents) => {
   await act("/api/press/push");
 };
 await setGlobal(2);  // HPF: 25 Hz
-await setGlobal(19); // Hush: 19%
 await setGlobal(3);  // Limiter: -2 dB
 await setGlobal(-1); // Tails: off
 await setGlobal(1);  // Tuner lights: strobe
 await setGlobal(-1); // Button lights: off
 const appliedGlobal = (await state()).global;
-ok(appliedGlobal.hpf === 25 && appliedGlobal.hush === 19 && appliedGlobal.lim === 4 && appliedGlobal.tails === 0 && appliedGlobal.lights === 6,
-   "Global HPF, hush, limiter, tails and lights apply live");
+ok(appliedGlobal.hpf === 25 && appliedGlobal.lim === 4 && appliedGlobal.tails === 0 && appliedGlobal.lights === 6,
+   "Global HPF, limiter, tails and lights apply live");
 ok(!existsSync(flash), "Global knob edits do not write flash");
 await act("/api/press/home");
 ok((await state()).mode === "chain" && existsSync(flash), "HOME exits Global and commits the settings without saving a preset");

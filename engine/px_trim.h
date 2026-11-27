@@ -7,4 +7,4 @@ static const float SFX_DB[PX_SFX_COUNT] = {-2.74f, -0.87f, 3.29f, 0.46f, 1.50f, 
 static const float MOD_DB[PX_MOD_COUNT] = {1.99f, 2.37f, 2.13f, 3.56f, 3.17f, 3.33f, 4.34f, 2.04f, 0.18f, -1.91f, 0.01f};
 static const float DLY_DB[PX_DLY_COUNT] = {-0.82f, -0.86f, -0.93f, -0.96f, -1.18f, -0.67f, -0.83f, -0.46f};
 static const float REV_DB[PX_REV_COUNT] = {1.36f, 1.64f, 1.81f, 1.66f, 1.76f, 1.92f, 2.01f, 1.56f};
-static const float SYN_DB[PX_SYN_COUNT] = {0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, -5.86f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, -8.90f, -13.45f, -13.45f, -16.63f, -16.70f, -9.08f};   /* indexed by the SYNTH type id: the tombstones 0 */
+static const float SYN_DB[PX_SYN_COUNT] = {0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, -5.86f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, -8.90f, -13.45f, -13.45f, -16.63f, -16.70f, -9.08f, 0.00f};   /* indexed by the SYNTH type id: the tombstones 0 */

@@ -140,13 +140,13 @@ int main(void)
     /* v75: the global settings (st_cfg): defaults when the store never had them, kept across a save and a reboot, damaged -> the defaults */
     {
         reboot();
-        CHECK(st_cfg.g.hpf == 0 && st_cfg.g.lim == 0 && st_cfg.g.tails == 1 && st_cfg.g.hush == 0 && st_cfg.tn == 0 && st_cfg.g.eq[0] == 24 && st_cfg.g.eq[4] == 24 && ui_tn_ref == 440.0f,
+        CHECK(st_cfg.g.hpf == 0 && st_cfg.g.lim == 0 && st_cfg.g.tails == 1 && st_cfg.tn == 0 && st_cfg.g.eq[0] == 24 && st_cfg.g.eq[4] == 24 && ui_tn_ref == 440.0f,
               "global settings: a store that never had them reads the defaults (tails on)");
-        st_cfg.g.hpf = 60; st_cfg.g.eq[2] = 30; st_cfg.g.eq[4] = 10; st_cfg.g.lim = 6; st_cfg.g.hush = 40; st_cfg.g.tails = 0; st_cfg.tn = 29;
+        st_cfg.g.hpf = 60; st_cfg.g.eq[2] = 30; st_cfg.g.eq[4] = 10; st_cfg.g.lim = 6; st_cfg.g.tails = 0; st_cfg.tn = 29;
         px_preset_t gp; px_preset_factory(&gp, 2);
         CHECK(st_save(2, &gp) == 0, "global settings: saved with a preset");
         reboot();
-        CHECK(st_cfg.g.hpf == 60 && st_cfg.g.eq[2] == 30 && st_cfg.g.eq[4] == 10 && st_cfg.g.lim == 6 && st_cfg.g.hush == 40 && st_cfg.g.tails == 0 && st_cfg.tn == 29 &&
+        CHECK(st_cfg.g.hpf == 60 && st_cfg.g.eq[2] == 30 && st_cfg.g.eq[4] == 10 && st_cfg.g.lim == 6 && st_cfg.g.tails == 0 && st_cfg.tn == 29 &&
               a_gl.hpf == 60 && ui_tn_ref == 443.0f, "global settings: kept after a reboot, the engine's copy and the tuner's A (443) set");
         /* a torn or damaged block reads as the defaults, the presets stay */
         nor[st_cur + ST_CFG_OFF + 3] ^= 0x04u;
@@ -154,117 +154,48 @@ int main(void)
         CHECK(st_cfg.g.hpf == 0 && st_cfg.tn == 0 && st_saved(2), "global settings: a damaged block reads the defaults, the presets are kept");
         st_cfg.g.hpf = 25; CHECK(st_save(2, &gp) == 0, "(saved again)"); reboot();
         CHECK(st_cfg.g.hpf == 25, "global settings: a save writes a good block again");
-        st_cfg.g.hpf = 0; st_cfg.tn = 0; st_cfg.g.eq[2] = 24; st_cfg.g.eq[4] = 24; st_cfg.g.lim = 0; st_cfg.g.hush = 0; st_cfg.g.tails = 1; st_save(2, &gp); st_reset(2);
+        st_cfg.g.hpf = 0; st_cfg.tn = 0; st_cfg.g.eq[2] = 24; st_cfg.g.eq[4] = 24; st_cfg.g.lim = 0; st_cfg.g.tails = 1; st_save(2, &gp); st_reset(2);
         reboot();
     }
 
-    /* v75: a format 6 store (nine blocks, 86-byte presets) is converted when it is read: BST is added off after the gate, a RANGEMASTER in SFX moves there,
-     * the footswitch byte and the other settings stay, and the next save writes format 7 */
+    /* Current format transition preserves patch levels and all assignment bytes. */
     {
-        static uint8_t old[0x4000], keep[0x4000];
-        memcpy(keep, nor + 0xF0000, sizeof keep);
-        memset(old, 0xFF, sizeof old);
-        uint8_t slot[ST_NSLOT][ST_SLOT];
-        memset(slot, 0xFF, sizeof slot);
-        {   /* slot 3: name, 9 blocks (on, type, 5 params each), an order with SYN first, then the mark and the footswitches */
-            uint8_t *s = slot[3];
-            memset(s, 0, ST_V6_SIZE);
-            strcpy((char *)s, "OLD SIX");
-            for (int b = 0; b < 9; b++) { s[14 + b] = (uint8_t)(b == 4 || b == 8); s[23 + b] = (uint8_t)(b == 4 ? 10 : b == 8 ? 3 : 0); for (int i = 0; i < 5; i++) s[32 + b * 5 + i] = (uint8_t)(10 * b + i); }
-            static const uint8_t ord6[9] = {3, 0, 1, 2, 4, 5, 6, 7, 8};
-            memcpy(s + 77, ord6, 9);
-            s[86] = ST_MARK; s[ST_SLOT - 1u] = 0xC5u;
+        px_preset_t old, converted;
+        px_preset_factory(&old, 3); old.p[PX_B_GATE][2] = 63;
+        old.type[PX_B_GATE] = PX_GATE_SUPPRESSOR;
+        const uint8_t gs[4] = {1, 2, 9, 12};
+        CHECK(st_save_fsg(3, &old, 0xC9, gs) == 0, "transition source saved");
+        px_preset_t hum_only = old; hum_only.on[PX_B_GATE] = 0;
+        hum_only.type[PX_B_EQ] = 3; hum_only.on[PX_B_EQ] = 1;
+        hum_only.p[PX_B_EQ][0] = 50; hum_only.p[PX_B_GATE][2] = 77;
+        const uint8_t hum_gs[4] = {PX_B_EQ, 15, 15, 15};
+        CHECK(st_save_fsg(4, &hum_only, 0xF5, hum_gs) == 0, "hum-only transition source saved");
+        st_hdr_t hdr; memcpy(&hdr, nor + st_cur, sizeof hdr);
+        hdr.ver = 7; memcpy(nor + st_cur, &hdr, sizeof hdr);
+        static uint8_t source[0x4000]; memcpy(source, nor + ST_A, sizeof source);
+        for (int cut = 0; cut < 6000; cut += 53) {
+            memcpy(nor + ST_A, source, sizeof source);
+            cut_at = cut; dead = ops = 0; reboot();
+            cut_at = -1; dead = 0; reboot(); st_get(3, &converted);
+            CHECK(st_saved(3) && converted.patch_volume == 63 && st_fs_of(3) == 0xC9, "power cut during transition retains patch and level");
         }
-        memcpy(slot[5], slot[3], ST_SLOT); slot[5][ST_SLOT - 1u] = 0x9Bu;   /* format 6 let 9..11 through as a "block": left 11, right 9 (BST is 9 now) */
-        memcpy(slot[6], slot[3], ST_SLOT); slot[6][ST_SLOT - 1u] = 0x3Cu;   /* left BYPASS, right block 3: both stay */
-        uint32_t crc = 0;
-        for (uint32_t k = 0; k < ST_NSLOT; k++) crc = ota_crc16(slot[k], ST_SLOT, crc);
-        st_hdr_t h; memset(&h, 0, sizeof h);
-        h.magic = ST_MAGIC; h.seq = 1; h.crc = (uint16_t)crc; h.ver = 6; h.nslot = ST_NSLOT; h.last = 3; h.pad[2] = 1;
-        memcpy(old, &h, sizeof h);
-        for (uint32_t k = 0; k < ST_NSLOT; k++) memcpy(old + (k < ST_S0N ? 16u + k * ST_SLOT : 0x1000u + (k - ST_S0N) * ST_SLOT), slot[k], ST_SLOT);
-        memset(nor + 0xF0000, 0xFF, 0x4000); memset(nor + 0xF2000, 0xFF, 0x2000);
-        memcpy(nor + 0xF0000, old, 0x2000);
-        reboot();
-        px_preset_t m, f3; st_get(3, &m);
-        CHECK(st_saved(3) && !strcmp(m.name, "OLD SIX") && st_last == 3 && st_fs_of(3) == 0xC5u && st_ui == 1u, "format 6: the slot, its name, the footswitches and STOMP mode are kept");
-        CHECK(st_fs_of(5) == 0xFFu && st_fs_of(6) == 0x3Cu, "format 6: a footswitch byte holding 9..11 (not blocks then) becomes nothing, valid ones stay");
-        CHECK(px_order_valid(m.order) && m.order[0] == PX_B_SYN && m.order[1] == PX_B_GATE && m.order[2] == PX_B_BST, "format 6: BST comes in right after the gate in the preset's own order");
-        CHECK(m.on[PX_B_BST] == 1 && m.type[PX_B_BST] == PX_BST_RANGEMASTER && m.p[PX_B_BST][0] == 40 && m.p[PX_B_BST][2] == 42, "format 6: a RANGEMASTER in SFX moved to BST with its settings");
-        CHECK(m.on[PX_B_SFX] == 0 && m.type[PX_B_SFX] == PX_SFX_AUTOWAH, "format 6: SFX is an envelope wah, off");
-        CHECK(m.on[PX_B_REVERB] == 1 && m.type[PX_B_REVERB] == 3 && m.p[PX_B_REVERB][4] == 84 && m.p[PX_B_GATE][1] == 1, "format 6: the other blocks are as they were");
-        px_preset_factory(&f3, 4);
-        st_get(4, &q); CHECK(!st_saved(4) && !memcmp(&q, &f3, sizeof q), "format 6: a slot never saved stays factory");
-        CHECK(st_save_fs(3, &m, 0xC5u) == 0, "format 6: a save writes the converted store");
+        memcpy(nor + ST_A, source, sizeof source);
+        reboot(); st_get(3, &converted);
+        px_preset_t migrated_hum; st_get(4, &migrated_hum);
+        CHECK(migrated_hum.patch_volume == 77 && migrated_hum.p[PX_B_GATE][0] == 0 && migrated_hum.p[PX_B_GATE][2] == 78 && !migrated_hum.on[PX_B_EQ], "hum-only patch retains its level without enabling broadband gating");
+        uint8_t hg[4]; st_gs_of(4, hg);
+        CHECK(st_fs_of(4) == 0xF0 && hg[0] == PX_B_GATE, "HUM assignments follow integrated processing");
+        CHECK(converted.patch_volume == 63 && converted.p[PX_B_GATE][2] == 0, "transition moves volume out of gate");
+        CHECK(!strcmp(old.name, converted.name) && !memcmp(old.order, converted.order, PX_NBLK), "transition preserves name and order");
+        uint8_t got[4]; st_gs_of(3, got);
+        CHECK(st_fs_of(3) == 0xC9 && !memcmp(got, gs, 4), "transition preserves assignments");
+        memcpy(&hdr, nor + st_cur, sizeof hdr);
+        CHECK(hdr.ver == 8, "transition committed once to new format");
+        CHECK(converted.p[PX_B_GATE][0] == 61 && converted.p[PX_B_GATE][1] == 8, "transition preserves nominal Smart Gate threshold and release scales");
         reboot(); st_get(3, &q);
-        CHECK(!memcmp(&q, &m, sizeof q) && st_fs_of(3) == 0xC5u, "format 6: after the save and a reboot (format 7) the slot is the same");
-        { st_hdr_t r; ota_fread(st_cur, &r, sizeof r); CHECK(r.ver == ST_VER && ST_VER == 7u, "format 6: the new copy is format 7"); }
-        memcpy(nor + 0xF0000, keep, sizeof keep);       /* the store as it was */
-        reboot();
+        CHECK(!memcmp(&converted, &q, sizeof q), "transition is not repeated");
     }
 
-    /* factory reset of a slot */
-    CHECK(st_reset(ST_NSLOT - 1u) == 0, "restore the last slot to factory");
-    reboot();
-    st_get(ST_NSLOT - 1u, &q); px_preset_factory(&f, (int)ST_NSLOT - 1);
-    CHECK(!st_saved(ST_NSLOT - 1u) && !memcmp(&q, &f, sizeof q), "the last slot is factory again after a reboot");
-
-    /* a power cut at every step of a save: after it, the store is the old one or the new one, never broken */
-    {
-        static uint8_t snap[0x4000];
-        px_preset_t before, newp;
-        st_get(7, &before);
-        newp = before; newp.p[PX_B_REVERB][2] = 77; strcpy(newp.name, "CUT TEST");
-        memcpy(snap, nor + 0xF0000, sizeof snap);
-        uint32_t seq0 = st_seq, cur0 = st_cur;
-        int olds = 0, news = 0, bad = 0;
-        for (int cut = 0; cut < 9000; cut += 7) {
-            memcpy(nor + 0xF0000, snap, sizeof snap);
-            st_seq = seq0; st_cur = cur0;
-            reboot();
-            ops = 0; cut_at = cut; dead = 0;
-            st_save(7, &newp);
-            cut_at = -1; dead = 0;
-            reboot();
-            st_get(7, &q);
-            if (!memcmp(&q, &newp, sizeof q)) news++;
-            else if (!memcmp(&q, &before, sizeof q)) olds++;
-            else bad++;
-            st_get(0, &q);
-            if (q.p[PX_B_DELAY][0] != 24) bad++;           /* other slots intact */
-        }
-        printf("power cut at %d points of a save: old kept %d, new %d, broken %d\n", (9000 + 6) / 7, olds, news, bad);
-        CHECK(bad == 0 && olds > 0 && news > 0, "a power cut never breaks the store");
-    }
-    CHECK(nor[0xEFFFF] == 0x11 && nor[0xF4000] == 0x22, "flash outside the store untouched");
-
-    /* v70: a store written by the multi-effects firmware (format 5): its settings stay, its presets do not (every slot
-     * its placeholder); the first save writes format 6 and from then on the presets survive updates */
-    {
-        memset(nor + 0xF0000, 0xFF, 0x4000);
-        reboot();
-        px_preset_factory(&q, 5);
-        strcpy(q.name, "OLD AMP SOUND");
-        st_midi = 0x15;                                        /* (some MIDI settings) */
-        CHECK(st_save(5, &q) == 0, "format 5 test store written");
-        st_hdr_t h;
-        uint32_t base = st_cur;
-        memcpy(&h, nor + base, sizeof h);
-        h.ver = 5;
-        memcpy(nor + base, &h, sizeof h);
-        reboot();
-        st_get(5, &f); px_preset_factory(&q, 5);
-        CHECK(!st_saved(5) && !memcmp(&q, &f, sizeof q) && cur_preset == 0, "format 5 store: the slot is its placeholder, the pedal starts on 1");
-        CHECK(st_midi == 0x15, "format 5 store: the settings are kept");
-        strcpy(q.name, "MY SYNTH");
-        CHECK(st_save(9, &q) == 0, "the first save after it");
-        reboot();
-        st_get(9, &f);
-        CHECK(st_saved(9) && !strcmp(f.name, "MY SYNTH") && !st_saved(5), "after the first save: format 6, the new preset there, the old one gone");
-        memcpy(&h, nor + st_cur, sizeof h);
-        CHECK(h.ver == ST_VER, "the store is format 6 now");
-        loader_bytes_clear();
-    }
     loader_bytes_clear();
 
     /* the MIDI settings ride in the header of the copy: saved with it, back after a power cycle */

@@ -18,7 +18,7 @@ int main(int c, char **v)
     for (int i = 0; i < n; i++) x[i] = (float)b[i] / 32768.0f * g;
     px_preset_t p;
     px_preset_factory(&p, atoi(v[1]));
-    if (getenv("LEVEL")) p.p[PX_B_GATE][PX_PATCH_LEVEL] = (uint8_t)atoi(getenv("LEVEL"));
+    if (getenv("LEVEL")) p.patch_volume = (uint8_t)atoi(getenv("LEVEL"));
     px_engine_init(&e, 44100.0f); px_engine_set(&e, &p);
     n = n / 64 * 64;
     for (int i = 0; i < n; i += 64) px_engine_process(&e, x + i, y + i, 64);

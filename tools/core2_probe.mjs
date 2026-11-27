@@ -4,8 +4,8 @@
 import { C, Editor } from "../docs/pxedit.js";
 import { parsePing } from "./dsp.mjs";
 const sec = Number(process.argv[2] || 8);
-const solo = ["0", "1"].includes(process.env.SOLO_SMART_GATE);
-const soloGate = process.env.SOLO_SMART_GATE === "1";
+const solo = ["0", "1"].includes(process.env.SOLO_NOISE_SUPPRESSOR);
+const soloGate = process.env.SOLO_NOISE_SUPPRESSOR === "1";
 const midi = await import("@julusian/midi").then((m) => m.default || m);
 const access = (await import("./midi-node.mjs")).nodeMidiAccess(midi);
 const ed = new Editor(access);
@@ -29,11 +29,11 @@ try {
     if (solo) {
       q.on.fill(0);
       q.order = q.order.map((_, i) => i);
-      q.p[0][2] = 50; // Match patch level across the replay passes.
+      q.patchVolume = 50; // Match patch level across the replay passes.
     }
     if (soloGate) {
-      const gate = cat.blocks[0].types.findIndex((x) => x?.name === "SMART GATE");
-      if (gate < 0) throw new Error("SMART GATE is unavailable");
+      const gate = cat.blocks[0].types.findIndex((x) => x?.name === "NOISE SUPPRESSOR");
+      if (gate < 0) throw new Error("NOISE SUPPRESSOR is unavailable");
       q.on[0] = 1; q.type[0] = gate; q.p[0] = [25, 35, 50, 25, 50];
     }
     q.on[blk] = 1; q.type[blk] = t; q.p[blk] = pv ? pv.split("/").map(Number) : pitch ? [50, 100, 100, 0, 0] : [50, 50, 50, 50, 0];

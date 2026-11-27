@@ -33,11 +33,55 @@ static inline float pxp_exp(float x)
     union { float f; unsigned u; } v; v.u = (unsigned)(n + 127) << 23; return p * v.f;
 }
 static inline float pxp_clamp(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
+#if defined(PXP_FF_TABLE_EXP) || defined(PXP_RM_TABLE_EXP)
+/* exp(x) via 2^(x / ln 2), with the fractional power of two precomputed. */
+static inline float pxp_exp_table(float x)
+{
+    static const float fraction[129] = {
+        1.000000000f, 1.005429901f, 1.010889286f, 1.016378315f, 1.021897149f, 1.027445949f,
+        1.033024879f, 1.038634102f, 1.044273782f, 1.049944086f, 1.055645178f, 1.061377227f,
+        1.067140401f, 1.072934868f, 1.078760798f, 1.084618362f, 1.090507733f, 1.096429082f,
+        1.102382583f, 1.108368412f, 1.114386743f, 1.120437752f, 1.126521619f, 1.132638520f,
+        1.138788635f, 1.144972144f, 1.151189230f, 1.157440074f, 1.163724859f, 1.170043770f,
+        1.176396992f, 1.182784711f, 1.189207115f, 1.195664392f, 1.202156731f, 1.208684324f,
+        1.215247360f, 1.221846033f, 1.228480536f, 1.235151064f, 1.241857812f, 1.248600977f,
+        1.255380757f, 1.262197350f, 1.269050957f, 1.275941778f, 1.282870016f, 1.289835873f,
+        1.296839555f, 1.303881265f, 1.310961212f, 1.318079601f, 1.325236643f, 1.332432547f,
+        1.339667524f, 1.346941786f, 1.354255547f, 1.361609021f, 1.369002423f, 1.376435971f,
+        1.383909882f, 1.391424376f, 1.398979673f, 1.406575994f, 1.414213562f, 1.421892602f,
+        1.429613338f, 1.437375997f, 1.445180807f, 1.453027996f, 1.460917794f, 1.468850433f,
+        1.476826146f, 1.484845166f, 1.492907728f, 1.501014070f, 1.509164428f, 1.517359041f,
+        1.525598151f, 1.533881998f, 1.542210825f, 1.550584878f, 1.559004400f, 1.567469640f,
+        1.575980845f, 1.584538265f, 1.593142151f, 1.601792756f, 1.610490332f, 1.619235135f,
+        1.628027422f, 1.636867450f, 1.645755478f, 1.654691768f, 1.663676580f, 1.672710180f,
+        1.681792831f, 1.690924799f, 1.700106354f, 1.709337763f, 1.718619298f, 1.727951231f,
+        1.737333835f, 1.746767386f, 1.756252160f, 1.765788436f, 1.775376493f, 1.785016611f,
+        1.794709075f, 1.804454168f, 1.814252176f, 1.824103385f, 1.834008086f, 1.843966569f,
+        1.853979125f, 1.864046048f, 1.874167634f, 1.884344179f, 1.894575982f, 1.904863342f,
+        1.915206561f, 1.925605944f, 1.936061793f, 1.946574418f, 1.957144124f, 1.967771223f,
+        1.978456026f, 1.989198847f, 2.000000000f,
+    };
+    /* Offset the index by 48 octaves to keep the conversion nonnegative. */
+    const float position = pxp_clamp(x, -30.0f, 30.0f) * (128.0f * 1.44269504f) + (48.0f * 128.0f);
+    const unsigned index = (unsigned)position, sample = index & 127u;
+    const float mix = position - (float)index;
+    union { unsigned u; float f; } scale = { .u = ((index >> 7) + 127u - 48u) << 23 };
+    return scale.f * (fraction[sample] + mix * (fraction[sample + 1u] - fraction[sample]));
+}
+#endif
 static inline float pxp_lerp3(const float *xs, const float *ys, float x) { return x <= xs[1] ? ys[0] + (ys[1] - ys[0]) * (x - xs[0]) / (xs[1] - xs[0]) : ys[1] + (ys[2] - ys[1]) * (x - xs[1]) / (xs[2] - xs[1]); }
 /* a junction's exponential with a straight-line continuation above x = 18 (0.465 V: 0.12 A in a germanium junction, far beyond this circuit): finite value and slope, so a Newton overshoot cannot run away */
 static inline float pxp_expl(float x, float *d)
 {
-    if (x <= 18.0f) { const float e = pxp_exp(x); *d = e; return e; }
+    if (x <= 18.0f) {
+#if defined(PXP_RM_TABLE_EXP)
+        const float e = pxp_exp_table(x);
+#else
+        const float e = pxp_exp(x);
+#endif
+        *d = e;
+        return e;
+    }
     *d = 65659969.0f; return 65659969.0f * (1.0f + (x - 18.0f));
 }
 /* ---- 2x oversampling: 39-tap half-band h[0..38] (Kaiser 9, centre 19); h[19] = 0.499994921, h[19 +- (2k+1)] = PXP_G[k] ---- */
@@ -393,40 +437,10 @@ typedef struct {
 #ifdef PXP_FF_COUNT
 static long pxp_ff_iters;
 #endif
-/* exp(x) via 2^(x / ln 2), with the fractional power of two precomputed. */
 static inline float pxp_ff_exp(float x)
 {
 #if defined(PXP_FF_TABLE_EXP)
-    static const float fraction[129] = {
-        1.000000000f, 1.005429901f, 1.010889286f, 1.016378315f, 1.021897149f, 1.027445949f,
-        1.033024879f, 1.038634102f, 1.044273782f, 1.049944086f, 1.055645178f, 1.061377227f,
-        1.067140401f, 1.072934868f, 1.078760798f, 1.084618362f, 1.090507733f, 1.096429082f,
-        1.102382583f, 1.108368412f, 1.114386743f, 1.120437752f, 1.126521619f, 1.132638520f,
-        1.138788635f, 1.144972144f, 1.151189230f, 1.157440074f, 1.163724859f, 1.170043770f,
-        1.176396992f, 1.182784711f, 1.189207115f, 1.195664392f, 1.202156731f, 1.208684324f,
-        1.215247360f, 1.221846033f, 1.228480536f, 1.235151064f, 1.241857812f, 1.248600977f,
-        1.255380757f, 1.262197350f, 1.269050957f, 1.275941778f, 1.282870016f, 1.289835873f,
-        1.296839555f, 1.303881265f, 1.310961212f, 1.318079601f, 1.325236643f, 1.332432547f,
-        1.339667524f, 1.346941786f, 1.354255547f, 1.361609021f, 1.369002423f, 1.376435971f,
-        1.383909882f, 1.391424376f, 1.398979673f, 1.406575994f, 1.414213562f, 1.421892602f,
-        1.429613338f, 1.437375997f, 1.445180807f, 1.453027996f, 1.460917794f, 1.468850433f,
-        1.476826146f, 1.484845166f, 1.492907728f, 1.501014070f, 1.509164428f, 1.517359041f,
-        1.525598151f, 1.533881998f, 1.542210825f, 1.550584878f, 1.559004400f, 1.567469640f,
-        1.575980845f, 1.584538265f, 1.593142151f, 1.601792756f, 1.610490332f, 1.619235135f,
-        1.628027422f, 1.636867450f, 1.645755478f, 1.654691768f, 1.663676580f, 1.672710180f,
-        1.681792831f, 1.690924799f, 1.700106354f, 1.709337763f, 1.718619298f, 1.727951231f,
-        1.737333835f, 1.746767386f, 1.756252160f, 1.765788436f, 1.775376493f, 1.785016611f,
-        1.794709075f, 1.804454168f, 1.814252176f, 1.824103385f, 1.834008086f, 1.843966569f,
-        1.853979125f, 1.864046048f, 1.874167634f, 1.884344179f, 1.894575982f, 1.904863342f,
-        1.915206561f, 1.925605944f, 1.936061793f, 1.946574418f, 1.957144124f, 1.967771223f,
-        1.978456026f, 1.989198847f, 2.000000000f,
-    };
-    /* Offset the index by 48 octaves to keep the conversion nonnegative. */
-    const float position = pxp_clamp(x, -30.0f, 30.0f) * (128.0f * 1.44269504f) + (48.0f * 128.0f);
-    const unsigned index = (unsigned)position, sample = index & 127u;
-    const float mix = position - (float)index;
-    union { unsigned u; float f; } scale = { .u = ((index >> 7) + 127u - 48u) << 23 };
-    return scale.f * (fraction[sample] + mix * (fraction[sample + 1u] - fraction[sample]));
+    return pxp_exp_table(x);
 #else
     return pxp_exp(x);
 #endif

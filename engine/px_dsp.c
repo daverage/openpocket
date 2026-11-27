@@ -29,7 +29,6 @@
 #include <stddef.h>
 #include <string.h>
 #define PX_PV_IMPL
-#include "px_pv.h"                                      /* v75: POLY SHIFTER's functions (the state is in px_dsp.h) */
 #ifdef __PI32V2__   /* on the pedal: a buffer out of the 96 KB RAM. v40.4: in the 24 KB below it (firmware/app.ld .bss_lo); it was in
                      * the free end of the RAM code window (.bss_hi), which the audio path's code now needs */
 #define PX_LO(name) __attribute__((section(".bss.lo." #name)))
@@ -192,7 +191,7 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
 {
     (void)e;
     float raised = 0.0f, lowered = 0.0f, raised2 = 0.0f;
-    float lowered2 = 0.0f;
+    float lowered2 = 0.0f, raised3 = 0.0f, mid8 = 0.0f;
     float below = 0.0f, neighbour = 0.0f;              /* v73: the level of the bands under this one (bar the next) */
     const float sel = state->low_sel;
     for (int i = 0; i < ERB_O_BANDS; ++i) {
@@ -235,6 +234,8 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
             const float d = rr - ii;
             raised2 += (d * d - 4.0f * rr * ii) * inv * inv * inv;
         }
+        if (state->up3 != 0.0f && erb_ofc[i] < 1800.0f) raised3 += real * (rr - 3.0f * ii) * inv * inv;   /* ORGAN: Re(z³) / |z|², the 2 2/3' */
+        mid8 += real;                                  /* ORGAN: the band itself, the 8' */
         const unsigned negative = imag < 0.0f;
         unsigned phase = state->half_phase[i];
         /* v64: two octaves down, |z| cos((a + 2 pi k) / 4): k counts the crossings of the negative real axis modulo 4
@@ -277,7 +278,7 @@ static PX_HOT float erb_bank(const px_engine *e, px_erb_octave *state, float x, 
         }
     }
     return up * raised * ERB_GAIN_UP + down * lowered * ERB_GAIN_DOWN + up2 * raised2 * ERB_GAIN_UP2
-         + state->down2 * lowered2 * ERB_GAIN_DOWN2;
+         + state->down2 * lowered2 * ERB_GAIN_DOWN2 + state->up3 * raised3 * 0.55f + state->mid8 * mid8;
 }
 
 /* one 44.1 kHz sample in, the octave voices (mixed by their levels) out: down to 11.025 kHz in two half-band stages,
@@ -288,7 +289,7 @@ static PX_HOT float erb_octaves2(const px_engine *e, px_erb_octave *state, float
     /* v49: with every voice at zero (STRINGS HQ with OCT at 0, say) the bank's output is silent: once its tail is out
      * the bank rests and its state is cleared. A voice turned up again starts from silence and builds up with the
      * bands (their own ~10-17 ms), so it fades in rather than stepping in on stale filter state. */
-    if (up == 0.0f && down == 0.0f && up2 == 0.0f && state->down2 == 0.0f) {
+    if (up == 0.0f && down == 0.0f && up2 == 0.0f && state->down2 == 0.0f && state->up3 == 0.0f && state->mid8 == 0.0f) {
         if (state->idle >= ERB_IDLE) return 0.0f;
         if (++state->idle == ERB_IDLE) { memset(state, 0, sizeof *state); state->idle = ERB_IDLE; return 0.0f; }
     } else state->idle = 0;
@@ -478,9 +479,9 @@ int px_order_valid(const uint8_t *o)
 }
 typedef struct { const char *name; uint8_t np; const char *const *pn; } tdef;
 
-static const char *const PN_GATE[] = {"THRESH", "RELEASE", "PRESET LVL"};   /* (3rd: the preset's level, v36) */
-static const char *const PN_SMART_GATE[] = {"SENS", "RELEASE", "PRESET LVL", "HOLD", "REDUCTION"};
-static const tdef T_GATE[] = {{"NOISE GATE", 3, PN_GATE}, {"SMART GATE", 5, PN_SMART_GATE}};
+static const char *const PN_GATE[] = {"THRESH", "RELEASE"};
+static const char *const PN_SUPPRESSOR[] = {"THRESH", "RELEASE", "HUM", "HUSH"};
+static const tdef T_GATE[] = {{"NOISE GATE", 2, PN_GATE}, {"NOISE SUPPRESSOR", 4, PN_SUPPRESSOR}};
 
 static const char *const PN_CMP[] = {"SUSTAIN", "ATTACK", "LEVEL", "MIX"};
 static const char *const PN_OPTO[] = {"COMPRESS", "LEVEL", "MIX"};
@@ -503,12 +504,14 @@ static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
 static const char *const PN_PSH[] = {"SHIFT", "FINE", "MIX", "ATTACK"};   /* v75 POLY SHIFTER */
+static const char *const PN_DROP[] = {"DROP", "RANGE", "MIX"};   /* DROP TUNE: semitones down, the highest fret counted as the low string, the dry share */
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT},
     {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
     {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 5, PN_POLY_HQ},
     {"LOWEST OCTAVE HQ", 4, PN_POLY_HQ},   /* DRY, OCT -1, OCT +1, RANGE (the same note cut as POLY OCTAVE HQ) */
     {"POLY SHIFTER", 4, PN_PSH},           /* v75: SHIFT -12..+12 semitones, FINE -50..+50 cents, MIX, ATTACK (how readily a pick restarts the phases) */
+    {"DROP TUNE", 3, PN_DROP},             /* the low E string a tone (DROP 2) or more down; the other strings stay */
 };
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
@@ -524,34 +527,40 @@ static const char *const PN_BBE[] = {"LO CONTOUR", "PROCESS"};   /* MAXIMIZER: t
 static const char *const PN_VW[] = {"POSITION", "PEAK", "LEVEL"};   /* BST VOX FIXED WAH: the parked pedal's position (heel .. toe, shown in Hz), the peak's Q and height (R7), the boost 0..+12 dB: engine/px_pedals.h */
 static const char *const PN_FF[] = {"FUZZ", "VOLUME", "PICKUP", "BIAS", "TRANSISTOR"};   /* BST FUZZ FACE: the 1k fuzz pot, the 500k volume, the source (single coil .. humbucker), the Q2 collector load (the bias trim), germanium or silicon */
 static const char *const PN_AP[] = {"LOW CUT", "DEQUACK", "BODY", "NOTCH", "LEVEL"};   /* BST ACOUSTIC PREAMP (v76): the high-pass (Hz), the piezo de-quack (dip + shelf + attack dip), the body (below 50 cuts the box, above adds low and air), the feedback notch (0 = off, else Hz), -12..+12 dB */
+static const char *const PN_SIGNATURE[] = {"BODY", "FOCUS", "RICHNESS", "PUNCH", "LEVEL"};
 static const char *const PN_AD[] = {"DRIVE", "BLEND", "PIEZO", "TONE", "LEVEL"};   /* SFX ACOUSTIC DRIVE (v76): the clipper, the dry blend, the pre-clip shaping for a piezo (high-pass, low-pass, dip), the post low-pass, -12..+12 dB */
+static const char *const PN_CROSS[] = {"CUTOFF", "RESONANCE", "SUB", "MIX"};
+static const char *const PN_FORMANT[] = {"VOWEL", "RESONANCE", "SUB", "MIX"};
+static const char *const PN_CROSS_OSC[] = {"CUTOFF", "RESONANCE", "LEVEL", "MIX"};
 static const char *const PN_ENH[] = {"BETTER", "LOUDER"};   /* ENHANCE v4: amount (harmonics + compression), clean boost 0..+12 dB: engine/px_enhance.h */
 static const tdef T_SFX[PX_SFX_COUNT] = {
     {"ENVELOPE WAH", 4, PN_AWAH}, {"AUTO WAH", 4, PN_LWAH}, {"RING MOD", 3, PN_RING}, {"BITCRUSHER", 3, PN_CRUSH},
     {"SLICER", 3, PN_SLICE}, {"LO-FI RADIO", 3, PN_LOFI}, {"SQUARE SYNTH", 4, PN_SYN},
-    {"SQUARE SYNTH HQ", 4, PN_SYN}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"ACOUSTIC DRIVE", 5, PN_AD}};   /* APPLAUSE: retired tombstone; v75: RANGEMASTER, EP BOOST and MAXIMIZER moved to the BST block (tombstones here, px_preset_canonical moves a stored one); ENHANCE appended after it */
+    {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"ACOUSTIC DRIVE", 5, PN_AD}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}, {"", 0, 0}};   /* CROSS OSC: retired 2026-11-27 (the owner prefers SQUARE) */
 
 /* SYNTH block (Synth2): POLY OCT FUZZ, and the tombstones of every retired v29..v73 type ("" name: the UI skips it, the
  * engine bypasses it, its stored settings are kept; px_dsp.h) */
 static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"};
-static const char *const PN_ANALOG[] = {"PATCH", "CUTOFF", "RESONANCE", "ENVELOPE", "LEVEL"};
-static const char *const PN_INSTRUMENT[] = {"PATCH", "TONE", "ATTACK", "RELEASE", "LEVEL"};
-static const char *const PN_ENSEMBLE[] = {"PATCH", "VOICING", "SPREAD", "TONE", "LEVEL"};
-static const char *const PN_CHOIR[] = {"VOWEL", "SINGERS", "SPREAD", "TONE", "LEVEL"};
-static const char *const PN_ARCADE[] = {"PATCH", "CHARACTER", "SWEEP", "DECAY", "MIX"};
-static const char *const PN_ARCADE_SPLIT[] = {"LOWER", "UPPER", "SPLIT", "DECAY", "MIX"};
+static const char *const PN_ORGAN[] = {"REGISTER", "PERC", "SUSTAIN", "TONE", "LEVEL"};
+static const char *const PN_BS_PAD[] = {"TONE", "ATTACK", "RELEASE", "CHORUS", "LEVEL"};
+static const char *const PN_BS_CHOIR[] = {"VOWEL", "ATTACK", "RELEASE", "CHORUS", "LEVEL"};
+static const char *const PN_BS_BRASS[] = {"TONE", "BITE", "RELEASE", "WIDTH", "LEVEL"};
+static const char *const PN_BS_PIPE[] = {"STOPS", "SWELL", "RELEASE", "TONE", "LEVEL"};
+static const char *const PN_BS_LEAD[] = {"CUTOFF", "RESONANCE", "ENVELOPE", "SUB", "LEVEL"};
 #define SYN_TOMB {"", 0, 0}
 static const tdef T_SYN[PX_SYN_COUNT] = {
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
     {"POLY OCT FUZZ", 5, PN_OCT_FUZZ},
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,
-    {"ANALOG", 5, PN_ANALOG}, {"ARCADE", 5, PN_ARCADE}, {"ARCADE SPLIT", 5, PN_ARCADE_SPLIT},
-    {"INSTRUMENT", 5, PN_INSTRUMENT},
-    {"ENSEMBLE", 5, PN_ENSEMBLE},
-    {"CHOIR", 5, PN_CHOIR},
+    SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,   /* ANALOG .. CHOIR (mono tracker): retired 2026-11-27 */
+    {"BANK ORGAN", 5, PN_ORGAN},
+    {"STRINGS", 5, PN_BS_PAD}, {"CHOIR PAD", 5, PN_BS_CHOIR}, {"BRASS", 5, PN_BS_BRASS}, {"PIPE ORGAN", 5, PN_BS_PIPE},
+    SYN_TOMB, SYN_TOMB,                                /* 12-STRING, BELL PAD: retired 2026-11-28 */
+    SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,            /* SAW, PULSE, SUB BASS, ANALOG LEAD: retired 2026-11-28 */
+    {"SQ BRASS", 5, PN_BS_LEAD}, {"SQ BASS", 5, PN_BS_LEAD}, {"SQ FLUTE", 5, PN_BS_LEAD},
 };
-static const tdef T_BST[PX_BST_COUNT] = {{"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}, {"FIXED WAH", 3, PN_VW}, {"ENHANCE", 2, PN_ENH}, {"FUZZ FACE", 5, PN_FF}, {"ACOUSTIC PRE", 5, PN_AP}};
+static const tdef T_BST[PX_BST_COUNT] = {{"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}, {"FIXED WAH", 3, PN_VW}, {"ENHANCE", 2, PN_ENH}, {"FUZZ FACE", 5, PN_FF}, {"ACOUSTIC PRE", 5, PN_AP}, {"SIGNATURE", 5, PN_SIGNATURE}};
 /* v75: the SFX types that moved to the BST block and the BST type each became (-1: still an SFX type). The one place that lists them
  * (docs/pxedit.js MOVED is the browser's copy). */
 static int px_sfx_to_bst(int t)
@@ -566,7 +575,7 @@ static int px_sfx_to_bst(int t)
 }
 int px_type_retired(int b, int t)
 {
-    return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && (t == PX_SFX_APPLAUSE || px_sfx_to_bst(t) >= 0)) ||
+    return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && (t == PX_SFX_APPLAUSE || t == PX_SFX_CROSS_OSC || t == PX_SFX_SYNTH_HQ || px_sfx_to_bst(t) >= 0)) ||
            (b == PX_B_COMP && t == PX_CMP_VALVE);
 }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
@@ -604,8 +613,7 @@ static float drive_gain(const drv_v *drive, float setting)
 static const char *const PN_EQ5[] = {"100 HZ", "400 HZ", "1 KHZ", "2.5 KHZ", "6 KHZ"};
 static const char *const PN_GEQ[] = {"80 HZ", "240 HZ", "750 HZ", "2.2 KHZ", "6.6 KHZ"};
 static const char *const PN_PEQ[] = {"LOW", "MID FREQ", "MID GAIN", "MID Q", "HIGH"};
-static const char *const PN_HUM[] = {"MAINS", "DEPTH", "WIDTH", "HARMONICS"};
-static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ}, {"HUM FILTER", 4, PN_HUM}};
+static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ}};
 
 /* ========================================================== modulation ===== */
 static const char *const PN_RDM[] = {"RATE", "DEPTH", "MIX"};
@@ -787,13 +795,9 @@ int px_param_text(int b, int t, int k, int v, char *buf)
     float x = (float)v * 0.01f;
     switch (b) {
     case PX_B_GATE:
-        if (k == PX_PATCH_LEVEL) {                     /* "+1.5 DB": 0.3 dB a step */
-            int d = (v - 50) * 3, a = d < 0 ? -d : d, i = 0;
-            buf[i++] = d < 0 ? '-' : '+';
-            if (a >= 100) buf[i++] = (char)('0' + a / 100);
-            buf[i++] = (char)('0' + (a / 10) % 10); buf[i++] = '.'; buf[i++] = (char)('0' + a % 10);
-            buf[i++] = ' '; buf[i++] = 'D'; buf[i++] = 'B'; buf[i] = 0;
-            return 1;
+        if (t == PX_GATE_SUPPRESSOR && k == 2) {
+            static const char *const names[] = {"OFF", "50 HZ", "60 HZ", "AUTO"};
+            put_str(buf, names[v / 26]); return 1;
         }
         break;
     case PX_B_PITCH:
@@ -807,6 +811,8 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             }
             return 1;
         }
+        if (t == PX_PIT_DROP && k == 0) { put_int(buf, -dt_semis(v), 1); return 1; }   /* DROP in semitones */
+        if (t == PX_PIT_DROP && k == 1) { put_str(buf, "FRET "); put_int(buf + 5, dt_frets(v), 0); return 1; }   /* RANGE: the highest fret on the low string */
         if (t == PX_PIT_POLYSHIFT && k == 0) { put_int(buf, (int)(x * 24.0f + 0.5f) - 12, 1); return 1; }              /* SHIFT in semitones */
         if (t == PX_PIT_POLYSHIFT && k == 1) { put_int(buf, (int)((x - 0.5f) * 100.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* FINE in cents */
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
@@ -816,6 +822,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
     case PX_B_SFX:
         if (t == PX_SFX_CRUSH && k == 0) { put_int(buf, 16 - (int)(x * 14.0f + 0.5f), 0); return 1; }
         if (t == PX_SFX_CRUSH && k == 1) { put_int(buf, 1 + (int)(x * 39.0f + 0.5f), 0); return 1; }
+        if (t == PX_SFX_CROSS_OSC && k == 0) { static const char *const waves[] = {"SQUARE", "PULSE", "TRI", "SAW", "BRASS", "STRING", "FLUTE"}; put_str(buf, waves[v * 7 / 101]); return 1; }
         if (t == PX_SFX_ACOUSTIC && k == 4) { put_int(buf, (int)((x - 0.5f) * 24.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* LEVEL in dB */
         if (t == PX_SFX_RING && k == 0) { put_int(buf, (int)(20.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
         if (t == PX_SFX_SLICER && k == 2) { buf[0] = 'P'; put_int(buf + 1, 1 + (int)(x * 7.99f), 0); return 1; }
@@ -824,7 +831,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_BST_EPBOOST && k == 1) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "EARLY" : v < 67 ? "LATE" : "FAT"); return 1; }   /* VOICE */
         if (t == PX_BST_ACOUSTIC && k == 0) { put_int(buf, (int)(20.0f * powf(10.0f, x) + 0.5f), 0); return 1; }   /* LOW CUT in Hz */
         if (t == PX_BST_ACOUSTIC && k == 3) { if (x < 0.005f) put_str(buf, "OFF"); else put_int(buf, (int)(80.0f * powf(50.0f, x) + 0.5f), 0); return 1; }   /* NOTCH in Hz */
-        if (t == PX_BST_ACOUSTIC && k == 4) { put_int(buf, (int)((x - 0.5f) * 24.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* LEVEL in dB */
+        if ((t == PX_BST_ACOUSTIC || t == PX_BST_SIGNATURE) && k == 4) { put_int(buf, (int)((x - 0.5f) * 24.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* LEVEL in dB */
         if (t == PX_BST_RANGEMASTER && k == 2) { const int v = (int)(x * 100.0f + 0.5f); put_str(buf, v < 34 ? "TREBLE" : v < 67 ? "MID" : "FULL"); return 1; }   /* BODY */
         if (t == PX_BST_FUZZFACE && k == 2) { const int v2 = (int)(x * 100.0f + 0.5f); put_str(buf, v2 < 34 ? "SINGLE" : v2 < 67 ? "P90" : "HUMBKR"); return 1; }   /* PICKUP */
         if (t == PX_BST_FUZZFACE && k == 4) { const int v2 = (int)(x * 100.0f + 0.5f); put_str(buf, v2 > 50 ? "SILICON" : "GERMAN"); return 1; }   /* TRANSISTOR */
@@ -834,12 +841,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_BST_VOXWAH && k == 2) { put_int(buf, (int)(x * 12.0f + 0.5f), 1); return 1; }   /* LEVEL in dB */
         break;
     case PX_B_EQ:
-        if (t == PX_EQ_HUM) {
-            if (k == 0) { put_str(buf, v < 34 ? "50 HZ" : v < 67 ? "AUTO" : "60 HZ"); return 1; }
-            if (k == 1) { put_int(buf, 3 + (int)(x * 37.0f + 0.5f), 0); return 1; }          /* DEPTH in dB */
-            if (k == 2) { put_int(buf, 1 + (int)(x * 19.0f + 0.5f), 0); return 1; }          /* WIDTH in Hz */
-            put_int(buf, 1 + (int)(x * 4.99f), 0); return 1;                                 /* HARMONICS */
-        }
         if (t == PX_EQ_PARAM && k == 1) { put_int(buf, (int)(150.0f * powf(33.0f, x) + 0.5f), 0); return 1; }
         if (t == PX_EQ_PARAM && k == 3) { int q = (int)((0.4f + x * 5.6f) * 10.0f + 0.5f);
             buf[0] = (char)('0' + q / 10); buf[1] = '.'; buf[2] = (char)('0' + q % 10); buf[3] = 0; return 1; }
@@ -849,21 +850,9 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_MOD_ROTARY && k == 0) { put_str(buf, v < 50 ? "SLOW" : "FAST"); return 1; }
         break;
     case PX_B_SYN:
-        if (t == PX_SYN_ANALOG && k == 0) { put_str(buf, PX_ANALOG_PATCHES[px_patch_slot(v)].name); return 1; }
-        if (t == PX_SYN_CHOIR && k == 0) { put_str(buf, PX_VOWELS[px_vowel_slot(v)].name); return 1; }
-        if (t == PX_SYN_CHOIR && k == 1) { put_str(buf, PX_STACKS[px_stack_slot(v)].name); return 1; }
-        if (t == PX_SYN_ENSEMBLE && k == 0) { put_str(buf, PX_INSTRUMENT_PATCHES[px_inst_slot(v)].name); return 1; }
-        if (t == PX_SYN_ENSEMBLE && k == 1) { put_str(buf, PX_STACKS[px_stack_slot(v)].name); return 1; }
-        if (t == PX_SYN_INSTRUMENT && k == 0) { put_str(buf, PX_INSTRUMENT_PATCHES[px_inst_slot(v)].name); return 1; }
-        if (t == PX_SYN_ARCADE && k == 0) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
-        if (t == PX_SYN_ARCADE_SPLIT && k <= 1) { put_str(buf, PX_ARCADE_PATCHES[px_patch_slot(v)].name); return 1; }
-        if (t == PX_SYN_ARCADE_SPLIT && k == 2) {                         /* the note the two ranges meet at: notes from it up play UPPER */
-            const int note = px_split_note(v);
-            const char *name = NOTE_TXT[note % 12];
-            put_str(buf, name);
-            put_int(buf + (name[1] ? 2 : 1), note / 12 - 1, 0);
-            return 1;
-        }
+        if (t == PX_SYN_ORGAN && k == 0) { static const char *const r[] = {"JAZZ", "FULL", "GOSPEL", "CHURCH"}; put_str(buf, r[v >= 75 ? 3 : v >= 50 ? 2 : v >= 25 ? 1 : 0]); return 1; }
+        if (t == PX_SYN_BS_CHOIR && k == 0) { static const char *const r[] = {"AH", "OH", "OO", "EH", "EE"}; put_str(buf, r[v * 5 / 101]); return 1; }
+        if (t == PX_SYN_BS_PIPE && k == 0) { static const char *const r[] = {"FLUTES", "DIAPASON", "FULL", "MIXTURE"}; put_str(buf, r[v * 4 / 101]); return 1; }
         break;
     case PX_B_DELAY:
         if (k == 0) { put_int(buf, (int)(dly_ms(t, v) + 0.5f), 0); int i = 0; while (buf[i]) i++;
@@ -885,9 +874,10 @@ static void blk(px_preset_t *p, int b, int on, int type, int a, int c, int d, in
 static void base_preset(px_preset_t *p)
 {
     memset(p, 0, sizeof(*p));
+    p->patch_volume = 50;
     p->valve_drive = PX_VALVE_DEFAULT;
     p->valve_level = PX_VALVE_LEVEL_UNITY;
-    blk(p, PX_B_GATE,   1, 0, 40, 20, 50, 0, 0);   /* 3rd: preset LEVEL (v36), 50 = 0 dB */
+    blk(p, PX_B_GATE,   1, 0, 40, 20, 0, 0, 0);
     blk(p, PX_B_COMP,   0, PX_CMP_SQUASH, 50, 30, 50, 100, 0);
     blk(p, PX_B_PITCH,  0, PX_PIT_OCTAVER, 70, 50, 0, 0, 40);
     blk(p, PX_B_SFX,    0, PX_SFX_AUTOWAH, 60, 60, 60, 40, 0);
@@ -938,17 +928,17 @@ static const fact_spec FACT[] = {
     {"SHIFT -12 PAD", 60, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 0, 50, 70, 50, 0), FB(PX_B_MOD, PX_MOD_CHORUS, 22, 40, 30, 0, 0), FB(PX_B_REVERB, PX_REV_SHIMMER, 60, 50, 35, 40, 0)}},
     /* 19..30 synths (the first ten as the synth showcase: docs/presets/synth-showcase.json) */
     {"SQUARE LEAD",   32, {FB(PX_B_SFX, PX_SFX_SYNTH, 60, 40, 55, 100, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 45, 35, 25, 50, 0), FB(PX_B_REVERB, PX_REV_PLATE, 40, 50, 20, 0, 0)}},
-    {"SQ HQ BASS",    36, {FB(PX_B_COMP, PX_CMP_SQUASH, 60, 40, 50, 0, 0), FB(PX_B_SFX, PX_SFX_SYNTH_HQ, 35, 30, 70, 80, 0)}},
+    {"JAZZ ORGAN",    53, {FB(PX_B_SYN, PX_SYN_ORGAN, 10, 50, 25, 50, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 40, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
+    {"STRING PAD",    67, {FB(PX_B_SYN, PX_SYN_BS_STRINGS, 50, 35, 50, 50, 50), FB(PX_B_REVERB, PX_REV_HALL, 60, 50, 30, 0, 0)}},
+    {"CHOIR AAH",     47, {FB(PX_B_SYN, PX_SYN_BS_CHOIR, 5, 40, 55, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
+    {"BRASS SECTION", 55, {FB(PX_B_SYN, PX_SYN_BS_BRASS, 50, 50, 40, 40, 50), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
+    {"PIPE ORGAN",    50, {FB(PX_B_SYN, PX_SYN_BS_PIPE, 40, 30, 50, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 65, 45, 35, 0, 0)}},
+    {"FULL ORGAN",    53, {FB(PX_B_SYN, PX_SYN_ORGAN, 30, 60, 25, 55, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 60, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
+    {"CHOIR OOH",     47, {FB(PX_B_SYN, PX_SYN_BS_CHOIR, 50, 45, 60, 60, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
+    {"SQ FLUTE",      50, {FB(PX_B_SYN, PX_SYN_SQ_FLUTE, 45, 20, 30, 0, 50), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 35, 20, 50, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 25, 0, 0)}},
+    {"SQ BASS",       60, {FB(PX_B_SYN, PX_SYN_SQ_BASS, 30, 30, 50, 30, 50)}},
+    {"SQ BRASS",      50, {FB(PX_B_SYN, PX_SYN_SQ_BRASS, 50, 40, 50, 0, 50), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
     {"POLY FUZZ",     24, {FB(PX_B_SYN, PX_SYN_OCT_FUZZ, 60, 50, 60, 50, 100), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
-    {"MOOG BASS",     71, {FB(PX_B_SYN, PX_SYN_ANALOG, 60, 50, 55, 50, 50), FB(PX_B_DELAY, PX_DLY_TAPE, 40, 30, 20, 50, 30)}},
-    {"CHIP LEAD",     45, {FB(PX_B_SYN, PX_SYN_ARCADE, 10, 50, 50, 50, 100), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 30, 20, 60, 0)}},
-    {"STRING PAD",    67, {FB(PX_B_SYN, PX_SYN_INSTRUMENT, 15, 50, 50, 50, 50), FB(PX_B_MOD, PX_MOD_CHORUS, 30, 50, 35, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 60, 50, 30, 0, 0)}},
-    {"JAZZ ORGAN",    53, {FB(PX_B_SYN, PX_SYN_INSTRUMENT, 65, 50, 50, 50, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 40, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
-    {"STRING ENSEMB", 68, {FB(PX_B_SYN, PX_SYN_ENSEMBLE, 15, 15, 50, 50, 50), FB(PX_B_REVERB, PX_REV_HALL, 55, 50, 30, 0, 0)}},
-    {"CHOIR AAH",     47, {FB(PX_B_SYN, PX_SYN_CHOIR, 5, 50, 50, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
-    {"BRASS + SQ HQ", 88, {FB(PX_B_SYN, PX_SYN_ENSEMBLE, 25, 45, 50, 50, 50), FB(PX_B_SFX, PX_SFX_SYNTH_HQ, 40, 30, 60, 30, 0), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
-    {"ARCADE SPLIT",  62, {FB(PX_B_SYN, PX_SYN_ARCADE_SPLIT, 20, 70, 50, 50, 100), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 30, 20, 60, 0)}},
-    {"ANALOG LEAD",   53, {FB(PX_B_SYN, PX_SYN_ANALOG, 25, 60, 45, 50, 50), FB(PX_B_DELAY, PX_DLY_ANALOG, 40, 32, 22, 50, 0), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 15, 0, 0)}},
     /* 31..43 modulation, delays, reverbs */
     {"CE CHORUS",     46, {FB(PX_B_MOD, PX_MOD_CHORUS, 30, 50, 50, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 35, 55, 12, 0, 0)}},
     {"DIMENSION",     48, {FB(PX_B_MOD, PX_MOD_DIMENSION, 40, 60, 0, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 10, 0, 0)}},
@@ -971,7 +961,7 @@ static const fact_spec FACT[] = {
     {"LO-FI RADIO",   41, {FB(PX_B_SFX, PX_SFX_LOFI, 45, 45, 70, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 50, 12, 0, 0)}},
     {"BIT CRUSH",     50, {FB(PX_B_SFX, PX_SFX_CRUSH, 45, 40, 50, 0, 0)}},
     {"SLOW SWELL",    52, {FB(PX_B_COMP, PX_CMP_SWELL, 55, 50, 50, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 55, 50, 25, 0, 0)}},
-    {"NOISY ROOM",    48, {FB(PX_B_GATE, PX_GATE_SMART, 50, 45, 50, 50, 50), FB(PX_B_EQ, PX_EQ_HUM, 50, 65, 16, 50, 0), FB(PX_B_COMP, PX_CMP_STUDIO, 30, 35, 50, 50, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 55, 12, 0, 0)}},
+    {"NOISY ROOM",    48, {FB(PX_B_GATE, PX_GATE_SUPPRESSOR, 67, 20, 100, 0, 0), FB(PX_B_COMP, PX_CMP_STUDIO, 30, 35, 50, 50, 0), FB(PX_B_REVERB, PX_REV_ROOM, 25, 55, 12, 0, 0)}},
     /* 52 */
     {"INIT",          0, {{0}}},
 };
@@ -987,7 +977,7 @@ void px_preset_factory(px_preset_t *p, int idx)
             if (b != PX_B_GATE) p->on[b] = 1;
             p->type[b] = FACT[idx].b[j].type; memcpy(p->p[b], FACT[idx].b[j].p, 5);
         }
-        p->p[PX_B_GATE][PX_PATCH_LEVEL] = FACT[idx].lvl ? FACT[idx].lvl : 50;
+        p->patch_volume = FACT[idx].lvl ? FACT[idx].lvl : 50;
         return;
     }
     char n[14] = "INIT ";
@@ -1038,22 +1028,26 @@ static void rc_dyn(px_engine *e)
     e->gate_thr = db2lin(-80.0f + f01(q[0]) * 60.0f);
     e->gate_rel = expf(-1.0f / (0.001f * (5.0f + f01(q[1]) * 495.0f) * sr));
 
-    const int smart = p->type[PX_B_GATE] == PX_GATE_SMART && p->on[PX_B_GATE];
-    if (smart && !e->smart_gate.active) memset(&e->smart_gate, 0, sizeof e->smart_gate);
-    e->smart_gate.active = smart;
-    e->smart_gate.hush = (float)e->glob.hush * 0.01f;
-    if (smart) {
-        e->smart_gate.dc_k = onepole_k(sr, 0.0018f);   /* 88 Hz high-pass sidechain */
-        e->smart_gate.split_k = onepole_k(sr, 0.00023f);
-        e->smart_gate.env_k = onepole_k(sr, 0.004f);
-        e->smart_gate.slow_k = onepole_k(sr, 0.085f);
-        e->smart_gate.learn_k = onepole_k(sr, 0.45f);
-        e->smart_gate.fast_k = onepole_k(sr, 0.08f);
-        e->smart_gate.attack = onepole_k(sr, 0.0006f);
-        e->smart_gate.sensitivity = db2lin(-62.0f + 34.0f * f01(q[0]));
-        e->smart_gate.hold = (unsigned)((0.025f + 0.125f * f01(q[3])) * sr);
-        e->smart_gate.range = db2lin(-20.0f - 60.0f * f01(q[4]));
+    const int active = p->type[PX_B_GATE] == PX_GATE_SUPPRESSOR;
+    e->suppressor.active = active;
+    e->suppressor.disabled = q[0] == 0;
+    e->suppressor.hush = f01(q[3]);
+    e->suppressor.peak_rel = expf(-1.0f / (0.018f * sr));
+    e->suppressor.sustain_rel = expf(-1.0f / (0.080f * sr));
+    e->suppressor.learn = onepole_k(sr, 8.0f);
+    e->suppressor.fall = onepole_k(sr, 0.15f);
+    e->suppressor.attack = onepole_k(sr, 0.00015f);
+    e->suppressor.release = onepole_k(sr, 0.030f + 0.970f * f01(q[1]));
+    e->suppressor.sensitivity = db2lin(-80.0f + 52.0f * f01(q[0]));
+    if (e->suppressor.floor > e->suppressor.sensitivity * 0.5f) e->suppressor.floor = e->suppressor.sensitivity * 0.5f;
+    e->suppressor.split_k = onepole_k(sr, 0.000053f); /* fixed 3 kHz complementary split */
+    e->suppressor.hold = (unsigned)(0.035f * sr);
+    /* Keep delayed pitch output alive without adding audio latency. */
+    for (int i = 0; i < PX_NBLK; ++i) {
+        if (p->order[i] == PX_B_GATE) break;
+        if (p->order[i] == PX_B_PITCH && p->on[PX_B_PITCH]) e->suppressor.hold += (unsigned)(0.100f * sr);
     }
+    e->hum_mode = active && p->on[PX_B_GATE] ? q[2] / 26 : 0;
 
     q = p->p[PX_B_COMP];
     const int t = cmp_type(p->type[PX_B_COMP]);
@@ -1089,6 +1083,8 @@ static void rc_dyn(px_engine *e)
         break;
     }
 }
+
+#include "px_banksyn.h"                                 /* the waveform-following synths */
 
 static void rc_pitch(px_engine *e)
 {
@@ -1142,11 +1138,20 @@ static void rc_pitch(px_engine *e)
             e->ps_lvl[0] *= powf(100.0f / (float)q[3], PX_POLY_RANGE_MAKEUP) * powf(10.0f, PX_POLY_RANGE_LIFT * 0.05f * (fade > 1.0f ? 1.0f : fade));
         }
         break;
-    case PX_PIT_POLYSHIFT: {                           /* v75: the phase-vocoder shifter: a whole number of semitones and the cents */
-        if (!e->pv.inited) pv_init(&e->pv);
+    case PX_PIT_DROP: {                                /* DROP TUNE (px_banksyn.h): the low string's notes moved by DROP */
+        e->psh.rt = e->psh.r = expf(-(float)dt_semis(q[0]) * 0.05776227f);
+        e->psh.top_hz = 82.41f * expf((float)dt_frets(q[1]) * 0.05776227f) * 1.03f;   /* (a quarter tone over the top fret) */
+        e->psh.mix = f01(q[2]); e->psh.gain = 2.436f;   /* (POLY SHIFTER's level with no shift) */
+        erb_prepare(e);
+    } break;
+    case PX_PIT_POLYSHIFT: {                           /* on POLY OCTAVE HQ's bank (px_banksyn.h): a whole number of semitones and the cents */
         const int st = (int)(f01(q[0]) * 24.0f + 0.5f) - 12;
-        e->pv.rt = expf(((float)st + (f01(q[1]) - 0.5f)) * 0.05776227f);     /* 2^(st/12), the cents: +-50 of 100 per semitone */
-        e->pv.mix = f01(q[2]); e->pv.thr = 12.0f - 10.5f * f01(q[3]);
+        const float semis = (float)st + (f01(q[1]) - 0.5f);
+        e->psh.rt = expf(semis * 0.05776227f);         /* 2^(st/12), the cents: +-50 of 100 per semitone */
+        if (e->psh.r <= 0.0f) e->psh.r = e->psh.rt;
+        e->psh.mix = f01(q[2]); e->psh.attack = f01(q[3]);
+        e->psh.gain = ps_gain(semis);
+        erb_prepare(e);
     } break;
     case PX_PIT_WHAMMY: {
         float st = (f01(q[0]) - 0.5f) * 48.0f, m = f01(q[1]);
@@ -1192,9 +1197,27 @@ void px_type_defaults(int blk, int type, uint8_t *p)
     case PX_BST_VOXWAH: d[2] = 0; break;                                       /* LEVEL 0 = the guitar's loudness */
     case PX_BST_FUZZFACE: d[0] = 65; d[4] = 0; break;                          /* FUZZ, VOLUME 50, P90, BIAS 50, germanium */
     case PX_BST_ACOUSTIC: d[0] = 55; d[1] = 40; d[3] = 0; break;               /* LOW CUT about 70 Hz, DEQUACK 40, BODY flat, NOTCH off, LEVEL 0 dB */
+    case PX_BST_SIGNATURE: d[0] = 60; d[1] = 55; d[2] = 25; d[3] = 30; break;  /* BODY, FOCUS, RICHNESS, PUNCH, LEVEL 0 dB */
     }
     if (blk == PX_B_SFX && type == PX_SFX_ACOUSTIC) d[0] = 60;                 /* DRIVE: breaking up */
-    if (blk == PX_B_EQ && type == PX_EQ_HUM) { d[1] = 60; d[3] = 50; d[4] = 0; }
+    if (blk == PX_B_SFX && type == PX_SFX_PULSE) { d[0] = 50; d[1] = 50; d[2] = 50; d[3] = 70; }
+    if (blk == PX_B_SFX && type == PX_SFX_CHIP) { d[0] = 45; d[1] = 55; d[2] = 60; d[3] = 75; }
+    if (blk == PX_B_SFX && type == PX_SFX_CROSS) { d[0] = 45; d[1] = 40; d[2] = 55; d[3] = 80; }
+    if (blk == PX_B_SFX && type == PX_SFX_FORMANT) { d[0] = 55; d[1] = 65; d[2] = 45; d[3] = 80; }
+    if (blk == PX_B_SFX && (type == PX_SFX_CROSS_SAW || type == PX_SFX_CROSS_TRI)) { d[0] = 45; d[1] = 40; d[2] = 70; d[3] = 80; }
+    if (blk == PX_B_SFX && type == PX_SFX_CROSS_OSC) { d[0] = 0; d[1] = 45; d[2] = 40; d[3] = 50; d[4] = 80; }
+    if (blk == PX_B_PITCH && type == PX_PIT_DROP) d[2] = 100;                 /* DROP TUNE: MIX 100 (a retuned string, not the two pitches together); DROP 50 = -2 (drop D), RANGE 50 = fret 3 */
+    if (blk == PX_B_SYN) switch (type) {                                       /* the waveform-following synths */
+    case PX_SYN_ORGAN: d[0] = 10; d[2] = 25; break;                            /* JAZZ, SUSTAIN low: the picks still shape it */
+    case PX_SYN_BS_STRINGS: case PX_SYN_BS_CHOIR: d[1] = 35; break;
+    case PX_SYN_BS_PIPE: d[0] = 40; d[1] = 30; break;
+    case PX_SYN_BS_BELL: d[3] = 40; break;
+    case PX_SYN_BS_SAW: case PX_SYN_BS_PULSE: case PX_SYN_BS_ANALOG: d[1] = 35; d[3] = 0; break;
+    case PX_SYN_BS_SUBBASS: d[0] = 30; d[1] = 30; d[3] = 0; break;           /* (SUB here is two octaves down) */
+    case PX_SYN_SQ_BASS: d[0] = 30; d[1] = 30; d[3] = 30; break;
+    case PX_SYN_SQ_BRASS: d[1] = 40; d[3] = 0; break;
+    case PX_SYN_SQ_FLUTE: d[0] = 45; d[1] = 20; d[2] = 30; d[3] = 0; break;
+    }
     for (int k = 0; k < PX_NPAR; k++) p[k] = d[k];
 }
 /* ---- v76: ACOUSTIC PREAMP (BST) and ACOUSTIC DRIVE (SFX), for a piezo pickup into a PA or a recorder (docs/research/ACOUSTIC-BOOSTS-RESEARCH.md) ---- */
@@ -1271,6 +1294,55 @@ static inline float ad_tick(px_ad *d, float x)
     d->lvl += (d->lvl_t - d->lvl) * d->kl;
     return (dry + (w - dry) * d->blend) * d->lvl;
 }
+static void signature_set(px_signature *s, float sr, const uint8_t *q)
+{
+    const float body = f01(q[0]), focus = f01(q[1]);
+    bq_lowshelf(&s->low, sr, 230.0f, -5.0f * focus);
+    bq_peak(&s->body, sr, 350.0f, 0.65f, 8.0f * (body - 0.5f));
+    bq_highshelf(&s->definition, sr, 2800.0f, 2.4f * focus);
+    s->color_k = onepole_k(sr, 1.0f / (2.0f * PI_F * 4000.0f));
+    s->dc_k = onepole_k(sr, 1.0f / (2.0f * PI_F * 20.0f));
+    s->fast_k = onepole_k(sr, 0.003f);
+    s->slow_k = onepole_k(sr, 0.045f);
+    s->glide_k = onepole_k(sr, 0.010f);
+    s->richness_target = 0.65f * f01(q[2]);
+    s->punch_target = 0.30f * f01(q[3]);
+    s->level_target = db2lin(24.0f * (f01(q[4]) - 0.5f));
+    if (s->level == 0.0f) {
+        s->richness = s->richness_target;
+        s->punch = s->punch_target;
+        s->level = s->level_target;
+    }
+}
+
+static inline float signature_tick(px_signature *s, float x)
+{
+    float y = bq_run(&s->body, bq_run(&s->low, x));
+    /* The AC-coupled quadratic residual of a common-source JFET, with unity
+     * small-signal gain. Low-pass the drive and bound the color on hot inputs. */
+    s->color_lp[0] += s->color_k * (y - s->color_lp[0]);
+    s->color_lp[1] += s->color_k * (s->color_lp[0] - s->color_lp[1]);
+    const float square = s->color_lp[1] * s->color_lp[1];
+    const float bounded = square < 0.25f ? square : 0.25f;
+    const float color = bounded * (1.0f - 2.0f * bounded);
+    s->color_dc += s->dc_k * (color - s->color_dc);
+    s->richness += s->glide_k * (s->richness_target - s->richness);
+    y += s->richness * (color - s->color_dc);
+
+    /* Add up to 2.3 dB on a rising envelope. The floor suppresses gain
+     * modulation on very quiet inputs and the slow envelope catches up on sustain. */
+    const float magnitude = px_abs(y);
+    s->fast += s->fast_k * (magnitude - s->fast);
+    s->slow += s->slow_k * (magnitude - s->slow);
+    const float rise = s->fast - 1.15f * s->slow;
+    const float attack = rise > 0.0f ? rise / (s->fast + 0.004f) : 0.0f;
+    s->punch += s->glide_k * (s->punch_target - s->punch);
+    y *= 1.0f + s->punch * attack;
+
+    s->level += s->glide_k * (s->level_target - s->level);
+    return s->level * bq_run(&s->definition, y);
+}
+
 static void rc_bst(px_engine *e)
 {
     const uint8_t *q = e->cur.p[PX_B_BST];
@@ -1280,6 +1352,7 @@ static void rc_bst(px_engine *e)
     case PX_BST_RANGEMASTER: pxp_rm_set(&e->rm, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOLUME, PICKUP, BODY: the state is kept on a knob move (the volume glides) */
     case PX_BST_ENHANCE: pxe_set(&e->enh, (float)q[0], (float)q[1]); break;   /* BETTER, LOUDER; the filter state is kept on a knob move (the mixes glide over 10 ms) */
     case PX_BST_ACOUSTIC: ap_set(&e->ap, e->sr, q); break;   /* LOW CUT, DEQUACK, BODY, NOTCH, LEVEL */
+    case PX_BST_SIGNATURE: signature_set(&e->signature, e->sr, q); break;
     case PX_BST_FUZZFACE: pxp_ff_set(&e->ff, (float)q[0], (float)q[1], (float)q[2], (float)q[3], (float)q[4]); break;   /* FUZZ, VOLUME, PICKUP, BIAS, TRANSISTOR (a new transistor, bias or pickup: the operating point again) */
     default: pxp_vw_set(&e->vw, (float)q[0], (float)q[1], (float)q[2]); break;   /* VOX FIXED WAH: POSITION, PEAK, LEVEL */
     }
@@ -1329,16 +1402,53 @@ static void rc_sfx(px_engine *e)
         e->sfx_mix = f01(q[2]);
         break;
     case PX_SFX_ACOUSTIC: ad_set(&e->ad, sr, q); break;   /* v76: DRIVE, BLEND, PIEZO, TONE, LEVEL */
+    case PX_SFX_PULSE:
+    case PX_SFX_CHIP:
+        bq_lowpass(&e->sfx_f1, sr, 700.0f, 0.7f);
+        e->sfx_c = f01(q[0]); e->sfx_qd = 1.0f - f01(q[1]) * 0.85f;
+        e->sfx_a = onepole_k(sr, 0.002f); e->sfx_b = onepole_k(sr, 0.15f);
+        e->sfx_d = f01(q[2]); e->sfx_mix = f01(q[3]); e->sfx_prev = -1.0f; e->sfx_ff = 1.0f;
+        e->sfx_pat = 0x1ACEB00C; break;
+    case PX_SFX_CROSS:
+        bq_lowpass(&e->sfx_f1, sr, 700.0f, 0.7f);
+        e->sfx_c = f01(q[0]); e->sfx_qd = 1.0f - f01(q[1]) * 0.85f;
+        e->sfx_d = f01(q[2]); e->sfx_mix = f01(q[3]);
+        e->sfx_a = onepole_k(sr, 0.002f); e->sfx_b = onepole_k(sr, 0.15f);
+        e->sfx_prev = -1.0f; e->sfx_ff = 1.0f; break;
+    case PX_SFX_FORMANT:
+        bq_bandpass(&e->sfx_f1, sr, 500.0f, 3.0f);
+        bq_bandpass(&e->sfx_f2, sr, 1500.0f, 3.0f);
+        e->sfx_c = f01(q[0]); e->sfx_qd = f01(q[1]); e->sfx_d = f01(q[2]);
+        e->sfx_mix = f01(q[3]); e->sfx_a = onepole_k(sr, 0.002f); e->sfx_b = onepole_k(sr, 0.15f);
+        e->sfx_prev = -1.0f; e->sfx_ff = 1.0f; break;
+    case PX_SFX_CROSS_SAW: case PX_SFX_CROSS_TRI:
+        bq_lowpass(&e->sfx_f1, sr, 700.0f, 0.7f);
+        e->sfx_c = f01(q[0]); e->sfx_qd = 1.0f - f01(q[1]) * 0.85f;
+        e->sfx_d = f01(q[2]); e->sfx_mix = f01(q[3]);
+        e->sfx_a = onepole_k(sr, 0.002f); e->sfx_b = onepole_k(sr, 0.15f);
+        e->sfx_prev = -1.0f; e->sfx_sync_age = 0.0f; e->sfx_sync_freq = 110.0f; e->sfx_sync_phase = 0.0f; break;
+    case PX_SFX_CROSS_OSC:
+        bq_lowpass(&e->sfx_f1, sr, 700.0f, 0.7f);
+        e->sfx_c = f01(q[1]); e->sfx_qd = 1.0f - f01(q[2]) * 0.85f;
+        e->sfx_d = f01(q[3]); e->sfx_mix = f01(q[4]);
+        e->sfx_a = onepole_k(sr, 0.002f); e->sfx_b = onepole_k(sr, 0.15f);
+        e->sfx_prev = -1.0f; e->sfx_sync_age = 0.0f; e->sfx_sync_freq = 110.0f; e->sfx_sync_phase = 0.0f;
+        e->sfx_sync_inc = (float)((q[0] * 7u) / 101u);
+        bq_bandpass(&e->sfx_f2, sr, 850.0f, 1.4f); break;
     case PX_SFX_APPLAUSE: break;                       /* retired: bypassed, nothing to set up */
     case PX_SFX_MAXIMIZER: case PX_SFX_EPBOOST: case PX_SFX_RANGEMASTER: case PX_SFX_ENHANCE: break;   /* v75: moved to the BST block (tombstones here, px_sfx_to_bst) */
     default:                                           /* square synth: square + sub through a swept low-pass */
+#ifdef PX_SFX_SYNTH_HQ_LIVE                            /* SQUARE SYNTH HQ (the band-bank tracker's square): retired 2026-11-28, bypassed;
+                                                          compiled out so the tracker (px_track.h, ~9 KB code, ~3 KB RAM) leaves the image */
         if (t == PX_SFX_SYNTH_HQ) {
             if (!e->sfx_track_active) {
                 memset(&e->sfx_track, 0, sizeof e->sfx_track); pxt_reset(e, &pxs_trk, &pxs_lay);
                 bq_reset(&e->sfx_f1); bq_reset(&e->sfx_f2);
             }
             synth_hq_filters(&e->sfx_f1, &e->sfx_f2, sr);
-        } else bq_lowpass(&e->sfx_f1, sr, 700.0f, 0.7f);
+        } else
+#endif
+        bq_lowpass(&e->sfx_f1, sr, 700.0f, 0.7f);
         e->sfx_c = f01(q[0]);
         e->sfx_qd = 1.0f - f01(q[1]) * 0.85f;
         e->sfx_d = f01(q[2]);
@@ -1404,11 +1514,15 @@ static void hum_detect(px_engine *e, const float *x, int n)
     for (int r = 0; r < 6; r++) { p[r] = e->hum_s1[r] * e->hum_s1[r] + e->hum_s2[r] * e->hum_s2[r] - e->hum_c[r] * e->hum_s1[r] * e->hum_s2[r]; e->hum_s1[r] = e->hum_s2[r] = 0.0f; }
     e->hum_n = 0;
     const float p50 = p[0] + p[1] + p[2] + 1e-12f, p60 = p[3] + p[4] + p[5] + 1e-12f;
-    const int want = p60 > 4.0f * p50 ? 60 : p50 > 4.0f * p60 ? 50 : e->hum_hz;
+    const int want = p60 > 4.0f * p50 && p[3] > 4*p[0] && p[4] > 4*p[1] && p[5] > 4*p[2] ? 60 : p50 > 4.0f * p60 && p[0] > 4*p[3] && p[1] > 4*p[4] && p[2] > 4*p[5] ? 50 : e->hum_hz;
+    if (e->suppressor.open && e->hum_hz && want != e->hum_hz) {
+        const int a = want == 60 ? 3 : 0, b = want == 60 ? 0 : 3;
+        for (int i = 0; i < 3; ++i) if (p[a+i] < 16.0f * p[b+i]) { e->hum_vote = 0; return; }
+    }
     if (want == e->hum_hz) { e->hum_vote = 0; return; }
     if (++e->hum_vote < 2) return;
     e->hum_vote = 0; e->hum_hz = want;
-    rc_eq(e);
+    /* The input stage crossfades to the newly selected bank. */
 }
 
 static void rc_eq(px_engine *e)
@@ -1432,22 +1546,6 @@ static void rc_eq(px_engine *e)
         bq_peak(&e->eq[3], sr, 2200.0f, 1.4f, EQDB(3));
         bq_peak(&e->eq[4], sr, 6600.0f, 1.4f, EQDB(4));
         e->eq_n = 5;
-    } else if (t == PX_EQ_HUM) {
-        /* v75 HUM FILTER: narrow notches at the mains and its harmonics (50 Hz: Europe, Asia, Africa, Australia; 60 Hz: the Americas, Korea, Taiwan,
-         * parts of Japan and the Gulf); MAINS picks 50, 60 or AUTO (the detector below picks, and may re-aim the notches). DEPTH 3..40 dB, WIDTH 1..20 Hz
-         * (the grid drifts a few tenths of a hertz; the notch is as wide in hertz at every harmonic), HARMONICS 1..5 (a low E at 82 Hz sits between the
-         * 60 Hz hum's 1st and 2nd; at the default width it loses under 0.3 dB). */
-        const int mains = q[0] < 34 ? 50 : q[0] > 66 ? 60 : (e->hum_hz == 60 ? 60 : 50);
-        const int nh = 1 + (int)(f01(q[3]) * 4.99f);
-        const float depth = 3.0f + f01(q[1]) * 37.0f, width = 1.0f + f01(q[2]) * 19.0f;
-        for (int i = 0; i < nh; i++) {
-            const float f = (float)(mains * (i + 1));
-            bq_notch(&e->eq[i], sr, f, width, depth);
-        }
-        e->eq_n = nh;
-        e->hum_hz = mains;
-        { static const float F[6] = {50.0f, 100.0f, 150.0f, 60.0f, 120.0f, 180.0f};
-          for (int i = 0; i < 6; i++) e->hum_c[i] = 2.0f * cosf(2.0f * PI_F * F[i] / sr); }
     } else {
         bq_lowshelf(&e->eq[0], sr, 100.0f, EQDB(0));
         bq_peak(&e->eq[1], sr, 150.0f * powf(33.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
@@ -1681,7 +1779,6 @@ static void rc_reverb(px_engine *e)
 
 
 /* ---- SYN: the SYNTH block (Synth2). Only POLY OCT FUZZ runs; every other legacy type is a tombstone (docs/research/synth2/SYNTH2-PLAN.md) ---- */
-static float opk(float sr, float hz) { float k = 2.0f * PI_F * hz / sr; return k > 0.9f ? 0.9f : k; }   /* one-pole */
 static void syn_fuzz_reset(px_engine *e)
 {
     memset(e->syn_fuzz_os, 0, sizeof e->syn_fuzz_os);
@@ -1698,12 +1795,30 @@ static void rc_syn(px_engine *e)
     const int t = p->type[PX_B_SYN];
     float a = f01(q[0]), b = f01(q[1]), d = f01(q[3]), f = f01(q[4]);
     if (t != e->syn_type) {                            /* new instrument: start from a quiet state */
-        if (t == PX_SYN_OCT_FUZZ) { memset(&e->erb_syn, 0, sizeof e->erb_syn); syn_fuzz_reset(e); }
+        if (t == PX_SYN_OCT_FUZZ || t == PX_SYN_ORGAN) { memset(&e->erb_syn, 0, sizeof e->erb_syn); syn_fuzz_reset(e); }
+        if (px_syn_bs(t)) bs_reset(e);
+        if (t == PX_SYN_ORGAN) e->org_since = 1 << 20;   /* (the first pick counts) */
         if (px_syn_mono(t)) px_s2_reset(e, t, q);
         e->syn_type = t;
     } else if (px_syn_mono(t)) px_s2_set_q(t, q);
     if (!px_syn_runs(t)) return;                       /* a tombstone: nothing to set up, the block is bypassed */
     if (px_syn_mono(t)) return;                        /* its state is the adapter's (px_synth_adapter.h) */
+    if (px_syn_bs(t)) { bs_setup(e, t, q); return; }
+    if (t == PX_SYN_ORGAN) {                           /* drawbars 16' 8' 4' 2 2/3' 2' per REGISTER (tests/experiments/organ_bank) */
+        static const float R[4][5] = { {0.8f, 1.0f, 0.6f, 0.0f, 0.0f},      /* JAZZ */
+                                       {0.8f, 1.0f, 0.8f, 0.6f, 0.6f},      /* FULL */
+                                       {0.0f, 1.0f, 0.7f, 0.6f, 0.0f},      /* GOSPEL: no 16' */
+                                       {0.9f, 0.8f, 0.7f, 0.0f, 0.5f} };    /* CHURCH: slow swell */
+        const int r = q[0] >= 75 ? 3 : q[0] >= 50 ? 2 : q[0] >= 25 ? 1 : 0;
+        memcpy(e->org_bar, R[r], sizeof e->org_bar);
+        e->org_perc_lvl = r == 3 ? 0.0f : 1.2f * b;
+        e->org_sus = f01(q[2]);
+        e->org_swk = r == 3 ? 0.00025f : 0.05f;
+        erb_prepare(e);
+        e->syn_lpk = onepole_k(sr, 1.0f / (2.0f * PI_F * (800.0f + 5200.0f * d)));
+        e->syn_out = 2.0f * (f < 0.5f ? 4.0f * f * f : db2lin(12.0f * (f - 0.5f)));   /* +6 dB: the owner found it quiet on 990 */
+        return;
+    }
     e->syn_lvl[0] = e->syn_lvl[1] = e->syn_lvl[2] = 0.0f; e->syn_out = 1.0f;
     e->syn_lpk = opk(sr, 3000.0f);
     erb_prepare(e);
@@ -1714,6 +1829,35 @@ static void rc_syn(px_engine *e)
     e->syn_lpk = onepole_k(sr, 1.0f / (2.0f * PI_F * 1500.0f));
     /* v66: LEVEL 0..100 as the owner asked: 0 silent, rising as the square to 0 dB at noon, then up to +6 dB */
     e->syn_out = f < 0.5f ? 4.0f * f * f : db2lin(syn_fuzz_level_db(f));
+}
+
+/* ORGAN over a block: the bank's drawbars (the percussion restarts the 2 2/3' on a pick), then the organ's hold: the
+ * wet levelled by a slow follower (SUSTAIN: a guitar's decay becomes a held tone), gated with the guitar */
+static void organ_run(px_engine *e, float *xb, int n, float strim)
+{
+    px_erb_octave *s = &e->erb_syn;
+    const float *bar = e->org_bar;
+    s->mid8 = bar[1];
+    for (int k = 0; k < n; ++k) {
+        const float x = xb[k], a = x < 0.0f ? -x : x;
+        e->org_fast += (a - e->org_fast) * 0.0224f; e->org_slow += (a - e->org_slow) * 0.0011f;
+        if (e->org_fast > 1.8f * e->org_slow && e->org_fast > 2e-3f && e->org_since > 2646) { e->org_perc = 1.0f; e->org_since = 0; }
+        if (e->org_since < (1 << 30)) e->org_since++;
+        e->org_perc *= 0.99985f;                       /* ~150 ms */
+        s->up3 = bar[3] + e->org_perc_lvl * e->org_perc + 1e-9f;
+        const float w = erb_octaves2(e, s, x, bar[2], bar[0], bar[4], ERB_FULL);
+        const float wa = w < 0.0f ? -w : w;
+        e->org_agc += (wa - e->org_agc) * (wa > e->org_agc ? 0.004f : 0.0003f);
+        const float open = e->org_fast > 1.5e-3f ? 1.0f : 0.0f;
+        e->org_gate += (open - e->org_gate) * (open > e->org_gate ? 0.02f : 0.0015f);
+        e->org_swell += (e->org_gate - e->org_swell) * e->org_swk;
+        float g = 0.12f / (e->org_agc + 0.02f); if (g > 6.0f) g = 6.0f;
+        g = 1.0f + e->org_sus * (g - 1.0f);
+        float y = w * g * e->org_swell * 1.3f;
+        y = y / (1.0f + (y < 0.0f ? -y : y)) / 1.3f;   /* soft preamp grit (no tanhf in px_math) */
+        e->syn_lp += e->syn_lpk * (y - e->syn_lp);
+        xb[k] = e->syn_lp * e->syn_out * strim;
+    }
 }
 
 static void px_recalc(px_engine *e)
@@ -1741,7 +1885,7 @@ static void px_recalc(px_engine *e)
         e->btr[b] = DB[b] ? powf(10.0f, DB[b][type] * 0.05f) : 1.0f;
     }
     /* preset LEVEL (v36): -15..+15 dB, 0.3 dB a step, kept in the gate block's spare 5th setting */
-    e->patch_g = powf(10.0f, ((float)p->p[PX_B_GATE][PX_PATCH_LEVEL] - 50.0f) * 0.3f * 0.05f);
+    e->patch_g = powf(10.0f, ((float)p->patch_volume - 50.0f) * 0.3f * 0.05f);
 }
 
 /* ---- v75: the global settings ---- */
@@ -1754,9 +1898,7 @@ void px_engine_globals(px_engine *e, const px_global_t *g)
     if (q.hpf > 140u) q.hpf = 140u;
     for (int i = 0; i < 5; i++) if (q.eq[i] > 48u) q.eq[i] = 48u;
     if (q.lim > 24u) q.lim = 24u;
-    if (q.hush > 100u) q.hush = 100u;
     e->glob = q;
-    e->smart_gate.hush = (float)q.hush * 0.01f;
     e->g_hp_on = q.hpf != 0;
     if (e->g_hp_on) bq_highpass(&e->g_hp, sr, (float)q.hpf, 0.70710678f);
     int any = 0;
@@ -1773,10 +1915,11 @@ void px_engine_globals(px_engine *e, const px_global_t *g)
     e->g_lim_g = 1.0f;
 }
 
-/* v75 BST (RANGEMASTER, EP BOOST, MAXIMIZER, VOX FIXED WAH, ENHANCE): every pedal's state back to rest */
+/* Return the PRE / BOOST models to rest. */
 static void bst_reset(px_engine *e)
 {
     pxe_init(&e->enh, e->sr); pxp_rm_init(&e->rm, e->sr); pxp_ep_init(&e->ep, e->sr); pxp_bbe_init(&e->bbe, e->sr); pxp_vw_init(&e->vw, e->sr); pxp_ff_init(&e->ff, e->sr, 0); memset(&e->ap, 0, sizeof e->ap);
+    memset(&e->signature, 0, sizeof e->signature);
 }
 /* v75: tails. A delay or reverb that was running and is now off (the user switched it, or the new preset has it off) plays out for a few seconds instead of
  * stopping, if the global TAILS setting is on: its input is muted, its settings stay as they were, and the block ends after the time (px_tick). A block
@@ -1799,6 +1942,11 @@ void px_engine_init(px_engine *e, float sr)
 {
     memset(e, 0, sizeof(*e));
     e->sr = sr;
+    e->suppressor.gain = e->suppressor.hf_gain = 1.0f;
+    e->hum_fade = 1.0f;
+    { static const float f[6] = {50, 100, 150, 60, 120, 180};
+      for (int i = 0; i < 6; ++i) e->hum_c[i] = 2.0f * cosf(2.0f * PI_F * f[i] / sr); }
+
     e->oct_ff = 1.0f; e->oct_ff2 = 1.0f;
     e->dly_type = -1;
     e->syn_type = -1;
@@ -1823,7 +1971,7 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     px_recalc(e);
     if (e->cur.on[PX_B_PITCH] && e->cur.type[PX_B_PITCH] == PX_PIT_LOWEST_HQ)
         lowest_pitch_reset(e);
-    if (e->cur.type[PX_B_PITCH] == PX_PIT_POLYSHIFT && e->pv.inited) pv_reset(&e->pv);   /* v75: a new preset: an empty frame buffer */
+    if (e->cur.type[PX_B_PITCH] == PX_PIT_POLYSHIFT || e->cur.type[PX_B_PITCH] == PX_PIT_DROP) ps_reset(e);   /* a new preset: the bank from silence */
     e->run = e->cur;                                   /* v38: nothing gliding, nothing fading */
     for (int L = 0; L < 2; L++) if (e->spill[L]) { const int b = L ? PX_B_REVERB : PX_B_DELAY; e->run.on[b] = 1; e->run.type[b] = e->sp_type[L]; }   /* v75: the tails play on */
     wl_clear(e);                                       /* v39: the lanes start empty (the output fades in) */
@@ -1861,7 +2009,7 @@ int px_engine_change(const px_engine *e, const px_preset_t *p)
     const uint8_t *o = p->order;
     if (!px_order_valid(o)) { px_order_default(od); o = od; }
     if (memcmp(o, e->ord, PX_NBLK)) return PX_CH_FULL;
-    int k = c->valve_on != p->valve_on || c->valve_drive != p->valve_drive || c->valve_level != p->valve_level;
+    int k = c->valve_on != p->valve_on || c->valve_drive != p->valve_drive || c->valve_level != p->valve_level || c->patch_volume != p->patch_volume;
     for (int b = 0; b < PX_NBLK; b++) {
         if (c->type[b] != p->type[b]) return PX_CH_FULL;
         if (c->on[b] != p->on[b] || memcmp(c->p[b], p->p[b], PX_NPAR)) k = 1;
@@ -1878,6 +2026,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     for (int i = 0; i < GL_N; i++) was[i] = *GLP(e, i);
     const px_preset_t old = e->cur;
     e->cur = *p;
+    if (old.on[PX_B_GATE] != p->on[PX_B_GATE] || old.on[PX_B_PITCH] != p->on[PX_B_PITCH]) rc_dyn(e);
     if (p->valve_on && !old.valve_on && e->triode.mix == 0.0f) triode_reset(e);
     e->triode.drive = 4.0f * db2lin(valve_drive_db(f01(p->valve_drive)));
     e->triode.level = valve_output_gain(p->valve_level);
@@ -1899,7 +2048,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         default: rc_syn(e); break;
         }
     }
-    e->patch_g = powf(10.0f, ((float)p->p[PX_B_GATE][PX_PATCH_LEVEL] - 50.0f) * 0.3f * 0.05f);
+    e->patch_g = powf(10.0f, ((float)p->patch_volume - 50.0f) * 0.3f * 0.05f);
     int any = 0;
     for (int i = 0; i < GL_N; i++) {                   /* from where they were (mid-glide too) to the new values */
         float *v = GLP(e, i);
@@ -1921,15 +2070,18 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
-            if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYSHIFT && e->pv.inited) pv_reset(&e->pv);   /* v75 */
-            if (b == PX_B_SYN && p->type[b] == PX_SYN_OCT_FUZZ) {
+            if (b == PX_B_PITCH && (p->type[b] == PX_PIT_POLYSHIFT || p->type[b] == PX_PIT_DROP)) ps_reset(e);
+            if (b == PX_B_SYN && (p->type[b] == PX_SYN_OCT_FUZZ || p->type[b] == PX_SYN_ORGAN)) {
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
                 syn_fuzz_reset(e);
             }
+            if (b == PX_B_SYN && px_syn_bs(p->type[b])) bs_reset(e);
             if (b == PX_B_SYN && px_syn_mono(p->type[b])) px_s2_reset(e, p->type[b], p->p[b]);
+#ifdef PX_SFX_SYNTH_HQ_LIVE
             if (b == PX_B_SFX && p->type[b] == PX_SFX_SYNTH_HQ) {
                 memset(&e->sfx_track, 0, sizeof e->sfx_track); pxt_reset(e, &pxs_trk, &pxs_lay);
             }
+#endif
         }
         e->run.on[b] = on;
     }
@@ -1939,6 +2091,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     e->run.valve_on = p->valve_on;
     e->run.valve_drive = p->valve_drive;
     e->run.valve_level = p->valve_level;
+    e->run.patch_volume = p->patch_volume;
     for (int L = 0; L < 2; L++) if (e->spill[L]) e->run.type[L ? PX_B_REVERB : PX_B_DELAY] = e->sp_type[L];   /* v75: a tail keeps the type it had */
 }
 /* ---- v75: load shedding ---- */
@@ -2496,55 +2649,96 @@ static inline float synth_hq_pulse(const px_synth_tracking *track, int harmonic,
     return syn_saw(phase, advance) - syn_saw(wrap1(phase + width), advance);
 }
 
-/* Shared by the block and scalar engines. The sidechain filters never touch the output. */
-static float smart_gate_sample(px_engine *e, float x)
+/* Clean-input control path. Peak release bridges low fundamentals; the sustain
+ * follower and hold prevent rectifier ripple from modulating the audio gain.
+ * Upward noise learning is capped below threshold and frozen throughout notes. */
+static void suppressor_detect(px_engine *e, float x, float *gain, float *hf)
 {
-    e->smart_gate.dc += e->smart_gate.dc_k * (x - e->smart_gate.dc);
-    const float side = x - e->smart_gate.dc;
-    e->smart_gate.split += e->smart_gate.split_k * (side - e->smart_gate.split);
-    const float bands[2] = {px_abs(e->smart_gate.split), px_abs(side - e->smart_gate.split)};
-    int attack = 0, sustain = 0;
-    for (int i = 0; i < 2; ++i) {
-        float env = e->smart_gate.band[i];
-        env += e->smart_gate.env_k * (bands[i] - env);
-        e->smart_gate.band[i] = env;
-        float slow = e->smart_gate.slow[i];
-        float floor = e->smart_gate.floor[i];
-        const float min = e->smart_gate.sensitivity * (i == 0 ? 1.0f : 0.65f);
-        const float open = floor * 3.0f + min;
-        if (env > open && env > slow * 1.5f + 0.25f * min) attack = 1;
-        if (env > floor * 1.8f + 0.45f * min) sustain = 1;
-
-        /* Learn idle noise. Bound upward learning so a missed attack cannot rapidly poison the floor. */
-        if (env < floor) floor += (env - floor) * e->smart_gate.fast_k;
-        else if (!e->smart_gate.open && env < slow * 1.25f + min) {
-            float rise = env - floor;
-            if (rise > min) rise = min;
-            floor += rise * e->smart_gate.learn_k;
-        }
-        e->smart_gate.floor[i] = floor;
-        e->smart_gate.slow[i] += (env - slow) * e->smart_gate.slow_k;
+    const float a = px_abs(x);
+    e->suppressor.peak = a > e->suppressor.peak ? a : a + (e->suppressor.peak - a) * e->suppressor.peak_rel;
+    const float pk = e->suppressor.peak;
+    e->suppressor.mean += (a - e->suppressor.mean) * (1.0f - e->suppressor.peak_rel);
+    float env = e->suppressor.sustain;
+    env += (pk - env) * (pk > env ? 0.02f : 1.0f - e->suppressor.sustain_rel);
+    e->suppressor.sustain = env;
+    const float minimum = e->suppressor.sensitivity;
+    float floor = e->suppressor.floor;
+    if (pk < floor) floor += (pk - floor) * e->suppressor.fall;
+    else if (!e->suppressor.open && pk < minimum * 0.5f)
+        floor += (pk - floor) * e->suppressor.learn;
+    e->suppressor.floor = floor;
+    const float threshold = minimum + 2.0f * floor;
+    if (pk > threshold || (e->suppressor.open && env > threshold * 0.45f)) {
+        e->suppressor.open = 1; e->suppressor.remaining = e->suppressor.hold;
+    } else if (e->suppressor.remaining) --e->suppressor.remaining;
+    else e->suppressor.open = 0;
+    float target = 1.0f;
+    if (!e->suppressor.disabled && !e->suppressor.open) {
+        float u = env / (threshold + 1e-12f);
+        if (u > 1.0f) u = 1.0f;
+        const float u2 = u * u, u4 = u2 * u2;
+        target = u4 * u4;
+        if (target < 0.0001f) target = 0.0001f;
     }
-
-    if (attack || (e->smart_gate.open && sustain)) e->smart_gate.remaining = e->smart_gate.hold;
-    else if (e->smart_gate.remaining) --e->smart_gate.remaining;
-    e->smart_gate.open = e->smart_gate.remaining != 0;
-    const float target = e->smart_gate.open ? 1.0f : e->smart_gate.range;
-    const float coefficient = e->smart_gate.open ? e->smart_gate.attack : 1.0f - e->gate_rel;
-    e->smart_gate.gain += (target - e->smart_gate.gain) * coefficient;
-    float y = x * e->smart_gate.gain;
-    if (e->smart_gate.hush > 0.0f) {                   /* v75: the hiss filter. How far the note is above the gate's own threshold (its two bands' envelopes against
-                                                          the sensitivity) sets a low-pass: wide open from about 24 dB above it, closing to 700 Hz at the threshold; HUSH
-                                                          is how far it follows (0: not at all). The decay of a note loses its hiss, the note keeps its top. */
-        const float lvl = (e->smart_gate.band[0] + e->smart_gate.band[1]) / (e->smart_gate.sensitivity * 16.0f + 1e-9f);
-        float u = lvl > 1.0f ? 1.0f : lvl;             /* 0 .. 1 */
-        u *= u;
-        const float fc_open = 12000.0f, fc = 700.0f + (fc_open - 700.0f) * u, fe = fc_open + (fc - fc_open) * e->smart_gate.hush;
-        float k = 6.2831853f * fe / e->sr; if (k > 0.95f) k = 0.95f;
-        e->smart_gate.lp += k * (y - e->smart_gate.lp);
-        y = e->smart_gate.lp;
+    e->suppressor.gain += (target - e->suppressor.gain) *
+        (target > e->suppressor.gain ? e->suppressor.attack : e->suppressor.release);
+    *gain = e->suppressor.gain;
+    *hf = 1.0f;
+    if (e->suppressor.hush > 0.0f) {
+        e->suppressor.hf_split += e->suppressor.split_k * (x - e->suppressor.hf_split);
+        const float high = px_abs(x - e->suppressor.hf_split);
+        e->suppressor.hf_env += (high - e->suppressor.hf_env) * (high > e->suppressor.hf_env ? 0.04f : 0.0005f);
+        float nf = e->suppressor.hf_floor;
+        const float he = e->suppressor.hf_env;
+        if (he < nf) nf += (he - nf) * e->suppressor.fall;
+        else if ((!e->suppressor.open || (e->suppressor.disabled && pk < 0.006f)) && he > pk * 0.12f && pk > e->suppressor.mean * 1.85f)
+            nf += (he - nf) * (e->suppressor.fall * 0.3f);
+        e->suppressor.hf_floor = nf;
+        const float noise = nf + 0.00001f;
+        float u = (e->suppressor.hf_env - noise) / (noise * 2.5f);
+        if (u < 0.0f) u = 0.0f;
+        if (u > 1.0f || pk > env * 1.4f) u = 1.0f;
+        const float ht = 1.0f - e->suppressor.hush * 0.85f * (1.0f - u);
+        e->suppressor.hf_gain += (ht - e->suppressor.hf_gain) * (ht > e->suppressor.hf_gain ? e->suppressor.attack : e->suppressor.release);
+        *hf = e->suppressor.hf_gain;
+    } else if (e->suppressor.hf_gain < 1.0f) {
+        e->suppressor.hf_gain += (1.0f - e->suppressor.hf_gain) * e->suppressor.attack;
+        if (e->suppressor.hf_gain > 0.99999f) e->suppressor.hf_gain = 1.0f;
+        *hf = e->suppressor.hf_gain;
     }
-    return y;
+}
+static float suppressor_sample(px_engine *e, float x, float gain, float hf)
+{
+    if (e->suppressor.hush > 0.0f || hf < 1.0f) {
+        e->suppressor.output_lp += e->suppressor.split_k * (x - e->suppressor.output_lp);
+        x -= (1.0f - hf) * (x - e->suppressor.output_lp);
+    }
+    return x * gain;
+}
+/* Two independent banks avoid coefficient switching in a live recursive filter. */
+static void hum_input(px_engine *e, float *x, int n)
+{
+    int want = e->hum_mode == 1 ? 50 : e->hum_mode == 2 ? 60 : e->hum_mode == 3 ? (e->hum_hz == 60 ? 60 : 50) : 0;
+    if (!e->hum_mode && !e->hum_current && e->hum_fade >= 1.0f) return;
+    if (e->hum_mode == 3) hum_detect(e, x, n);
+    if (want != e->hum_current && e->hum_fade >= 1.0f) {
+        memcpy(e->hum_old, e->hum, sizeof e->hum);
+        e->hum_pending = e->hum_current;
+        e->hum_current = want;
+        memset(e->hum, 0, sizeof e->hum);
+        for (int i = 0; i < 3; ++i) if (want) bq_notch(&e->hum[i], e->sr, (float)(want * (i + 1)), 2.0f, 25.0f);
+        e->hum_fade = 0.0f;
+    }
+    for (int k = 0; k < n; ++k) {
+        float a = x[k], b = x[k];
+        if (e->hum_current) for (int i = 0; i < 3; ++i) a = bq_run(&e->hum[i], a);
+        if (e->hum_fade < 1.0f) {
+            if (e->hum_pending) for (int i = 0; i < 3; ++i) b = bq_run(&e->hum_old[i], b);
+            x[k] = b + (a - b) * e->hum_fade;
+            e->hum_fade += 1.0f / (0.020f * e->sr);
+            if (e->hum_fade > 1.0f) e->hum_fade = 1.0f;
+        } else x[k] = a;
+    }
 }
 /* ---- v40.4: blocks over a run of samples, pass by pass ----
  * px_engine_part ran these blocks sample by sample inside its own loop: every sample went through the block switch and
@@ -2590,14 +2784,20 @@ static __attribute__((noinline)) void pitch_run(px_engine *e, int type, float *x
         e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
         return;
     }
-    if (type == PX_PIT_POLYSHIFT) {                    /* v75: the dry and the wet voice both PV_LAT behind, mixed */
-        px_pv *const v = &e->pv;
-        if (!v->inited) pv_init(v);
-        const float m = v->mix;
+    if (type == PX_PIT_DROP) {                         /* the whole guitar from the bank (the low string's note moved), the highs from the input */
+        const float m = e->psh.mix;
         for (int k = 0; k < n0; ++k) {
-            float d, w;
-            pv_tick(v, xb[k], &d, &w);
-            xb[k] = d * (1.0f - m) + w * m * strim;       /* (the level trim is the wet voice's: MIX 0 is the input, unchanged) */
+            const float x = xb[k];
+            xb[k] = (dt_run(e, x) * m + x * (1.0f - m)) * strim;
+        }
+        e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
+        return;
+    }
+    if (type == PX_PIT_POLYSHIFT) {                    /* the bank's shifted voice, mixed with the input (no delay: the bank's own few ms) */
+        const float m = e->psh.mix;
+        for (int k = 0; k < n0; ++k) {
+            const float x = xb[k];
+            xb[k] = x * (1.0f - m) + ps_run(e, x) * m * strim;   /* (the level trim is the wet voice's: MIX 0 is the input, unchanged) */
         }
         e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
         return;
@@ -2645,13 +2845,13 @@ static __attribute__((noinline)) void pitch_run(px_engine *e, int type, float *x
     e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
 }
 /* GATE, COMP */
-static __attribute__((noinline)) void gate_run(px_engine *e, int on, float *xb, int n, float strim)
+static __attribute__((noinline)) void gate_run(px_engine *e, int on, float *xb, int n, float strim, const float *sg, const float *hf)
 {
     float env = e->gate_env, g = e->gate_g;
     const float thr = e->gate_thr, rel = e->gate_rel;
     for (int k = 0; k < n; k++) {
         float x = xb[k];
-        if (on && e->smart_gate.active) x = smart_gate_sample(e, x);
+        if (on && e->suppressor.active) x = suppressor_sample(e, x, sg[k], hf[k]);
         else if (on) {
             const float a = px_abs(x);
             env = (a > env) ? a : a + (env - a) * 0.9995f;
@@ -2916,7 +3116,6 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     const int pit_t = px_type_canonical(PX_B_PITCH, p->type[PX_B_PITCH] % PX_PIT_COUNT);
     const int sfx_t = p->type[PX_B_SFX] % PX_SFX_COUNT;
     const int mod_t = p->type[PX_B_MOD] % PX_MOD_COUNT;
-    const int eq_t = p->type[PX_B_EQ] % PX_EQ_COUNT;
     const int bst_t = p->type[PX_B_BST] % PX_BST_COUNT;
     const int dly_t = p->type[PX_B_DELAY] % PX_DLY_COUNT;
     const int syn_t = p->type[PX_B_SYN];               /* (a retired or unknown type is not run: px_syn_runs) */
@@ -2938,7 +3137,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     {
     /* v37: block by block over the n samples (each block's state stays in registers through its loop; the order of
      * each sample's operations is unchanged, so the output is the same as sample by sample) */
-    float xb[PX_MAX_BLOCK];
+    float xb[PX_MAX_BLOCK], sg[PX_MAX_BLOCK], hf[PX_MAX_BLOCK];
     for (int k = 0; k < n; k++) {
         e->dn = (k & 1) ? 1e-15f : -1e-15f;            /* anti-denormal (-300 dB): digital silence never decays */
         float x = in[k] + e->dn;
@@ -2946,6 +3145,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         xb[k] = x;
     }
     if (e->g_hp_on) bq_block(&e->g_hp, xb, n);         /* v75: the global input high-pass */
+    hum_input(e, xb, n);
+    if (e->suppressor.active && p->on[PX_B_GATE]) for (int k = 0; k < n; ++k) suppressor_detect(e, xb[k], &sg[k], &hf[k]);
     /* Synth2: the mono synth follows the clean guitar, before the gate, the octave and every other effect (docs/research/synth2/SYNTH2-PLAN.md): its
      * output waits here and replaces the signal where the SYNTH block stands in the order */
     float sy[PX_MAX_BLOCK];
@@ -3000,6 +3201,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             for (int k = 0; k < n; ++k) xb[k] = sy[k] * strim + xb[k] * (g0 + dg * (float)k);   /* (the type's level trim is the synth's: the guitar's own share stays as the MIX sets it) */
             goto faded;
         }
+        if (sblk == PX_B_SYN && syn_t == PX_SYN_ORGAN) { organ_run(e, xb, n, strim); goto faded; }
+        if (sblk == PX_B_SYN && px_syn_bs(syn_t)) { bs_run(e, syn_t, xb, n, strim); goto faded; }
         if (sblk == PX_B_SYN && syn_t == PX_SYN_OCT_FUZZ) {
             for (int k = 0; k < n; ++k) {
                 const float x = xb[k];
@@ -3018,10 +3221,9 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             pitch_run(e, pit_t, xb, n, strim);
             goto faded;
         }
-        if (sblk == PX_B_GATE) { gate_run(e, p->on[PX_B_GATE], xb, n, strim); goto faded; }
+        if (sblk == PX_B_GATE) { gate_run(e, p->on[PX_B_GATE], xb, n, strim, sg, hf); goto faded; }
         if (sblk == PX_B_COMP && p->on[PX_B_COMP]) { comp_run(e, cmp_t == PX_CMP_SWELL, xb, n, strim); goto faded; }
         if (sblk == PX_B_EQ && p->on[PX_B_EQ]) {       /* its filters one after the other over the block, as the cabinet's */
-            if (eq_t == PX_EQ_HUM && p->p[PX_B_EQ][0] >= 34 && p->p[PX_B_EQ][0] <= 66) hum_detect(e, xb, n);   /* MAINS = AUTO */
             bq_chain(e->eq, e->eq_n, xb, n);
             for (int k = 0; k < n; k++) xb[k] *= strim;
             goto faded;
@@ -3033,7 +3235,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         switch (sblk) {
         case PX_B_GATE:
             /* ---- gate ---- */
-            if (p->on[PX_B_GATE] && e->smart_gate.active) x = smart_gate_sample(e, x);
+            if (p->on[PX_B_GATE] && e->suppressor.active) x = suppressor_sample(e, x, sg[k], hf[k]);
             else if (p->on[PX_B_GATE]) {
                 float a = px_abs(x);
                 e->gate_env = (a > e->gate_env) ? a : a + (e->gate_env - a) * 0.9995f;
@@ -3151,6 +3353,126 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     x *= e->sfx_g;
                 } break;
                 case PX_SFX_ACOUSTIC: x = ad_tick(&e->ad, x); break;
+                case PX_SFX_PULSE: {
+                    float a = px_abs(x); e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
+                    float b = bq_run(&e->sfx_f1, x);
+                    const float up = e->sfx_env * (0.01f + 0.32f * e->sfx_c);
+                    const float down = e->sfx_env * (0.32f - 0.30f * e->sfx_c);
+                    if (e->sfx_prev <= 0.0f && b > up) { e->sfx_prev = 1.0f; e->sfx_ff = -e->sfx_ff; }
+                    else if (e->sfx_prev > 0.0f && b < -down) e->sfx_prev = -1.0f;
+                    float sig = (e->sfx_prev + e->sfx_ff * e->sfx_d) * e->sfx_env;
+                    float t = e->sfx_env * 24.0f; if (t > 1.0f) t = 1.0f;
+                    float f = 2.0f * PI_F * (180.0f + t * 3200.0f) / sr;
+                    float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
+                    e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
+                    x = x * (1.0f - e->sfx_mix) + e->sfx_lo * 2.0f * e->sfx_mix;
+                } break;
+                case PX_SFX_CHIP: {
+                    float a = px_abs(x); e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
+                    float b = bq_run(&e->sfx_f1, x), h = e->sfx_env * 0.1f;
+                    if (e->sfx_prev <= 0.0f && b > h) {
+                        e->sfx_prev = 1.0f; e->sfx_ff = -e->sfx_ff;
+                        uint32_t r = (uint32_t)e->sfx_pat; r ^= r << 13; r ^= r >> 17; r ^= r << 5; e->sfx_pat = (int)r;
+                    } else if (e->sfx_prev > 0.0f && b < -h) e->sfx_prev = -1.0f;
+                    const float noise = (e->sfx_pat & 1) ? 1.0f : -1.0f;
+                    float sig = (e->sfx_prev * (1.0f - e->sfx_c) + noise * e->sfx_c + e->sfx_ff * e->sfx_d * (1.0f - e->sfx_c)) * e->sfx_env;
+                    float t = e->sfx_env * 24.0f; if (t > 1.0f) t = 1.0f;
+                    float f = 2.0f * PI_F * (180.0f + t * 3200.0f) / sr;
+                    float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
+                    e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
+                    x = x * (1.0f - e->sfx_mix) + e->sfx_lo * 2.0f * e->sfx_mix;
+                } break;
+                case PX_SFX_CROSS: {
+                    const float a = px_abs(x);
+                    e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
+                    const float b = bq_run(&e->sfx_f1, x), h = e->sfx_env * 0.1f;
+                    if (e->sfx_prev <= 0.0f && b > h) { e->sfx_prev = 1.0f; e->sfx_ff = -e->sfx_ff; }
+                    else if (e->sfx_prev > 0.0f && b < -h) e->sfx_prev = -1.0f;
+                    const float sig = (e->sfx_prev + e->sfx_ff * e->sfx_d) * e->sfx_env;
+                    const float env = e->sfx_env > 1.0f ? 1.0f : e->sfx_env;
+                    const float cutoff = 180.0f + 6200.0f * e->sfx_c + 7000.0f * env;
+                    const float f = 2.0f * PI_F * cutoff / sr;
+                    const float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
+                    e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
+                    x = x * (1.0f - e->sfx_mix) + e->sfx_lo * 2.0f * e->sfx_mix;
+                } break;
+                case PX_SFX_FORMANT: {
+                    const float a = px_abs(x);
+                    e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
+                    const float b = x, h = e->sfx_env * 0.1f;
+                    if (e->sfx_prev <= 0.0f && b > h) { e->sfx_prev = 1.0f; e->sfx_ff = -e->sfx_ff; }
+                    else if (e->sfx_prev > 0.0f && b < -h) e->sfx_prev = -1.0f;
+                    const float sig = (e->sfx_prev + e->sfx_ff * e->sfx_d) * e->sfx_env;
+                    const float open = e->sfx_c * 0.7f * e->sfx_env;
+                    bq_bandpass(&e->sfx_f1, sr, 300.0f + 900.0f * e->sfx_c + 1200.0f * open, 1.2f + 7.0f * e->sfx_qd);
+                    bq_bandpass(&e->sfx_f2, sr, 800.0f + 2300.0f * e->sfx_c + 2200.0f * open, 1.2f + 7.0f * e->sfx_qd);
+                    const float formed = bq_run(&e->sfx_f1, sig) + bq_run(&e->sfx_f2, sig) * 0.7f;
+                    x = x * (1.0f - e->sfx_mix) + formed * e->sfx_mix;
+                } break;
+                case PX_SFX_CROSS_SAW: case PX_SFX_CROSS_TRI: {
+                    const float a = px_abs(x);
+                    e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
+                    const float b = bq_run(&e->sfx_f1, x), h = e->sfx_env * 0.1f;
+                    e->sfx_sync_age += 1.0f / sr;
+                    if (e->sfx_prev <= 0.0f && b > h) {
+                        e->sfx_prev = 1.0f;
+                        if (e->sfx_sync_age > 1.0f / 1400.0f && e->sfx_sync_age < 1.0f / 45.0f)
+                            e->sfx_sync_freq = 1.0f / e->sfx_sync_age;
+                        e->sfx_sync_age = 0.0f; e->sfx_sync_phase = 0.0f;
+                    } else if (e->sfx_prev > 0.0f && b < -h) e->sfx_prev = -1.0f;
+                    e->sfx_sync_phase += e->sfx_sync_freq / sr;
+                    if (e->sfx_sync_phase >= 1.0f) e->sfx_sync_phase -= (int)e->sfx_sync_phase;
+                    const float phase = e->sfx_sync_phase;
+                    const float wave = sfx_t == PX_SFX_CROSS_SAW ? 2.0f * phase - 1.0f : 1.0f - 4.0f * px_abs(phase - 0.5f);
+                    const float sig = wave * e->sfx_env;
+                    const float cutoff = 180.0f + 6200.0f * e->sfx_c + 7000.0f * e->sfx_env;
+                    const float f = 2.0f * PI_F * cutoff / sr;
+                    const float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
+                    e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
+                    x = x * (1.0f - e->sfx_mix) + e->sfx_lo * e->sfx_d * 2.0f * e->sfx_mix;
+                } break;
+                case PX_SFX_CROSS_OSC: {
+                    const float a = px_abs(x);
+                    e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
+                    const float b = bq_run(&e->sfx_f1, x), h = e->sfx_env * 0.1f;
+                    e->sfx_sync_age += 1.0f / sr;
+                    const int wave = (int)e->sfx_sync_inc;
+                    const float pulse_start = -0.30f * e->sfx_env;
+                    const float pulse_end = 0.50f * e->sfx_env;
+                    const int rising = e->sfx_prev <= 0.0f && b > (wave == 1 ? pulse_start : h);
+                    if (rising) {
+                        e->sfx_prev = 1.0f;
+                        const float period = e->sfx_sync_age;
+                        if (period > 1.0f / 1400.0f && period < 1.0f / 45.0f) {
+                            const float measured = 1.0f / period;
+                            if (measured > e->sfx_sync_freq * 0.5f && measured < e->sfx_sync_freq * 2.0f)
+                                e->sfx_sync_freq += (measured - e->sfx_sync_freq) * 0.22f;
+                        }
+                        e->sfx_sync_age = 0.0f; e->sfx_sync_phase = 0.0f;
+                        if (e->sfx_sync_inc < 0.5f) e->sfx_ff = -e->sfx_ff;
+                    } else if (e->sfx_prev > 0.0f && b < (wave == 1 ? pulse_end : -h)) e->sfx_prev = -1.0f;
+                    float wave_sample;
+                    if (wave == 0) wave_sample = e->sfx_prev;
+                    else if (wave == 1) wave_sample = e->sfx_prev;
+                    else {
+                        e->sfx_sync_phase += e->sfx_sync_freq / sr;
+                        if (e->sfx_sync_phase >= 1.0f) e->sfx_sync_phase -= (int)e->sfx_sync_phase;
+                        wave_sample = wave == 2 ? 1.0f - 4.0f * px_abs(e->sfx_sync_phase - 0.5f) : 2.0f * e->sfx_sync_phase - 1.0f;
+                    }
+                    float sig = (wave_sample + e->sfx_ff * e->sfx_d) * e->sfx_env;
+                    if (wave == 4) sig = px_tanh(sig * 3.5f) * 1.3f;
+                    else if (wave == 5) sig = x * e->sfx_env * 1.8f;
+                    else if (wave == 6) sig = px_tanh(sig * 0.75f) * 1.3f;
+                    const float cutoff = 180.0f + 6200.0f * e->sfx_c + 7000.0f * e->sfx_env;
+                    const float f = 2.0f * PI_F * cutoff / sr;
+                    const float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
+                    e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
+                    float shaped = e->sfx_lo * 2.0f;
+                    if (wave == 4) shaped += bq_run(&e->sfx_f2, sig) * 2.0f;
+                    else if (wave == 5) shaped = bq_run(&e->sfx_f2, sig) * 4.0f;
+                    else if (wave == 6) shaped = bq_run(&e->sfx_f2, sig) * 2.5f;
+                    x = x * (1.0f - e->sfx_mix) + shaped * e->sfx_mix;
+                } break;
                 case PX_SFX_LOFI: {
                     float y = bq_run(&e->sfx_f2, bq_run(&e->sfx_f1, x));
                     y = px_tanh(y * e->sfx_c) * (1.5f / (1.0f + e->sfx_c * 0.2f));
@@ -3160,6 +3482,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     float a = px_abs(x);
                     e->sfx_env += (a - e->sfx_env) * (a > e->sfx_env ? e->sfx_a : e->sfx_b);
                     float b = bq_run(&e->sfx_f1, x), s;
+#ifdef PX_SFX_SYNTH_HQ_LIVE
                     if (sfx_t == PX_SFX_SYNTH_HQ) {
                         b = bq_run(&e->sfx_f2, b);
                         const int on = e->sfx_env > (e->sfx_track.gate ? 0.001f : 0.002f);
@@ -3169,7 +3492,9 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                         const float sq = synth_hq_pulse(&e->sfx_track, 4, 0.5f);
                         const float sub = synth_hq_pulse(&e->sfx_track, 2, 0.5f);
                         s = (sq + sub * e->sfx_d) * e->sfx_env;
-                    } else {
+                    } else
+#endif
+                    {
                         const float h = e->sfx_env * 0.1f;
                         if (e->sfx_prev <= 0.0f && b > h) {
                             e->sfx_prev = 1.0f; e->sfx_ff = -e->sfx_ff;
@@ -3195,6 +3520,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             case PX_BST_ENHANCE: x = pxe_tick(&e->enh, x); break;
             case PX_BST_FUZZFACE: x = pxp_ff_tick(&e->ff, x); break;
             case PX_BST_ACOUSTIC: x = ap_tick(&e->ap, x); break;
+            case PX_BST_SIGNATURE: x = signature_tick(&e->signature, x); break;
             default: x = pxp_vw_tick(&e->vw, x); break;
             }
         break;

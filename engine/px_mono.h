@@ -188,33 +188,4 @@ static inline void px_mono_run(const px_engine *e, px_mono *m, float x, px_mono_
     o->f0 = (m->pend > 0 && m->f_hold > 0.0f) ? m->f_hold : m->lay.f0; o->vel = m->lay.vel; o->expr = m->lay.expr; o->conf = m->trk.conf;
     m->was = g;
 }
-
-#if defined(PX_SYNTH_TRACKING_TEST)
-/* Square HQ's note layer with a fast release when the string is cut. */
-static inline void px_mono_fast_run(const px_engine *e, px_mono *m, float x, px_mono_out *o)
-{
-    const float a = px_abs(x), sr = m->lay.sr;
-    m->pk = a > m->pk ? a : m->pk * (1.0f - 1.0f / (0.15f * sr));
-    m->fe += (a - m->fe) * (a > m->fe ? 1.0f / (0.001f * sr) : 1.0f / (0.010f * sr));
-    pxt_layer_run(&m->lay, &m->trk, x, pxt_run(e, &m->trk, x));
-
-    if (!m->lay.gate) m->mute = 0;
-    else if (m->mute && m->lay.onset && m->lay.onset_peak >= 0.3f * m->mute_pk) {
-        m->mute = 0;
-        m->pk = m->lay.onset_peak;
-    }
-    const int damp = m->lay.gate && m->was && !m->mute && m->pk > 0.01f && m->fe < 0.1f * m->pk;
-    if (damp) {
-        m->mute = 1;
-        m->mute_pk = m->pk;
-    }
-    const int gate = m->lay.gate && !m->mute;
-    if (gate) m->f_hold = m->lay.f0;
-    *o = (px_mono_out){
-        .f0 = m->f_hold, .gate = gate, .vel = m->lay.vel,
-        .onset = gate && !m->was, .release = !gate && m->was, .damp = damp,
-    };
-    m->was = gate;
-}
-#endif
 #endif

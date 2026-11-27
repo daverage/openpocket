@@ -55,7 +55,7 @@ let s = sim(["--dump", flash1]);
 await s.ready;
 let ed = new Editor(s.access);
 const info = await ed.connect();
-ok(info && info.proto === 11 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
+ok(info && info.proto === 12 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
 ok(info && info.nblk === 10 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 10 blocks, 5 parameters, 52 slots, names of 13");
 const t0 = Date.now();
 const cat = await ed.catalog();
@@ -71,6 +71,16 @@ const withTexts = cat.blocks.flatMap((b) => b.types.flatMap((t) => t.params.filt
 ok(withTexts > 0 && cat.blocks[7].types[0].params.some((p) => p.texts && p.texts.some((x) => /ms|\d/.test(x))), `catalogue: value texts for ${withTexts} parameters (delay time...)`);
 let st = await ed.state();
 ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st.preset.name}", not changed`);
+
+{
+  const signature = cat.blocks[9].types[7];
+  ok(signature?.name === "SIGNATURE" && signature.params.map((p) => p.name).join() === "BODY,FOCUS,RICHNESS,PUNCH,LEVEL" &&
+    signature.params[4].texts[50] === "0", "SIGNATURE: catalogue and LEVEL at unity");
+  await ed.set(9, 2, 0, 7);
+  const selected = (await ed.state()).preset;
+  ok(selected.type[9] === 7 && selected.p[9].join() === "60,55,25,30,50", "SIGNATURE: selecting the model loads its voicing");
+  await ed.select(st.slot);
+}
 
 // v48 (protocol 5): FOOTSWITCH, the current preset's footswitches in STOMP mode
 {
@@ -190,8 +200,8 @@ ok(valvePreset.valveOn && valvePreset.valveDrive === 75 && valvePreset.valveLeve
 a.valveOn = valvePreset.valveOn; a.valveDrive = valvePreset.valveDrive; a.valveLevel = valvePreset.valveLevel;
 a.type[comp] = valvePreset.type[comp]; a.on[comp] = valvePreset.on[comp]; a.p[comp] = valvePreset.p[comp];
 const oldWire = encodePreset(valvePreset, info.nblk, info.npar, 2);
-ok((await ed.request(C.PUT, oldWire))[0] === 0 && (await ed.state()).preset.valveLevel === 24,
-  "PUT: protocol 10 presets restore unity Level");
+ok((await ed.request(C.PUT, oldWire))[0] === 1 && (await ed.state()).preset.valveLevel === 33,
+  "PUT: historical wire layouts are rejected without altering the sound");
 const b = clonePreset(g.preset); b.name = "STAGED B"; b.p[amp][0] = 99;
 ok(await ed.slotPut(20, a, false) === 0 && await ed.slotPut(21, b, false) === 0, "SLOT_PUT: two slots staged in memory");
 ok(await ed.commit() === 0, "COMMIT: one flash write");
@@ -210,14 +220,22 @@ ok(odd.warn.length === 2 && odd.preset.p[amp][0] === 1, "file: unknown type and 
 const legacyValve = presetFromJSON({ blocks: [{ block: "CMP", on: true, type: "VALVE", params: [96] }] }, cat, q);
 ok(legacyValve.preset.valveOn && legacyValve.preset.valveDrive === 96 && legacyValve.preset.valveLevel === 24 && !legacyValve.preset.on[comp],
   "imports migrate the old CMP VALVE at unity Level");
+// Patch volume is independent of the gate and is carried by wire and JSON.
+const volumeBefore = clonePreset((await ed.state()).preset);
+await ed.setParam(11, 0, 68);
+const volumeAfter = (await ed.state()).preset;
+ok(volumeAfter.patchVolume === 68 && JSON.stringify({ ...volumeAfter, patchVolume: 0 }) === JSON.stringify({ ...volumeBefore, patchVolume: 0 }), "Patch volume SET leaves every other preset field unchanged");
+const volumeJSON = presetToJSON(volumeAfter, cat);
+ok(presetFromJSON(volumeJSON, cat, volumeBefore).preset.patchVolume === 68, "Patch volume JSON round trip");
+await ed.setParam(11, 0, volumeBefore.patchVolume);
 // v75 (protocol 9): GLOBAL (the settings outside the presets) and TUNER
 {
   const g0 = await ed.global();
-  ok(ed.hasGlobal && g0.tuner === 440 && g0.hpf === 0 && g0.eq.every((d) => d === 0) && g0.lim === 0 && g0.tails === true && g0.hush === 0 && g0.tunerLights === 1 && g0.lightsOff === false, "GLOBAL: the defaults (flat, no limiter, tails on, the tuner's needle (v76), lights on)");
+  ok(ed.hasGlobal && g0.tuner === 440 && g0.hpf === 0 && g0.eq.every((d) => d === 0) && g0.lim === 0 && g0.tails === true && g0.tunerLights === 1 && g0.lightsOff === false, "GLOBAL: the defaults (flat, no limiter, tails on, the tuner's needle (v76), lights on)");
   const g1 = await ed.global({ tuner: 432, hpf: 80, eq: [3, -1.5, 0, 6, -12], lim: -3, tails: false, hush: 40, tunerLights: 2, lightsOff: true });
-  ok(g1.tuner === 432 && g1.hpf === 80 && g1.eq.join() === "3,-1.5,0,6,-12" && g1.lim === -3 && g1.tails === false && g1.hush === 40 && g1.tunerLights === 2 && g1.lightsOff === true, `GLOBAL set: read back as set (${JSON.stringify(g1)})`);
+  ok(g1.tuner === 432 && g1.hpf === 80 && g1.eq.join() === "3,-1.5,0,6,-12" && g1.lim === -3 && g1.tails === false && g1.tunerLights === 2 && g1.lightsOff === true, `GLOBAL set: read back as set (${JSON.stringify(g1)})`);
   const g2 = await ed.global({ tuner: 440, hpf: 0, eq: [50, -50, 0, 0, 0], lim: -99, tails: true, hush: 500 });
-  ok(g2.tuner === 440 && g2.eq[0] === 12 && g2.eq[1] === -12 && g2.lim === -12 && g2.hush === 100, "GLOBAL set: out-of-range values are clamped");
+  ok(g2.tuner === 440 && g2.eq[0] === 12 && g2.eq[1] === -12 && g2.lim === -12, "GLOBAL set: out-of-range values are clamped");
   await ed.global({ tuner: 466, hpf: 25, eq: [0, 0, 1, 0, 0], lim: 0, tails: true, hush: 25, tunerLights: 1, lightsOff: false });
   const tu = await ed.tuner();
   ok(tu.hz === 0 && tu.open === false && tu.ref === 466, `TUNER: no note, the page closed, the reference A (${JSON.stringify(tu)})`);
@@ -249,7 +267,7 @@ list = await ed.list();
   let u = await ed.usbAudio();
   ok(u.on && u.rc === 0, "USB audio: still on after a power cycle");
   const gp = await ed.global();
-  ok(gp.tuner === 466 && gp.hpf === 25 && gp.eq[2] === 1 && gp.hush === 25 && gp.tails === true && gp.tunerLights === 1, `GLOBAL: still set after a power cycle (${JSON.stringify(gp)})`);
+  ok(gp.tuner === 466 && gp.hpf === 25 && gp.eq[2] === 1 && gp.tails === true && gp.tunerLights === 1, `GLOBAL: still set after a power cycle (${JSON.stringify(gp)})`);
   ok(!u.recording && !u.playing && Object.keys(u.counts).length === 20, "USB audio: the streams' state and 20 counts");
   u = await ed.usbAudio(false);
   ok(!u.on && u.rc === 0 && !(await ed.usbAudio()).on, "USB audio: switched off again");

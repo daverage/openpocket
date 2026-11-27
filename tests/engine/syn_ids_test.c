@@ -38,7 +38,10 @@ int main(void)
         for (int i = 0; i < 2048; i++) if (out[i] != out[i] || fabsf(out[i]) > 50.0f) nan = 1;
         CHECK(!nan, "no NaN / runaway");
         if (t == PX_SYN_OCT_FUZZ) { CHECK(!same, "POLY OCT FUZZ runs"); CHECK(!px_type_retired(PX_B_SYN, t), "POLY OCT FUZZ is live"); CHECK(px_type_name(PX_B_SYN, t)[0] && px_nparams(PX_B_SYN, t) == 5, "POLY OCT FUZZ keeps its name and 5 controls"); }
-        else if (t == PX_SYN_ANALOG || t == PX_SYN_ARCADE || t == PX_SYN_ARCADE_SPLIT || t == PX_SYN_INSTRUMENT || t == PX_SYN_ENSEMBLE || t == PX_SYN_CHOIR) { CHECK(!px_type_retired(PX_B_SYN, t) && px_nparams(PX_B_SYN, t) == 5 && px_type_name(PX_B_SYN, t)[0], "ANALOG and ARCADE are live"); }
+        else if (px_syn_runs(t)) {                      /* the waveform-following types (28..33 retired 2026-11-27, 39..44 on 2026-11-28) */
+            CHECK(!px_type_retired(PX_B_SYN, t) && px_nparams(PX_B_SYN, t) == 5 && px_type_name(PX_B_SYN, t)[0], "the waveform-following types are live");
+            CHECK(!same, "a waveform-following type sounds");
+        }
         else {
             CHECK(same, "a tombstone is bypassed: the output is the block off, bit for bit");
             CHECK(px_type_retired(PX_B_SYN, t), "a tombstone says so");

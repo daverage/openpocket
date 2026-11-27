@@ -275,6 +275,11 @@ function rowMenu(slot, anchor) {
   menu(anchor, [
     slot !== app.st.slot && { label: "Load", run: () => selectPreset(slot) },
     { label: "Rename…", run: () => rename(slot) },
+    { label: "Patch volume…", run: async () => {
+      if (slot !== app.st.slot) await selectPreset(slot);
+      if (slot !== app.st.slot) return;
+      emit("view-go", "sound"); $("patchrow").open = true; $("patchvolume").focus();
+    } },
     { label: "Copy to…", run: () => duplicate(slot) },
     { label: "Move to…", run: () => moveTo(slot) },
     { label: "Move up", run: () => movePreset(slot, slot - 1), disabled: slot === 0 },
@@ -294,7 +299,7 @@ export function renderList() {
     const row = h("div", { class: `row${s.saved ? " user" : ""}${cur ? " cur" : ""}${s.slot === active ? " act" : ""}`, role: "option", id: `ps${s.slot}`, "data-slot": s.slot, "aria-selected": cur ? "true" : "false" },
       h("span", { class: "n", text: slotName(s.slot) }),
       h("span", { class: "nm", text: cur ? app.st.preset.name : s.name }),
-      h("span", { class: "sum", text: cur && app.st.dirty ? "Edited, not saved" : e ? summary(cur ? { preset: app.st.preset } : e) : "" }),
+      h("span", { class: "sum", text: (cur && app.st.dirty ? "Edited, not saved" : e ? summary(cur ? { preset: app.st.preset } : e) : "") + ((cur ? app.st.preset : e?.preset)?.patchVolume !== undefined ? ` · ${Math.round(((cur ? app.st.preset : e.preset).patchVolume - 50) * 3) / 10} dB` : "") }),
       s.saved && h("span", { class: "tag", text: "Yours" }),
       h("button", { type: "button", class: "more", tabIndex: -1, "aria-label": `Actions for ${slotName(s.slot)} ${s.name}`, "aria-haspopup": "menu",
         onclick: (ev) => { ev.stopPropagation(); rowMenu(s.slot, ev.currentTarget); } }, icon("more")));

@@ -4,7 +4,7 @@
 
 import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName, toast } from "./edcore.js";
 import { costPct } from "./pxcost.js";
-import { VALVE_ACTION, VALVE_LEVEL_UNITY } from "./pxedit.js";
+import { PATCH_ACTION, VALVE_ACTION, VALVE_LEVEL_UNITY } from "./pxedit.js";
 import { save, saveAs, revert, exportOne, setCompare, comparing, duplicate, moveTo, restoreFactory } from "./edpresets.js";
 
 let dragging = null;
@@ -57,7 +57,24 @@ function setFs(set) {
 }
 
 const formatDb = (db) => `${db > 0 ? "+" : ""}${db} dB`;
+function paintRange(input) {
+  const min = Number(input.min || 0), max = Number(input.max || 100);
+  input.style.setProperty("--p", `${(Number(input.value) - min) * 100 / (max - min)}%`);
+}
+function renderPatch() {
+  const p = app.st?.preset;
+  $("patchrow").hidden = p?.patchVolume === undefined;
+  if (p?.patchVolume === undefined) return;
+  const el = $("patchvolume");
+  if (document.activeElement !== el) el.value = p.patchVolume;
+  paintRange(el);
+  const text = formatDb(Math.round((p.patchVolume - 50) * 3) / 10);
+  $("patchsummary").textContent = $("patchdb").textContent = text;
+  el.setAttribute("aria-valuetext", text);
+  el.disabled = comparing();
+}
 function renderValve() {
+  renderPatch();
   const row = $("valverow"), p = app.st?.preset;
   row.hidden = !app.ed?.hasValve || !p;
   if (row.hidden) return;
@@ -65,12 +82,14 @@ function renderValve() {
   sw.setAttribute("aria-checked", String(!!p.valveOn));
   sw.querySelector("span").textContent = on;
   if (document.activeElement !== input) input.value = p.valveDrive;
+  paintRange(input);
   const db = formatDb(Math.round(24 * (+input.value / 100) ** 2));
   $("valvedb").textContent = db;
   input.setAttribute("aria-valuetext", db);
   const level = $("valvelevel"), hasLevel = app.ed.hasValveLevel;
   $("valvelevelrow").hidden = !hasLevel;
   if (hasLevel && document.activeElement !== level) level.value = (p.valveLevel - VALVE_LEVEL_UNITY) / 2;
+  if (hasLevel) paintRange(level);
   const levelDb = formatDb(+level.value);
   $("valveleveldb").textContent = levelDb;
   level.setAttribute("aria-valuetext", levelDb);
@@ -90,7 +109,8 @@ const pendingParams = new Map();
 let sendingParam = false;
 export function sendParam(b, k, v) {
   if (!app.ed || comparing()) return;
-  if (b === VALVE_ACTION) app.st.preset[k === 0 ? "valveDrive" : "valveLevel"] = v;
+  if (b === PATCH_ACTION) app.st.preset.patchVolume = v;
+  else if (b === VALVE_ACTION) app.st.preset[k === 0 ? "valveDrive" : "valveLevel"] = v;
   else app.st.preset.p[b][k] = v;
   pendingParams.set(`${b}/${k}`, { b, k, v });
   if (!sendingParam) flushParam();
@@ -334,6 +354,8 @@ function showVal(k) {
 function renderNote() { $("blocknote").hidden = true; }
 
 export function initSound() {
+  $("patchvolume").oninput = (e) => { sendParam(PATCH_ACTION, 0, +e.target.value); renderPatch(); };
+  $("patchvolume").onblur = renderPatch;
   on("state", (o) => { if (!app.st) return; renderHeader(); renderValve(); if (!o.own) { renderTiles(); renderPage(o.push); } if (!o.own) refreshFs(); });
   on("compare", () => { renderHeader(); renderTiles(); renderPage(); renderFs(); renderValve(); });
   $("valveon").onclick = () => setValveOn(!app.st.preset.valveOn);

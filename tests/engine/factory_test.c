@@ -21,7 +21,7 @@ int main(void)
     int mx = 0; for (int l = 0; l < 5; l++) if (len[l] > mx) mx = len[l];
     out = malloc(sizeof(float) * (size_t)mx);
     double lo[5], dummy = 0; px_preset_t p, q;
-    memset(&p, 0, sizeof p); px_order_default(p.order); p.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    memset(&p, 0, sizeof p); px_order_default(p.order); p.patch_volume = 50;
     for (int l = 0; l < 5; l++) { render(&p, in[l], out, len[l], &dummy); lo[l] = lufs(out, len[l]); }
     char names[52][14];
     for (int i = 0; i < 52; i++) {
@@ -37,7 +37,7 @@ int main(void)
         }
         q = p; px_preset_canonical(&q);
         CHECK(!memcmp(&p, &q, sizeof p), "slot %d (%s): px_preset_canonical changes a factory preset", i + 1, p.name);
-        if (i == 51) { int n = 0; for (int b = 0; b < PX_NBLK; b++) n += p.on[b]; CHECK(n == 1 && p.on[PX_B_GATE] && p.p[PX_B_GATE][PX_PATCH_LEVEL] == 50, "INIT: only the gate, LEVEL 0 dB"); }
+        if (i == 51) { int n = 0; for (int b = 0; b < PX_NBLK; b++) n += p.on[b]; CHECK(n == 1 && p.on[PX_B_GATE] && p.patch_volume == 50, "INIT: only the gate, LEVEL 0 dB"); }
         double mean = 0, pk = 0;
         for (int l = 0; l < 5; l++) {
             render(&p, in[l], out, len[l], &dummy);

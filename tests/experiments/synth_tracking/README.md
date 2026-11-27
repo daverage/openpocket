@@ -54,3 +54,29 @@ For a dry comparison, bypass MOD, DELAY and REVERB in a working preset. Use the 
 | JAZZ ORGAN | Hard mute a note. Re-pick softly right away, then repeat with palm-muted eighths. | Ghost notes after the mute, a lost soft re-pick, delayed cutoff |
 | CHOIR AAH | Alternate soft and hard notes, then try OO>AH and repeat the same phrase | Pick dynamics, clicks, and whether the vowel restarts sound musical |
 | STRING ENSEMB | Hold a note, cut it dead, then play a short separated pair and a legato pair | Swell and tail length, missing second notes, big volume dips |
+
+## Pedal follow-up v83
+
+On v82, SQUARE LEAD tracked more reliably than ANALOG LEAD, which missed notes and jumped octaves. JAZZ ORGAN missed notes and gave ghost blips on hard attacks, with a high hiss. STRING ENSEMB jumped pitch in fast runs and became unstable with two guitar notes. CHOIR AAH and OO>AH played well.
+
+v83 keeps v82's envelope follower for CHOIR. ANALOG, Organ and Strings return to the pre-v82 pitch, onset and dynamics paths. The original SQUARE LEAD remains the comparison. The Strings voice stack still follows one guitar pitch. Test clean single-note runs first, then add note overlap to hear when it loses the intended pitch.
+
+`node tools/op.mjs package-synth-tracking` now builds v83. The v82 source and build command are at commit `68327cf`.
+
+## Original SFX Square comparison
+
+```sh
+python3 tests/experiments/synth_tracking/run.py --square-edges "My Audio/fast play di.wav" "My Audio/bleep3 di.wav"
+```
+
+Open `build/synth-square-edges/index.html` to compare Analog Lead, Instrument
+Jazz Organ and Ensemble Strings with their stock tracking, the experimental
+edge tracker and the original SFX Square as a reference. All are rendered
+without the factory presets' downstream effects.
+
+The experiment uses the original Square's 700 Hz low-pass, envelope and threshold
+to find rising edges. It measures the period between those edges to drive each
+patch's existing oscillator voices. A 25 ms gap closes the gate. The filter and
+crossings match the Square method, but the oscillator voices need two rising
+edges before they can sound. A short low E can end before the second edge.
+This experiment runs on the host and does not change the pedal firmware.

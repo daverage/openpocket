@@ -12,11 +12,11 @@ int main(void)
     int mx = 0; for (int l = 0; l < 5; l++) if (len[l] > mx) mx = len[l];
     out = malloc(sizeof(float) * (size_t)mx);
     double lo[5], dummy = 0; px_preset_t p;
-    memset(&p, 0, sizeof p); px_order_default(p.order); p.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    memset(&p, 0, sizeof p); px_order_default(p.order); p.patch_volume = 50;
     for (int l = 0; l < 5; l++) { render(&p, in[l], out, len[l], &dummy); lo[l] = lufs(out, len[l]); }
     printf("trans,pickup,fuzz,mean_db,worst_db,best_db,peak_dbfs\n");
     for (int tr = 0; tr < 2; tr++) for (int pk = 0; pk <= 100; pk += 50) for (int fz = 0; fz <= 100; fz += 25) {
-        px_preset_base(&p); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0; p.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+        px_preset_base(&p); for (int k = 0; k < PX_NBLK; k++) p.on[k] = 0; p.patch_volume = 50;
         p.on[PX_B_BST] = 1; p.type[PX_B_BST] = PX_BST_FUZZFACE; p.p[PX_B_BST][0] = (uint8_t)fz; p.p[PX_B_BST][1] = 50; p.p[PX_B_BST][2] = (uint8_t)pk; p.p[PX_B_BST][3] = 50; p.p[PX_B_BST][4] = tr ? 100 : 0;
         double mean = 0, worst = 99, best = -99, pkv = 0;
         for (int l = 0; l < 5; l++) { render(&p, in[l], out, len[l], &dummy); const double d = lufs(out, len[l]) - lo[l]; mean += d / 5; if (d < worst) worst = d; if (d > best) best = d; for (int k = 0; k < len[l]; k++) if (fabs(out[k]) > pkv) pkv = fabs(out[k]); }

@@ -14,7 +14,7 @@ export function presetBytes(preset) {
       order: preset.order.flatMap((b) => (b === 0 ? [0, NBLK - 1] : [b])) };
   }
   const size = NAME + NBLK * 3 + NBLK * NPAR;
-  const b = new Uint8Array(size + 3);
+  const b = new Uint8Array(size + 4);
   b.set([...preset.name].slice(0, NAME - 1).map((c) => c.charCodeAt(0)));
   b.set(preset.on, NAME);
   b.set(preset.type, NAME + NBLK);
@@ -23,6 +23,7 @@ export function presetBytes(preset) {
   b[size] = preset.valveOn ? 1 : 0;
   b[size + 1] = preset.valveDrive ?? 71;
   b[size + 2] = preset.valveLevel ?? 24;
+  b[size + 3] = preset.patchVolume ?? 50;
   if (preset.type[1] === 4) {
     b[size] = preset.on[1] ? 1 : 0;
     b[size + 1] = preset.p[1][0];
@@ -43,12 +44,12 @@ export class PxEngine {
   }
   factory(index) { this.x.px_factory(index); this.x.px_apply(); }
   preset(bytes) {
-    const view = new Uint8Array(this.x.memory.buffer, this.x.px_preset(), 97);
+    if (bytes.length !== 98) throw new Error("Expected the current 98-byte preset format");
+    const view = new Uint8Array(this.x.memory.buffer, this.x.px_preset(), 98);
     view.set(bytes);
-    if (bytes.length === 96) view[96] = 24;  // presets encoded before Valve Level
     this.x.px_apply();
   }
-  globals(g) { this.x.px_globals(g.hpf, ...g.eq, g.lim, g.tails, g.hush); }
+  globals(g) { this.x.px_globals(g.hpf, ...g.eq, g.lim, g.tails); }
   volume(master) { this.x.px_volume(master); }
   bypass(on) { this.x.px_bypass(on ? 1 : 0); }
   tunerMute(on) { this.x.px_tuner_mute(on ? 1 : 0); }

@@ -96,13 +96,13 @@ int main(int argc, char **argv)
     }
     { int mx = 0; for (int l = 0; l < 5; l++) if (len[l] > mx) mx = len[l]; out = malloc(sizeof(float) * (size_t)mx); if (!out) { fprintf(stderr, "out of memory\n"); return 1; } }   /* one render buffer, as long as the longest loop */
     double dummy = 0, lo[5]; px_preset_t p;
-    memset(&p, 0, sizeof p); px_order_default(p.order); p.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+    memset(&p, 0, sizeof p); px_order_default(p.order); p.patch_volume = 50;
     for (int l = 0; l < 5; l++) { render(&p, in[l], off[l], len[l], &dummy); lo[l] = lufs(off[l], len[l]); }
     printf("block,type,name,mean_db,worst_db,best_db,peak_dbfs,ms_per_s\n");
     for (int b = 1; b < PX_NBLK; b++) {
         for (int t = 0; t < px_ntypes(b); t++) {
             if (px_type_retired(b, t) || !px_type_name(b, t)[0]) continue;
-            memset(&p, 0, sizeof p); px_order_default(p.order); p.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
+            memset(&p, 0, sizeof p); px_order_default(p.order); p.patch_volume = 50;
             p.on[b] = 1; p.type[b] = (uint8_t)t; for (int k = 0; k < PX_NPAR; k++) p.p[b][k] = (uint8_t)setting(b, t, k, param);
             double sec = 0, tot = 0, mean = 0, worst = 99, best = -99, peak = -99;
             for (int l = 0; l < 5; l++) {

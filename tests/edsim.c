@@ -293,13 +293,13 @@ static void status(void)
            (double)tuner_hz, writes_ok, fb_gen, ed_load(), ed_flags() & 1u, ed_flags() >> 1 & 1u);
     json_str(last_press);
     printf(",\"stomp\":%u,\"bypass\":%u,\"fs\":[%u,%u]", ui_stomp, ui_byp, ui_fs_get(0), ui_fs_get(1));   /* v48 */
-    printf(",\"global\":{\"hpf\":%u,\"lim\":%u,\"tails\":%u,\"hush\":%u,\"eq\":", a_gl.hpf, a_gl.lim, a_gl.tails, a_gl.hush);
+    printf(",\"global\":{\"hpf\":%u,\"lim\":%u,\"tails\":%u,\"hush\":%u,\"eq\":", a_gl.hpf, a_gl.lim, a_gl.tails, 0);
     json_list(a_gl.eq, 5);
     printf(",\"lights\":%u}", st_cfg.lights);
     printf(",\"presses\":%u,\"knob\":%d,\"held\":[", n_press, knob_pos);
     for (int i = 0, n = 0; i < N_BUTTON; i++) if (held >> i & 1u) { printf(n++ ? "," : ""); json_str(BUTTON[i]); }
-    printf("],\"preset\":{\"valveOn\":%s,\"valveDrive\":%u,\"valveLevel\":%u,\"name\":",
-           PRESET.valve_on ? "true" : "false", (unsigned)PRESET.valve_drive, (unsigned)PRESET.valve_level);
+    printf("],\"preset\":{\"valveOn\":%s,\"valveDrive\":%u,\"patchVolume\":%u,\"valveLevel\":%u,\"name\":",
+           PRESET.valve_on ? "true" : "false", (unsigned)PRESET.valve_drive, (unsigned)PRESET.patch_volume, (unsigned)PRESET.valve_level);
     json_str(PRESET.name);
     printf(",\"on\":"); json_list(PRESET.on, PX_NBLK);
     printf(",\"type\":"); json_list(PRESET.type, PX_NBLK);

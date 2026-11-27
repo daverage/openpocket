@@ -12,12 +12,17 @@ int main(int argc, char **argv)
     if (argc != 5) return 2;
     proto_mode = atoi(argv[1]);
     int voice = atoi(argv[2]);
-    const uint8_t types[] = { PX_SYN_ANALOG, PX_SYN_CHOIR, PX_SYN_ENSEMBLE, PX_SYN_ENSEMBLE };
+    const uint8_t types[] = { PX_SYN_ANALOG, PX_SYN_CHOIR, PX_SYN_ENSEMBLE, PX_SYN_ENSEMBLE,
+                              PX_SYN_ANALOG, PX_SYN_INSTRUMENT, PX_SYN_ENSEMBLE, 0 };
     const uint8_t patches[][5] = {
         {0, 50, 50, 50, 50},   /* CLASSIC */
         {5, 45, 50, 50, 50},   /* CHOIR AH */
         {15, 45, 50, 50, 50},  /* ENSEMBLE STRINGS */
         {55, 45, 50, 50, 50},  /* ENSEMBLE ORGAN */
+        {25, 60, 45, 50, 50},  /* ANALOG LEAD */
+        {65, 50, 50, 50, 50},  /* JAZZ ORGAN */
+        {15, 15, 50, 50, 50},  /* STRING ENSEMB */
+        {0},                   /* SFX Square reference */
     };
     if (voice < 0 || voice >= (int)(sizeof types / sizeof *types)) return 2;
     long count;
@@ -31,10 +36,22 @@ int main(int argc, char **argv)
     px_preset_base(&p);
     memset(p.on, 0, sizeof p.on);
     p.valve_on = 0;
-    p.on[PX_B_SYN] = 1;
-    p.type[PX_B_SYN] = types[voice];
-    memcpy(p.p[PX_B_SYN], patches[voice], sizeof p.p[PX_B_SYN]);
-    px_engine_init(&engine, 44100.0f);
+    const float rate = 44100.0f;
+    if (voice == 7) {
+        p.on[PX_B_SFX] = 1;
+        p.type[PX_B_SFX] = PX_SFX_SYNTH;
+        const uint8_t square[] = {60, 40, 55, 100, 0};
+        memcpy(p.p[PX_B_SFX], square, sizeof square);
+    } else {
+        p.on[PX_B_SYN] = 1;
+        p.type[PX_B_SYN] = types[voice];
+        memcpy(p.p[PX_B_SYN], patches[voice], sizeof p.p[PX_B_SYN]);
+    }
+    px_engine_init(&engine, rate);
+    bq_lowpass(&edge_filter, rate, 700.0f, 0.7f);
+    edge_attack = onepole_k(rate, 0.002f);
+    edge_release = onepole_k(rate, 0.15f);
+    edge_age = (int)(0.025f * rate) + 1;
     px_engine_set(&engine, &p);
     for (long i = 0; i < count; i += 32) {
         const int n = count - i < 32 ? (int)(count - i) : 32;
