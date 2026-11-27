@@ -1,5 +1,7 @@
 # Synth2: the hardware test package (not flashed)
 
+> **Historical (superseded in v96).** This test plan covers the Synth2 tracker synths, which v96 retired ([WHATS-NEW-v96.md](WHATS-NEW-v96.md)).
+
 Nothing in this branch has been installed on a pedal. This is what to do, in order, and what to write down. Flashing is yours to start: the build only prepares files.
 
 ## The package

@@ -1,5 +1,7 @@
 # synth4: a quicker, cleaner response of the guitar synths
 
+> **Historical (superseded in v96).** These are the mono-tracker synths' response notes. In v96 those synths were retired in favour of waveform-following types that track nothing ([WHATS-NEW-v96.md](WHATS-NEW-v96.md)).
+
 Branch `synth4` (= `synth2-enhance` + `synth3-declick`). Goal: improve mono tracking use without clicks and pops, slurs, slow attacks and releases, and latency. Everything below was measured on the host with the FastTrack harness (`tests/archive/fasttrack`, the real tracker + adapter + Felucca chain); **none of it is heard or measured on the pedal yet**.
 
 ## Baseline (before)

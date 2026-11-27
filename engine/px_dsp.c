@@ -28,7 +28,6 @@
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
-#define PX_PV_IMPL
 #ifdef __PI32V2__   /* on the pedal: a buffer out of the 96 KB RAM. v40.4: in the 24 KB below it (firmware/app.ld .bss_lo); it was in
                      * the free end of the RAM code window (.bss_hi), which the audio path's code now needs */
 #define PX_LO(name) __attribute__((section(".bss.lo." #name)))
