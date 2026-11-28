@@ -55,7 +55,7 @@ let s = sim(["--dump", flash1]);
 await s.ready;
 let ed = new Editor(s.access);
 const info = await ed.connect();
-ok(info && info.proto === 12 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
+ok(info && info.proto === 16 && info.version === "v39" && info.identity === "PocketX_939", `INFO: ${info && `${info.version} ${info.identity}`}`);
 ok(info && info.nblk === 10 && info.npar === 5 && info.nslot === 52 && info.nameMax === 13, "INFO: 10 blocks, 5 parameters, 52 slots, names of 13");
 const t0 = Date.now();
 const cat = await ed.catalog();
@@ -67,6 +67,12 @@ ok(refreshed.blocks[1].types.length === 5 && refreshed.blocks[1].types.at(-1).na
 const ntypes = cat.blocks.reduce((n, b) => n + b.types.length, 0);
 ok(cat.blocks.length === 10 && cat.blocks.map((b) => b.label).join() === "GT,CMP,OCT,SYN,SFX,EQ,MOD,DLY,REV,BST", `catalogue: 10 blocks, ${ntypes} types (${Date.now() - t0} ms)`);
 ok(cat.blocks[3].name === "SYNTH" && cat.blocks[3].color === "#ff6500", `catalogue: the SYNTH block and its tile colour (${cat.blocks[3].color})`);
+ok(cat.blocks[2].types.some((t) => t.name === "POLY SHIFTER") &&
+   !cat.blocks[2].types.some((t) => t.name === "DROP TUNE"), "Catalogue: Poly Shifter available and Drop Tune retired");
+for (const name of ["STRINGS OCTAVE", "CHOIR OCTAVE"]) {
+  const type = cat.blocks[3].types.find((t) => t.name === name);
+  ok(type?.params[3].name === "OCTAVE MIX", `Catalogue: ${name} offers Octave Mix`);
+}
 const withTexts = cat.blocks.flatMap((b) => b.types.flatMap((t) => t.params.filter((p) => p.texts))).length;
 ok(withTexts > 0 && cat.blocks[7].types[0].params.some((p) => p.texts && p.texts.some((x) => /ms|\d/.test(x))), `catalogue: value texts for ${withTexts} parameters (delay time...)`);
 let st = await ed.state();
@@ -80,6 +86,83 @@ ok(st.slot === 0 && !st.dirty && st.preset.name.length > 0, `STATE: slot 1 "${st
   const selected = (await ed.state()).preset;
   ok(selected.type[9] === 7 && selected.p[9].join() === "60,55,25,30,50", "SIGNATURE: selecting the model loads its voicing");
   await ed.select(st.slot);
+}
+
+// Three scenes use the same chain, recall unsaved edits and travel with a saved slot.
+{
+  const slot = 51, delay = 7, reverb = 8;
+  const original = (await ed.state()).preset;
+  await ed.scene(1, 1);
+  await ed.set(delay, 1, 0, 1);
+  await ed.set(reverb, 1, 0, 1);
+  await ed.setParam(delay, 0, 33);
+  await ed.scene(5, 0, ...Buffer.from("Clean"));
+  await ed.scene(4, 1);
+  await ed.scene(2, 1);
+  let current = await ed.state();
+  ok(current.scenes.active === 1 && current.preset.p[delay][0] === 33, "Scenes: copy and recall the active sound");
+  await ed.set(delay, 1, 0, 0);
+  await ed.set(reverb, 1, 0, 0);
+  await ed.setParam(delay, 0, 77);
+  await ed.scene(6, 1);
+  s.raw("#down fs_dn");
+  current = await ed.state();
+  ok(current.scenes.active === 0 && current.scenes.names[0] === "Clean" &&
+     current.preset.on[delay] && current.preset.on[reverb] && current.preset.p[delay][0] === 33,
+     "Scenes: left switch recalls A with both wet blocks enabled");
+  await sleep(740);
+  ok((await ed.state()).scenes.active === 0, "Scenes: holding the switch does not trigger a gesture");
+  s.raw("#up fs_dn");
+  s.raw("#down fs_dn");
+  s.raw("#up fs_dn");
+  ok((await ed.state()).scenes.active === 2, "Scenes: left switch wraps from A to C");
+  s.raw("#press fs_up");
+  ok((await ed.state()).scenes.active === 0, "Scenes: right switch wraps from C to A");
+  await ed.scene(3, 1);
+  ok(await ed.save(slot) === 0, "Scenes: save the patch and the default scene");
+  await ed.select(0);
+  ok(!(await ed.state()).scenes.start, "Scenes: a legacy patch has scenes disabled");
+  await ed.select(slot);
+  current = await ed.state();
+  ok(current.scenes.start === 2 && current.scenes.active === 1 && !current.dirty &&
+     !current.preset.on[delay] && !current.preset.on[reverb] && current.preset.p[delay][0] === 77,
+     "Scenes: loading recalls B with its independently saved state");
+  await ed.scene(2, 0);
+  current = await ed.state();
+  ok(!current.dirty && JSON.stringify(current.preset.type) === JSON.stringify(original.type) &&
+     JSON.stringify(current.preset.order) === JSON.stringify(original.order),
+     "Scenes: recall keeps shared models and routing, and leaves the patch clean");
+  const saved = (await ed.slotGet(slot)).preset;
+  const transfer = presetFromJSON(presetToJSON(saved, cat, slot), cat, original).preset;
+  ok(saved.sceneData?.length === 143 && JSON.stringify(saved.sceneData) === JSON.stringify(transfer.sceneData),
+     "Scenes: editor preset files retain all three scenes");
+  ok(await ed.slotPut(slot - 1, transfer, true) === 0, "Scenes: restore all scenes from an editor preset file");
+  await ed.select(slot - 1);
+  ok((await ed.state()).scenes.active === 1, "Scenes: restored slot opens on the stored default");
+  await ed.scene(2, 2);
+  await ed.setParam(delay, 0, 91);
+  await ed.scene(3, 2);
+  await ed.scene(7, 2);
+  current = await ed.state();
+  ok(current.scenes.count === 2 && current.scenes.active === 0 && current.scenes.start === 1,
+     "Two scenes: hiding C moves the active and default scenes to A");
+  ok(await ed.scene(2, 2) === 1 && await ed.scene(3, 2) === 1, "Two scenes: hidden C cannot be recalled or made default");
+  await ed.scene(6, 1);
+  s.raw("#press fs_dn");
+  ok((await ed.state()).scenes.active === 1, "Two scenes: left switch toggles A to B");
+  s.raw("#press fs_up");
+  ok((await ed.state()).scenes.active === 0, "Two scenes: right switch toggles B to A");
+  ok(await ed.save(slot - 1) === 0, "Two scenes: save the scene count");
+  await ed.select(0);
+  await ed.select(slot - 1);
+  ok((await ed.state()).scenes.count === 2 && (await ed.slotGet(slot - 1)).preset.sceneData[0] === 5,
+     "Two scenes: count survives a patch reload and travels in exports");
+  await ed.scene(7, 3);
+  await ed.scene(2, 2);
+  ok((await ed.state()).preset.p[delay][0] === 91, "Two scenes: turning C back on restores its settings");
+  await ed.slotPut(slot - 1, null, false);
+  await ed.slotPut(slot, null, true);
+  await ed.select(0);
 }
 
 // v48 (protocol 5): FOOTSWITCH, the current preset's footswitches in STOMP mode

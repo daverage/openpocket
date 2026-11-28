@@ -36,6 +36,8 @@
 #define LDR_REC_HI 0xFF000u                     /* ... and below key_mac (Pocket X); OpenPocket stages at 0xE0000 */
 #define LDR_DATA_LO 0xF0000u                    /* OpenPocket's preset store (px_store.h, copies A and B): */
 #define LDR_DATA_HI 0xF4000u                    /* user data, never erased even if a sector ends like a record */
+#define LDR_SCENE_LO 0xE8000u
+#define LDR_SCENE_HI 0xEC000u
 #define LDR_NAM_LO 0xC0000u                     /* v37: OpenPocket's NAM user models (firmware/px_models.h): */
 #define LDR_NAM_HI 0xE0000u                     /* user data as well */
 #define LDR_IR_LO 0xF4000u                      /* v38: OpenPocket's cabinet IRs (firmware/px_irs.h): */
@@ -180,6 +182,8 @@ static int ldr_session(void)
         uint8_t r[80];
         if (s - 0x1000u >= LDR_DATA_LO && s - 0x1000u < LDR_DATA_HI)
             continue;                                    /* Felucca's store: user data that may look like one */
+        if (s - 0x1000u >= LDR_SCENE_LO && s - 0x1000u < LDR_SCENE_HI)
+            continue;                                    /* the preset scene extension */
         if (s - 0x1000u >= LDR_NAM_LO && s - 0x1000u < LDR_NAM_HI)
             continue;                                    /* the NAM models (v37) */
         if (s - 0x1000u >= LDR_IR_LO && s - 0x1000u < LDR_IR_HI)

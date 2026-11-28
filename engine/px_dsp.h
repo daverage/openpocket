@@ -44,7 +44,7 @@ enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_VALVE, PX
 enum { PX_PIT_OCTAVER, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_POLYOCT_HQ,
        PX_PIT_LOWEST_HQ,
        PX_PIT_POLYSHIFT,                                /* POLY SHIFTER, a shifter for chords on the bank (engine/px_banksyn.h; v75's phase vocoder retired) */
-       PX_PIT_DROP,                                     /* DROP TUNE: the low E string's notes alone moved down (engine/px_banksyn.h) */
+       PX_PIT_DROP,                                     /* retired Drop Tune ID, kept for saved presets */
        PX_PIT_COUNT };
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH,
        PX_SFX_SYNTH_HQ, PX_SFX_APPLAUSE, PX_SFX_ENHANCE, PX_SFX_RANGEMASTER, PX_SFX_EPBOOST, PX_SFX_MAXIMIZER, PX_SFX_ACOUSTIC, PX_SFX_PULSE, PX_SFX_CHIP, PX_SFX_CROSS, PX_SFX_FORMANT, PX_SFX_CROSS_SAW, PX_SFX_CROSS_TRI, PX_SFX_CROSS_OSC, PX_SFX_COUNT };
@@ -70,6 +70,7 @@ enum { PX_SYN_X_ORGAN, PX_SYN_X_CHURCH, PX_SYN_X_STRINGS, PX_SYN_X_CHOIR, PX_SYN
        PX_SYN_BS_STRINGS, PX_SYN_BS_CHOIR, PX_SYN_BS_BRASS, PX_SYN_BS_PIPE, PX_SYN_BS_TWELVE, PX_SYN_BS_BELL,
        PX_SYN_BS_SAW, PX_SYN_BS_PULSE, PX_SYN_BS_SUBBASS, PX_SYN_BS_ANALOG,
        PX_SYN_SQ_BRASS, PX_SYN_SQ_BASS, PX_SYN_SQ_FLUTE,
+       PX_SYN_BS_STRINGS_OCT, PX_SYN_BS_CHOIR_OCT,
        PX_SYN_COUNT };
 /* does this SYNTH type run? (1: a live type; 0: a tombstone, or an id beyond the catalogue: both are bypassed) */
 /* The mono-tracker types (ANALOG, ARCADE, ARCADE SPLIT, INSTRUMENT, ENSEMBLE, CHOIR) were retired after the owner's
@@ -80,8 +81,6 @@ static inline int px_syn_runs(int t)
 {
     return t == PX_SYN_OCT_FUZZ || (t >= PX_SYN_ORGAN && t < PX_SYN_COUNT && !(t >= PX_SYN_BS_TWELVE && t <= PX_SYN_BS_ANALOG));
 }
-static inline int dt_semis(uint8_t v)  /* DROP TUNE's knobs */ { return 1 + (v > 100 ? 100 : v) * 4 / 101; }   /* DROP 1..5 semitones (DROP D: 2) */
-static inline int dt_frets(uint8_t v) { return (v > 100 ? 100 : v) * 8 / 101; }        /* RANGE: frets 0..7 of the low string */
 static inline int px_syn_mono(int t) { (void)t; return 0; }   /* the types played by the mono tracker and Felucca: none now */   /* the types played by the mono tracker and Felucca */
 int         px_type_retired(int blk, int type);        /* 1: a tombstone (the UI skips it, the engine bypasses it) */
 int         px_nlive(int blk);                         /* the types that are not tombstones (MIDI's model slices count only these) */
@@ -175,7 +174,8 @@ typedef struct {                                      /* POLY SHIFTER on POLY OC
     float upr[26], upi[26];                            /* each band's last unit phasor */
     float wr[26], wi[26];                              /* each band's output phasor */
     float r, rt, mix, gain, attack, fast, slow; int since;
-    float hz, top_hz, m[26], bhz[26]; int sel, on;                  /* DROP TUNE: the lowest note now, the highest low-string note, each band's share of it */
+    float octave_gain, last, correction;
+    int octave;
 } px_pshift;
 typedef struct { float b0; px_erb_complex b1, b2, a1, a2; } px_erb_band;
 typedef struct {
@@ -329,6 +329,7 @@ typedef struct px_engine_s {
     int g_hp_on, g_eq_n;
     float g_lim_c, g_lim_g;                            /* the ceiling (linear) and the limiter's gain now */
     int16_t spill[2];                                  /* the delay (0) and reverb (1) tails still playing out: blocks of 64 frames left; 0: not spilling */
+    uint8_t rv_spill_dry;                              /* the reverb dry mix follows spill entry and exit without a step */
     uint8_t sp_type[2];                                /* the type each had when it was switched off: its derived settings stay as they were while it plays out */
 } px_engine;
 

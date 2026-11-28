@@ -9,7 +9,7 @@ It also retires the older synth catalogue, the earlier delay-line poly octaver, 
 Synth2 test build. Gate, compression, EQ, modulation, delay, and reverb are still available, alongside selected
 special effects and dedicated sounds such as **Fuzz Face** and **Acoustic Drive**.
 
-[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v96](docs/WHATS-NEW-v96.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
+[Web installer](https://daverage.github.io/openpocket/) · [What’s new in v97](docs/WHATS-NEW-v97.md) · [Pedal controls](docs/SOUNDS-AND-CONTROLS.md)
 
 ## Sounds and effects
 
@@ -92,7 +92,7 @@ median total DSP load fell from 49% to 39% with Fuzz Face alone in a live compar
 
 1. Open the [web installer](https://daverage.github.io/openpocket/) in desktop Chrome or Edge.
 2. Power on the pedal and connect it with a USB data cable. Click **Connect**, allow MIDI access, and confirm the model
-   and **v96 · build 996** under **Available firmware**.
+   and **v97 · build 997** under **Available firmware**.
 3. Click **Install** and leave the pedal powered and connected until the installer verifies the firmware after restart.
 
 Build 995 packages are `PocketX_995.fwsc` for the Donner Pocket X and `BlackBox_995.fwsc` for the M-VAVE BlackBox.

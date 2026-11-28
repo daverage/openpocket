@@ -80,17 +80,17 @@ let failed = 0;
 const ok = (c, what) => { console.log(`${what.padEnd(64)} ${c ? "ok" : "FAIL"}`); if (!c) failed++; };
 {
   const latest = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  const packages = ["PocketX", "BlackBox"].map((model) => ({ model, product: `${model}_996`, file: `${model}_996.fwsc` }));
-  await latest.route("**/firmware/manifest.json", (route) => route.fulfill({ json: { version: 96, packages } }));
+  const packages = ["PocketX", "BlackBox"].map((model) => ({ model, product: `${model}_997`, file: `${model}_997.fwsc` }));
+  await latest.route("**/firmware/manifest.json", (route) => route.fulfill({ json: { version: 97, packages } }));
   await latest.goto(url);
-  await latest.waitForFunction(() => document.getElementById("pkgver").textContent === "v96 · build 996");
-  ok(await latest.isVisible("#build996"), "build 996 shows the new synths, POLY SHIFTER and DROP TUNE");
+  await latest.waitForFunction(() => document.getElementById("pkgver").textContent === "v97 · build 997");
+  ok(await latest.isVisible("#build997"), "build 997 shows the scenes and pitch updates");
   await latest.click("#pkgfiles summary");
   const downloads = await latest.locator("#pkgdownloads a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-  ok(downloads.join() === "firmware/PocketX_996.fwsc,firmware/BlackBox_996.fwsc", "downloads follow both model entries in the manifest");
-  const notes = await latest.request.get(url + "WHATS-NEW-v96.md");
-  ok(notes.ok() && (await notes.text()).includes("DROP TUNE"), "the build 996 release notes are available");
-  await latest.screenshot({ path: join(OUT, "page_v96.png"), fullPage: true });
+  ok(downloads.join() === "firmware/PocketX_997.fwsc,firmware/BlackBox_997.fwsc", "downloads follow both model entries in the manifest");
+  const notes = await latest.request.get(url + "WHATS-NEW-v97.md");
+  ok(notes.ok() && (await notes.text()).includes("Scene Count"), "the build 997 release notes are available");
+  await latest.screenshot({ path: join(OUT, "page_v97.png"), fullPage: true });
   await latest.close();
 }
 await page.goto(url);
@@ -155,7 +155,7 @@ cpSync(join(FIX, "firmware"), join(SITE, "firmware", "midi-test"), { recursive: 
   await ch.waitForFunction(() => /midi-test/.test(document.getElementById("pkgver").textContent), null, { timeout: 5000 });
   ok(await ch.isVisible("#testchan"), "test channel: the banner says it is a test build");
   ok(/\(midi-test\)/.test(await ch.textContent("#pkgver")), "test channel: the packages come from firmware/midi-test/");
-  ok(!(await ch.isVisible("#build996")), "test channel stays separate from the build 996 feature notes");
+  ok(!(await ch.isVisible("#build997")), "test channel stays separate from the build 997 feature notes");
   await ch.goto(url + "?channel=../../etc");
   await ch.waitForFunction(() => document.getElementById("pkgver").textContent !== "…", null, { timeout: 5000 });
   ok((await ch.textContent("#pkgver")) === "—", "test channel: a path in the name is cleaned (firmware/etc/ is asked for, nothing outside firmware/)");

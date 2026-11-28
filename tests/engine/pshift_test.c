@@ -13,13 +13,14 @@ static int bad;
 #define CHECK(c, ...) do { if (!(c)) { bad++; printf("FAIL " __VA_ARGS__); printf("\n"); } } while (0)
 #define N 44100
 static float in[N], out[N];
-static void render(const uint8_t *q)
+static void render_type(int type, const uint8_t *q)
 {
     px_preset_t p; px_preset_base(&p); memset(p.on, 0, sizeof p.on); p.valve_on = 0;
-    p.on[PX_B_PITCH] = 1; p.type[PX_B_PITCH] = PX_PIT_POLYSHIFT; memcpy(p.p[PX_B_PITCH], q, 5);
+    p.on[PX_B_PITCH] = 1; p.type[PX_B_PITCH] = (uint8_t)type; memcpy(p.p[PX_B_PITCH], q, 5);
     px_engine_init(&e, 44100.0f); px_engine_set(&e, &p);
     for (int at = 0; at < N; at += 64) px_engine_process(&e, in + at, out + at, N - at < 64 ? N - at : 64);
 }
+static void render(const uint8_t *q) { render_type(PX_PIT_POLYSHIFT, q); }
 static double dft_power(const float *x, int n, double hz)
 {
     double re = 0, im = 0;
@@ -44,6 +45,29 @@ int main(int argc, char **argv)
     }
     static const float CH[4] = {82.41f, 123.47f, 164.81f, 207.65f};
     for (int i = 0; i < N; i++) { float s = 0; for (int c = 0; c < 4; c++) for (int h = 1; h <= 6; h++) s += 0.05f / h * sinf(6.2831853f * CH[c] * h * i / 44100.0f + h + c); in[i] = s; }
+    static float reference[N];
+    for (int st = -12; st <= 12; st += 24) {
+        const uint8_t octave[5] = {0, st < 0 ? 100 : 0, st > 0 ? 100 : 0, 0, 0};
+        const uint8_t shift[5] = {knob_for(st), 50, 100, 100, 0};
+        render_type(PX_PIT_POLYOCT_HQ, octave);
+        memcpy(reference, out, sizeof reference);
+        render(shift);
+        float delta = 0.0f;
+        for (int i = 0; i < N; i++) {
+            const float d = fabsf(out[i] - reference[i]);
+            if (d > delta) delta = d;
+        }
+        CHECK(delta < 1e-6f, "%+d semitones matches POLY OCTAVE HQ (largest difference %.8f)", st, delta);
+    }
+    {
+        px_preset_t legacy;
+        px_preset_base(&legacy);
+        legacy.on[PX_B_PITCH] = 1;
+        legacy.type[PX_B_PITCH] = PX_PIT_DROP;
+        px_preset_canonical(&legacy);
+        CHECK(!legacy.on[PX_B_PITCH] && px_type_retired(PX_B_PITCH, PX_PIT_DROP),
+              "old Drop Tune presets open with pitch bypassed");
+    }
     static const int SH[5] = {-12, -5, 4, 7, 12};
     for (int k = 0; k < 5; k++) {
         const uint8_t q[5] = {knob_for(SH[k]), 50, 100, 0, 0}; render(q);

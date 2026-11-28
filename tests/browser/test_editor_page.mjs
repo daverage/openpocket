@@ -132,6 +132,43 @@ ok(/Where it goes/.test(await text("#loadpop")) && /9 %/.test(await text("#loadp
 await page.keyboard.press("Escape");
 await page.evaluate(() => { window.__prof = null; });
 
+// ---- scenes share one patch and follow the pedal's footswitches ----
+await page.click("#sceneenable");
+await page.waitForSelector("#sceneactive:not([hidden])");
+await page.click('#sceneactive button[value="1"]');
+await page.waitForSelector('#sceneactive button[value="1"][aria-pressed="true"]');
+await page.click("#scenetune");
+await page.fill("#scenename", "Rhythm");
+await page.press("#scenename", "Tab");
+await page.waitForFunction(() => document.querySelector('#sceneactive button[value="1"]').textContent.includes("Rhythm"));
+await page.click("#fsrow summary");
+await page.click("#stomp");
+await page.waitForSelector('#stomp[aria-pressed="true"]');
+await page.click('#sceneactive button[value="0"]');
+await page.waitForSelector('#sceneactive button[value="0"][aria-pressed="true"]');
+ok(await page.getAttribute("#stomp", "aria-pressed") === "true" && await page.isVisible("#fsassignments"),
+  "Scenes: selecting a scene leaves Stomp assignments active");
+await shot("editor_scenes.png");
+await page.setViewportSize({ width: 390, height: 844 });
+ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  "Phone width: expanded scene controls fit without sideways scroll");
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.click("#scenemode");
+await page.waitForSelector('#scenemode[aria-pressed="true"]');
+sim.stdin.write("#press fs_up\n");
+await page.waitForSelector('#sceneactive button[value="1"][aria-pressed="true"]');
+ok(!(await page.isVisible("#fsassignments")), "Scene footswitch mode hides inactive assignments");
+await page.selectOption("#scenecount", "2");
+await page.waitForSelector('#sceneactive button[value="2"]', { state: "hidden" });
+sim.stdin.write("#press fs_up\n");
+await page.waitForSelector('#sceneactive button[value="0"][aria-pressed="true"]');
+ok(!(await page.isVisible('#sceneactive button[value="2"]')), "Two scenes: C is hidden and pedal recall wraps from B to A");
+await page.click("#patchmode");
+await page.waitForSelector('#patchmode[aria-pressed="true"]');
+await page.click("#sceneenable");
+await page.waitForSelector('#sceneenable[aria-checked="false"]');
+await page.click("#fsrow summary");
+
 // ---- a setting in the page -> the pedal ----
 await page.click('#tiles .tile[data-b="3"] .tsel');
 await sleep(150);

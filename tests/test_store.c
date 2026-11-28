@@ -13,7 +13,7 @@
 static uint8_t nor[0x100000];
 static int fails, ops, cut_at = -1, dead;          /* power cut: after cut_at flash operations nothing more happens */
 #define CHECK(c, what) do { if (!(c)) { printf("FAIL %s\n", what); fails++; } } while (0)
-static int in_store(uint32_t off, uint32_t n) { return off >= 0xF0000u && off + n <= 0xF4000u; }
+static int in_store(uint32_t off, uint32_t n) { return (off >= 0xF0000u && off + n <= 0xF4000u) || (off >= 0xE8000u && off + n <= 0xEC000u); }
 
 /* ---- the firmware pieces px_store.h uses ---- */
 static uint32_t ota_crc16(const uint8_t *p, uint32_t n, uint32_t c)
@@ -265,6 +265,48 @@ int main(void)
         CHECK(st_commit() == 0, "USB audio: a commit of off");
         reboot();
         CHECK(!px_ua_on && !st_usb, "USB audio: off survives a power cycle");
+    }
+    {
+        const unsigned slot = 51;
+        px_preset_t patch;
+        px_preset_factory(&patch, slot);
+        px_scene_record first = {0}, next, got;
+        first.start = PX_SCENE_TWO | 1u;
+        memcpy(first.name[1], "Rhythm", 7);
+        for (unsigned i = 0; i < PX_SCENES - 1u; i++) px_scene_capture(&first.other[i], &patch);
+        first.other[0].volume = 12;
+        CHECK(st_save_scene(slot, &patch, 0xFFu, 0, &first) == 0, "scene bank saves");
+        reboot();
+        st_scene_of(slot, &got);
+        CHECK(!memcmp(&first, &got, sizeof got), "two-scene bank and hidden C survive reboot");
+        next = first;
+        next.start = 3;
+        next.other[0].volume = 78;
+        static uint8_t snapshot[sizeof nor];
+        memcpy(snapshot, nor, sizeof nor);
+        for (int cut = 0; cut < 13800; cut += 47) {
+            cut_at = cut;
+            dead = ops = 0;
+            const int rc = st_save_scene(slot, &patch, 0xFFu, 0, &next);
+            if (rc) {
+                st_scene_of(slot, &got);
+                CHECK(!memcmp(&first, &got, sizeof got), "failed scene save rolls back the in-memory slot");
+            }
+            cut_at = -1;
+            reboot();
+            st_scene_of(slot, &got);
+            CHECK(!memcmp(&first, &got, sizeof got) || !memcmp(&next, &got, sizeof got),
+                  "power loss leaves one complete scene bank");
+            memcpy(nor, snapshot, sizeof nor);
+            reboot();
+        }
+        for (uint32_t sector = ST_SCENE_A; sector < ST_SCENE_B + 0x2000u; sector += 0x1000u)
+            for (uint32_t offset = 0xF00; offset < 0xF80; offset++)
+                CHECK(nor[sector + offset] == 0xFF, "scene sectors keep the loader record area erased");
+        CHECK(st_reset(slot) == 0, "factory reset clears the scene bank");
+        reboot();
+        st_scene_of(slot, &got);
+        CHECK(!got.start && !st_saved(slot), "factory patch returns without scenes");
     }
     loader_bytes_clear();
     printf(fails ? "%d FAILED\n" : "store tests passed\n", fails);

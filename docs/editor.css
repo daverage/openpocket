@@ -270,11 +270,39 @@ body[data-view="sound"] #view-sound, body[data-view="models"] #view-models, body
 .patch-options > summary { cursor: pointer; font-weight: 700; font-size: 0.875rem; }
 .patch-options[open] > :not(summary) { margin-block-start: 10px; }
 .patch-value { float: inline-end; color: var(--faint); font-weight: 500; }
-.valve-controls, .valve-param { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
-.valve-param input { width: min(230px, 45vw); }
-.valve-param output { min-width: 7ch; }
-.fshead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-.fshelp { flex: 1 1 18rem; margin: 0; font-size: 0.8125rem; color: var(--faint); }
+.scene-strip { margin-block: 10px; padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--surface); }
+.scene-bar, .scene-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.scene-bar > [hidden], .scene-fields[hidden], .fs-modes > [hidden] { display: none; }
+.scene-label { font-size: 0.875rem; font-weight: 750; }
+.scene-choices { max-inline-size: 100%; }
+.scene-choices button { min-inline-size: 3rem; overflow-wrap: anywhere; }
+.scene-bar #scenetune { margin-inline-start: auto; }
+.scene-fields { border-block-start: 1px solid var(--line-soft); margin-block-start: 10px; padding-block-start: 10px; align-items: end; }
+.scene-fields label { display: grid; gap: 4px; min-inline-size: 0; color: var(--dim); font-size: 0.8125rem; }
+.scene-fields input, .scene-fields select { min-block-size: 36px; }
+#scenename { inline-size: 13ch; padding-inline: 9px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); }
+.sound-edit-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 21rem); gap: 14px; align-items: start; }
+.sound-settings { min-inline-size: 0; display: grid; gap: 8px; }
+.sound-settings .fscard { margin: 0; }
+.sound-settings .patch-options[open] > :not(summary) { margin-block-start: 12px; }
+.sound-settings .fsgrid[hidden] { display: none; }
+.sound-settings .fsgrid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.valve-controls { display: grid; gap: 10px; }
+.valve-controls > .switch { justify-self: start; }
+.valve-param { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 8px; font-size: 0.8125rem; color: var(--dim); }
+.valve-param[hidden] { display: none; }
+.valve-param input { grid-column: 1 / -1; grid-row: 2; inline-size: 100%; min-inline-size: 0; margin: 0; }
+.valve-param output { grid-column: 2; grid-row: 1; white-space: nowrap; color: var(--ink); }
+@media (max-width: 850px) {
+  .sound-edit-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 460px) {
+  .scene-bar #scenetune { margin-inline-start: 0; }
+  .scene-choices { order: 1; flex: 1 0 100%; }
+  .scene-choices button { flex: 1 1 0; padding-inline: 6px; }
+}
+.fshead { display: grid; gap: 8px; }
+.fshelp { margin: 0; font-size: 0.8125rem; color: var(--faint); }
 .fsgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
 @media (max-width: 640px) { .fsgrid { grid-template-columns: minmax(0, 1fr); } }
 .fscol { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 6px 12px; }
@@ -324,7 +352,7 @@ body[data-view="sound"] #view-sound, body[data-view="models"] #view-models, body
 .seg { display: inline-flex; justify-self: start; border: 1px solid var(--line); border-radius: var(--r); overflow: clip; }
 .seg button { min-block-size: 36px; padding-inline: 14px; border: 0; border-inline-end: 1px solid var(--line); background: transparent; font-weight: 700; font-size: 0.875rem; color: var(--dim); }
 .seg button:last-child { border-inline-end: 0; }
-.seg button[aria-checked="true"] { background: var(--c); color: oklch(0.16 0.02 150); }
+.seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--c); color: oklch(0.16 0.02 150); }
 .seg button:focus-visible { outline-offset: -2px; }
 input[type="range"] { -webkit-appearance: none; appearance: none; inline-size: 100%; block-size: 32px; margin: 0; background: transparent; cursor: pointer; --p: 50%; }
 input[type="range"]::-webkit-slider-runnable-track { block-size: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--c) var(--p), var(--raised) var(--p)); }
@@ -635,3 +663,5 @@ body.staged { overflow: hidden; }
 .stage[data-look="mono"] .st-fs.on { background: #000; color: #fff; }
 .stage[data-look="mono"] .st-fs.on small, .stage[data-look="mono"] .st-fs.on em { color: #ddd; }
 @media (max-width: 640px) { .st-feet { grid-template-columns: 1fr; } .st-btn { flex: 1 1 40%; } }
+
+.scene-choices button[hidden], .scene-fields label[hidden] { display: none; }

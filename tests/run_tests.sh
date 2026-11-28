@@ -55,8 +55,6 @@ $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hum_test.c firmw
 $CC -O2 -w tests/tunersim.c -lm -o build/tunersim && build/tunersim | tail -1
 # POLY SHIFTER on the bank (2026-11-28; v75's phase vocoder and tests/engine/pv_test.c retired): chord accuracy, semitones, bounds
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pshift_test.c firmware/px_math.c -lm -o build/pshift_test && build/pshift_test | tail -1
-# DROP TUNE (2026-11-28): the low string's notes alone move down; the other strings stay
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/drop_test.c firmware/px_math.c -lm -o build/drop_test && build/drop_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/global_test.c firmware/px_math.c -lm -o build/global_test && build/global_test | tail -1
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/triode_test.c firmware/px_math.c -lm -o build/triode_test
 build/triode_test

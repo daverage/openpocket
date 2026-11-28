@@ -56,6 +56,36 @@ int main(void)
         static const int BS[3] = {48, 16, 1};
         for (int b = 0; b < 3; b++) { render(t, q, BS[b]); CHECK(!memcmp(ref, out, sizeof ref), "%s: block size %d gives the same sound", px_type_name(PX_B_SYN, t), BS[b]); }
     }
+    static const int pads[][2] = {
+        {PX_SYN_BS_STRINGS, PX_SYN_BS_STRINGS_OCT},
+        {PX_SYN_BS_CHOIR, PX_SYN_BS_CHOIR_OCT},
+    };
+    for (unsigned i = 0; i < sizeof pads / sizeof pads[0]; i++) {
+        uint8_t q[PX_NPAR];
+        static float before[N];
+        px_type_defaults(PX_B_SYN, pads[i][0], q);
+        q[3] = 50;
+        pluck(110.0f);
+        render(pads[i][0], q, 64);
+        memcpy(before, out, sizeof before);
+        const float sub = e.bs.w[0], up = e.bs.w[2];
+        render(pads[i][1], q, 64);
+        CHECK(!memcmp(before, out, sizeof before), "Octave Mix 50 matches the original pad at Chorus 50");
+        q[3] = 0;
+        render(pads[i][1], q, 64);
+        CHECK(e.bs.w[0] == 0.0f && e.bs.w[2] == 0.0f && memcmp(before, out, sizeof before),
+              "Octave Mix 0 removes both octave voices");
+        q[3] = 100;
+        render(pads[i][1], q, 64);
+        CHECK(e.bs.w[0] == 2.0f * sub && e.bs.w[2] == 2.0f * up, "Octave Mix 100 doubles both octave weights");
+        px_preset_t p = e.cur;
+        p.on[PX_B_SYN] = 0;
+        px_engine_knobs(&e, &p);
+        for (int at = 0; at < 4096; at += 64) px_engine_process(&e, in + at, out + at, 64);
+        p.on[PX_B_SYN] = 1;
+        px_engine_knobs(&e, &p);
+        CHECK(e.bs.w[0] == 2.0f * sub && e.bs.w[2] == 2.0f * up, "Re-enabling a pad keeps its octave mix");
+    }
     static const int LEADS[] = {PX_SYN_SQ_BRASS, PX_SYN_SQ_FLUTE};
     static const float NOTES[] = {82.41f, 110.0f, 146.83f, 196.0f, 246.94f, 329.63f};
     for (unsigned l = 0; l < sizeof LEADS / sizeof *LEADS; l++) for (unsigned j = 0; j < 6; j++) {

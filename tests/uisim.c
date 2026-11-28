@@ -24,9 +24,11 @@ static uint32_t cur_preset = 0;
 static uint32_t master_vol = 80;
 static px_preset_t saved[52];
 static int saved_ok[52];
+#include "../firmware/px_scene.h"
+static px_scene_record saved_scenes[52];
 static void st_get(uint32_t k, px_preset_t *p) { if (saved_ok[k]) *p = saved[k]; else px_preset_factory(p, (int)k); }
 static int st_save(uint32_t k, const px_preset_t *p) { saved[k] = *p; saved_ok[k] = 1; return 0; }
-static int st_reset(uint32_t k) { saved_ok[k] = 0; return 0; }
+static int st_reset(uint32_t k) { saved_ok[k] = 0; memset(&saved_scenes[k], 0, sizeof saved_scenes[k]); return 0; }
 static int st_saved(uint32_t k) { return saved_ok[k]; }
 static uint8_t saved_fs[52], ui_fs = 0xFFu;                 /* v48: footswitch assignments */
 static uint8_t st_fs_of(uint32_t k) { return saved_ok[k] ? saved_fs[k] : 0xFFu; }
@@ -53,7 +55,14 @@ static struct { px_global_t g; uint8_t lights; } st_cfg = {{0, {24, 24, 24, 24, 
 static void audio_globals(const px_global_t *g) { (void)g; }
 static int st_commit(void) { return 0; }
 #include "ui_global.h"
-static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); }   /* (v75: and its gestures) */
+static void st_scene_of(uint32_t k, px_scene_record *scene) { *scene = saved_scenes[k]; }
+static int st_save_scene(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs,
+                         const px_scene_record *scene)
+{
+    saved_scenes[k] = *scene;
+    return st_save_fsg(k, p, fs, gs);
+}
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); px_scene_record scene; st_scene_of(i, &scene); ui_scene_load(&scene); }   /* (v75: and its gestures) */
 
 static void shot(const char *dir, const char *name)
 {
@@ -308,6 +317,45 @@ static int overhaul(const char *d)
     ui_home(); list_open();
     tap(UB_FX); CHECK(ui_mode == M_PATCH, "patch list FX opens patch volume independently of effects");
     ui_render(); shot(d, "patch_volume_from_list");
+    /* Configure an entire scene patch with the pedal controls. */
+    const uint32_t scene_slot = cur_preset;
+    tap(UB_PUSH);
+    CHECK(ui_mode == M_SCENES && !ui_scene_start, "PUSH on Patch Settings opens Scenes");
+    tap(UB_PUSH); tap(UB_HOME);
+    CHECK(!ui_scene_start && !sc.editing, "HOME cancels enabling scenes");
+    tap(UB_PUSH); tap(UB_PUSH);
+    CHECK(ui_scene_start == 1 && ui_scene == 0, "Scenes enables A, B and C with A as default");
+    ui_turn(1, 0); tap(UB_PUSH); ui_turn(1, 0); tap(UB_PUSH);
+    CHECK(ui_scene == 1, "Scenes menu selects B");
+    ui_turn(1, 0); tap(UB_PUSH);
+    for (int i = 0; i < 6; i++) ui_turn(1, 1);
+    for (int i = 0; i < 4; i++) ui_turn(1, 0);
+    tap(UB_FX);
+    CHECK(!strcmp(ui_scene_names[1], "B"), "Scenes name uses the knob and FX confirms");
+    PRESET.patch_volume = 72;
+    ui_turn(1, 0); tap(UB_PUSH); tap(UB_PUSH);
+    ui_turn(1, 0); tap(UB_PUSH); ui_turn(-1, 0); tap(UB_PUSH);
+    CHECK(ui_scene_start == 3 && ui_sounds[2].volume == 72, "Scenes copies B to C and sets C as the default");
+    ui_turn(1, 0); tap(UB_PUSH); tap(UB_PUSH);
+    CHECK(ui_scene_mode, "Scenes can enable scene footswitches");
+    full(); shot(d, "scene_settings");
+    hold(1u << UB_PUSH, 850); hold(0, 5);
+    CHECK(ui_mode == M_SAVE, "hold PUSH on Scenes opens Save");
+    tap(UB_PUSH);
+    CHECK(ui_scene == 2 && PRESET.patch_volume == 72 && !strcmp(ui_scene_names[1], "B") && !ui_dirty(),
+          "saved scenes recall the default sound and name");
+    tap(UB_FSDN);
+    CHECK(ui_scene == 1, "left footswitch recalls B after save");
+    tap(UB_HOME); tap(UB_FX); tap(UB_PUSH);
+    ui_turn(-1, 0); tap(UB_PUSH); ui_turn(-1, 0); tap(UB_PUSH);
+    CHECK(ui_scene_count == 2 && ui_scene_start == 1, "Scene Count 2 hides C and resets C as default");
+    full(); shot(d, "scene_count_two");
+    tap(UB_HOME); tap(UB_HOME);
+    tap(UB_FSUP);
+    CHECK(ui_scene == 0, "right switch toggles B to A in two-scene mode");
+    full(); shot(d, "play_two_scenes");
+    ui_scene_mode = 0;
+    st_reset(scene_slot); st_gen++; load_preset(scene_slot);
     /* F17: SYN's page is SYNTH. v50 gave NOISE GATE a second model (SMART GATE), so no block has a single
      * model any more: check the other side, a block of several models shows its arrows */
     CHECK(!strcmp(ui_block_name(PX_B_SYN), "SYNTH"), "F17: SYN's page is SYNTH");

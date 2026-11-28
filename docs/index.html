@@ -107,16 +107,14 @@ footer a,.note a{color:inherit}
     </details>
   </section>
 
-  <section class="card" id="build996">
-    <h2>What’s new in build 996</h2>
-    <dl class="features">
-      <div><dt>Synths that follow your playing</dt><dd>No synth guesses which note you play any more: each is built from the guitar’s own waveform, so picks, bends, slides and mutes come through as you play them. New: BANK ORGAN, STRINGS, CHOIR PAD, BRASS and PIPE ORGAN (play chords), and SQ BRASS, SQ BASS and SQ FLUTE (single notes, built on SQUARE SYNTH).</dd></div>
-      <div><dt>POLY SHIFTER for chords</dt><dd>Rebuilt on POLY OCTAVE HQ’s filter bank: every string moves by the interval, chords stay clean, and the delay drops from 17 ms to a few ms. At −1 or −2 with MIX 100 it tunes the whole guitar down.</dd></div>
-      <div><dt>DROP TUNE</dt><dd>New in the OCTAVE block: moves only the low E string down (DROP 2 = drop D), so you can play drop-tuned riffs on a standard-tuned guitar.</dd></div>
-      <div><dt>Retired</dt><dd>The note-tracking synths (ANALOG, ARCADE, ARCADE SPLIT, INSTRUMENT, ENSEMBLE, CHOIR), CROSS OSC and SQUARE SYNTH HQ. A preset that uses one loads with that block off.</dd></div>
-      <div><dt>Kept from v95</dt><dd>Noise suppressor, patch volume, SIGNATURE, the faster Fuzz Face and Rangemaster, and Valve with its own output level.</dd></div>
-    </dl>
-    <div class="row links"><a href="WHATS-NEW-v96.md">Build 996 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
+  <section class="card" id="build997">
+    <h2>What’s new in build 997</h2>
+    <ul>
+      <li>Two or three scenes per patch, editable on the pedal and in the web editor.</li>
+      <li>Strings Octave and Choir Octave with adjustable octave layers.</li>
+      <li>Poly Shifter uses the Poly Octave HQ voices at exact octaves.</li>
+    </ul>
+    <div class="row links"><a href="WHATS-NEW-v97.md">Build 996 release notes</a><a href="SOUNDS-AND-CONTROLS.md">Pedal controls guide</a></div>
   </section>
 
   <section class="card">
@@ -223,7 +221,7 @@ let sawV21 = false;
 
 if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
 $("testchan").hidden = !CHANNEL;
-$("build996").hidden = !!CHANNEL;
+$("build997").hidden = !!CHANNEL;
 
 async function loadManifest() {
   try {
@@ -233,7 +231,7 @@ async function loadManifest() {
     if (!Number.isInteger(m.version) || !Array.isArray(m.packages) || !m.packages.length) throw new Error("Invalid firmware manifest");
     manifest = m;
     $("pkgver").textContent = `v${m.version} · build ${900 + m.version}` + (CHANNEL ? ` (${CHANNEL})` : "");
-    if (m.version < 96) $("build996").hidden = true;
+    if (m.version < 97) $("build997").hidden = true;
     for (const p of m.packages) {
       const link = document.createElement("a");
       link.href = FW + p.file;

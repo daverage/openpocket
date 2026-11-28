@@ -59,6 +59,52 @@ int main(void)
       CHECK(fabsf(rms(z, N - 22050, N) / rms(ref, N - 22050, N) - 1.0f) < 0.01f, "the dry signal is whole once the tail has ended");
       /* the first 3 s: the dry level through the tail is full (the reverb's own dry cut is gone) */
       input(); }
+    /* Scene recall takes the live path, even with different settings on both
+     * bypassed blocks. The outgoing delay and reverb keep their coefficients. */
+    {
+        px_preset_t scene = B;
+        scene.p[PX_B_DELAY][0] = 85;
+        scene.p[PX_B_REVERB][0] = 15;
+        px_engine_init(&e, FS);
+        px_engine_set(&e, &A);
+        CHECK(px_engine_change(&e, &scene) == PX_CH_KNOBS, "scene uses the live update");
+        play(1, &A, &B, 1, y);
+        play(1, &A, &scene, 1, z);
+        CHECK(!memcmp(y, z, (SWITCH + 2u * 44100u) * sizeof(float)),
+              "the two wet tails keep their outgoing settings across scene recall");
+    }
+    /* Reverb's live mix attenuates the dry signal. Stepping back to full dry
+     * when a tail begins can click even before the tank has produced output. */
+    {
+        px_global_t g;
+        float steady[64], out[64];
+        px_global_default(&g);
+        g.tails = 1;
+        for (unsigned i = 0; i < 64; i++) steady[i] = 0.1f;
+        px_engine_init(&e, FS);
+        px_engine_set(&e, &R);
+        px_engine_globals(&e, &g);
+        px_engine_process(&e, steady, out, 64);
+        const float before = out[63];
+        px_engine_knobs(&e, &B);
+        px_engine_process(&e, steady, out, 64);
+        CHECK(fabsf(out[0] - before) < 0.002f && out[63] > out[0] + 0.01f,
+              "reverb spill starts without a step in dry gain");
+    }
+    /* A new scene can arrive during the wet block's fade-in. Its input must
+     * still close at recall and its buffer must spill. */
+    {
+        px_global_t g;
+        px_global_default(&g);
+        g.tails = 1;
+        px_engine_init(&e, FS);
+        px_engine_set(&e, &B);
+        px_engine_globals(&e, &g);
+        px_engine_knobs(&e, &A);
+        px_engine_process(&e, x, y, 64);
+        px_engine_knobs(&e, &B);
+        CHECK(e.spill[0] && e.spill[1], "rapid recall starts tails for effects still fading in");
+    }
     /* switching it back on mid-tail: clean */
     { px_global_t g; px_global_default(&g); g.tails = 1; px_engine_init(&e, FS); px_engine_set(&e, &A); px_engine_globals(&e, &g);
       for (int at = 0; at + 64 <= N; at += 64) { if (at == 22016) px_engine_knobs(&e, &B); if (at == 22016 + 64 * 400) px_engine_knobs(&e, &A); px_engine_process(&e, x + at, z + at, 64); }

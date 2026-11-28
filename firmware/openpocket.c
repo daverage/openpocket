@@ -314,7 +314,7 @@ static void fm1_fault(const fm1_crash_t *c)
 #define PH_DIR  (*(volatile uint32_t *)0x501C8u)
 #define ENC_MASK 0x3u      /* PC0=A, PC1=B */
 #ifndef OP_VERSION_NUM                  /* a test channel build (firmware/build.sh, OP_CHANNEL) sets its own number and tag */
-#define OP_VERSION_NUM "96"   /* waveform-following synths, POLY SHIFTER on the bank, DROP TUNE */
+#define OP_VERSION_NUM "97"   /* patch scenes, octave pads, and Poly Shifter refinements */
 #endif
 #ifndef OP_TAG
 #define OP_TAG ""
@@ -543,7 +543,16 @@ static const int8_t QDEC[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
 
 #if !AUDIO_PROBE
 #include "ui.h"
-static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); preset_new = 1; }   /* v75: with its gestures */
+static void load_preset(uint32_t i)
+{
+    px_scene_record scene;
+    st_get(i, &PRESET);
+    ui_fs = st_fs_of(i);
+    st_gs_of(i, ui_gs);
+    st_scene_of(i, &scene);
+    ui_scene_load(&scene);
+    preset_new = 1;
+}
 #include "px_lights.h"      /* the button lights follow the blocks (issue #8; px_leds.h drives them) */
 #define PX_LIGHTS_OFF() lights_off()
 #include "px_usb.h"         /* USB-MIDI + update entry (web installer) */
@@ -739,7 +748,8 @@ static void app_main(void)
     a_hold = 1;                          /* DSP bypassed until the UI is up and 1.5 s have passed */
     px_flash_boot();                     /* the flash's size; a staging area an update left */
     px_store_boot();                     /* the saved presets and the settings; start on the last one saved */
-    ui_stomp = st_ui & 1u;               /* v48: STOMP mode as last saved */
+    ui_scene_mode = ui_scene_start && (st_ui & 2u);
+    ui_stomp = !ui_scene_mode && (st_ui & 1u);
     px_usb_start();                      /* USB-MIDI device + update entry (web installer); v42: USB audio when set */
     audio_start();                       /* guitar -> DSP engine -> output, amp enabled */
     leds_init();                         /* the button lights: all off loaded, then on (PC7 low), as stock */
@@ -876,7 +886,7 @@ static void app_main(void)
                         (uint32_t)(btn[B_AMP].stab != 0) << UB_AMP | (uint32_t)(btn[B_CAB].stab != 0) << UB_CAB |
                         (uint32_t)(btn[B_DLY].stab != 0) << UB_DLY | (uint32_t)(btn[B_REV].stab != 0) << UB_REV);
         a_ubyp = ui_byp;                 /* v48: BYPASS on a footswitch: the dry guitar */
-        st_ui = (uint8_t)((st_ui & ~1u) | ui_stomp);   /* v48: STOMP mode goes into the store with the next save */
+        st_ui = (uint8_t)((st_ui & ~3u) | ui_stomp | (uint32_t)ui_scene_mode << 1);   /* v48: STOMP mode goes into the store with the next save */
 #endif
         if (mv >= 0) {
             /* smoothing (x16 moving average, ~160 ms) then hysteresis of 2 on the 0..100 volume */
@@ -890,8 +900,8 @@ static void app_main(void)
             if (dv >= 2 || (nv == 0u && master_vol != 0u) || (nv == 100u && master_vol != 100u)) master_vol = nv;
         }
 #if !AUDIO_PROBE
-        audio_poll(now, preset_new);     /* the sound follows the UI (preset, settings, volume), before the screen redraws */
-        preset_new = 0;
+        audio_poll(now, preset_new || ui_scene_recall);     /* the sound follows the UI (preset, settings, volume), before the screen redraws */
+        preset_new = ui_scene_recall = 0;
         ui_render();                     /* redraws only what changed */
 #endif
     }

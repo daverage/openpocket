@@ -75,7 +75,7 @@ static uint32_t ota_crc16(const uint8_t *p, uint32_t n, uint32_t c)   /* as ota.
 }
 
 /* ---- flash (only the preset store, v37 the NAM model slots and v38 the IR slots may be written, as FL_RANGE_OK on the pedal) ---- */
-#define ED_FL_OK(off, n) (FL_IN(off, n, 0xF0000u, 0xF4000u) || FL_IN(off, n, 0xC0000u, 0xE0000u) || \
+#define ED_FL_OK(off, n) (FL_IN(off, n, 0xF0000u, 0xF4000u) || FL_IN(off, n, 0xE8000u, 0xEC000u) || FL_IN(off, n, 0xC0000u, 0xE0000u) || \
                           FL_IN(off, n, 0xF4000u, 0xFC000u))
 static int writes_ok = 1;
 static int flash_dirty;
@@ -131,7 +131,7 @@ static void b_num(char *d, uint32_t v) { char t[12]; int n = 0; while (*d) d++; 
 static void b_str(char *d, const char *s) { while (*d) d++; while (*s) *d++ = *s++; *d = 0; }
 #include "../firmware/ui_text.h"
 #include "../firmware/ui.h"
-static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); }   /* (v75: and its gestures) */
+static void load_preset(uint32_t i) { st_get(i, &PRESET); ui_fs = st_fs_of(i); st_gs_of(i, ui_gs); px_scene_record scene; st_scene_of(i, &scene); ui_scene_load(&scene); }   /* (v75: and its gestures) */
 static uint32_t dsp_load = 42u;
 static int dsp_bypass;
 static uint32_t ed_load(void) { return dsp_load; }
@@ -283,13 +283,13 @@ static void json_list(const uint8_t *a, int n)
 }
 static void status(void)
 {
-    static const char *const MODE[] = {"chain", "block", "edit", "tuner", "save", "move", "midi", "list", "diag", "valve", "global"};
+    static const char *const MODE[] = {"chain", "block", "edit", "tuner", "save", "move", "midi", "list", "diag", "valve", "global", "patch", "scenes"};
     frame_draw();
     printf("#status {\"slot\":%u,\"name\":", cur_preset);
     json_str(PRESET.name);
     printf(",\"dirty\":%d,\"saved\":%d,\"mode\":\"%s\",\"block\":%u,\"item\":%u,\"volume\":%u,\"battery_mv\":%d,\"usb_mv\":%d,"
            "\"tuner_hz\":%.2f,\"writes_ok\":%d,\"frame\":%u,\"dsp\":{\"load\":%u,\"bypass\":%u,\"core1\":%u},"
-           "\"last_press\":", ed_dirty(), st_saved(cur_preset), MODE[ui_mode], ui_blk, ui_item, master_vol, bat_mv, bat_usb_mv,
+           "\"last_press\":", ui_dirty(), st_saved(cur_preset), MODE[ui_mode], ui_blk, ui_item, master_vol, bat_mv, bat_usb_mv,
            (double)tuner_hz, writes_ok, fb_gen, ed_load(), ed_flags() & 1u, ed_flags() >> 1 & 1u);
     json_str(last_press);
     printf(",\"stomp\":%u,\"bypass\":%u,\"fs\":[%u,%u]", ui_stomp, ui_byp, ui_fs_get(0), ui_fs_get(1));   /* v48 */

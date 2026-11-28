@@ -5,6 +5,8 @@
  * on each save, alternately to copy A [0xF0000, 0xF2000) and copy B [0xF2000, 0xF4000), each two 4 KiB sectors:
  *   sector 0: header (16 B) + slots 0..33        sector 1: slots 34..51
  * Format 8 stores patch volume at slot byte 102, outside the gate controls.
+ * Format 9 also covers the scene extension in the CRC. Each extension has two
+ * sectors and is verified before the main header is published.
  * This transition build rewrites current format-7 presets once using the same
  * atomic save protocol. Older/unknown stores are retained and made read-only.
  * The header goes last, with a sequence number and a CRC16 of every slot: at boot the valid copy with the highest
@@ -21,7 +23,8 @@
 #define ST_NSLOT   52u
 #define ST_SLOT    112u
 #define ST_S0N     34u                          /* slots in sector 0: 16 + 34 * 112 = 0xEF0 < 0xF00 */
-#define ST_VER     8u
+#define ST_VER     9u
+#define ST_BASE_VER 8u
 #define ST_VER_MIN 2u
 typedef char st_size_check[(sizeof(px_preset_t) < ST_SLOT && ST_NSLOT == 52u) ? 1 : -1];
 #define ST_MAGIC   0x5350504Fu                  /* "OPPS" */
@@ -38,6 +41,29 @@ typedef char st_size_check[(sizeof(px_preset_t) < ST_SLOT && ST_NSLOT == 52u) ? 
  * 15 nothing. Earlier saves left it 0xFF (erased): nothing assigned. The format is unchanged. */
 typedef struct { uint32_t magic, seq; uint16_t crc; uint8_t ver, nslot, last, pad[3]; } st_hdr_t;   /* 16 B */
 static uint8_t st_slot[ST_NSLOT][ST_SLOT] __attribute__((aligned(4)));
+/* Two extension sectors per preset copy, above autosave and below the old preset store. */
+#include "px_scene.h"
+#define ST_SCENE_A 0xE8000u
+#define ST_SCENE_B 0xEA000u
+#define ST_SCENE_HALF (ST_NSLOT / 2u)
+typedef char st_scene_fit[ST_SCENE_HALF * sizeof(px_scene_record) <= 0xF00u ? 1 : -1];
+static px_scene_record st_scene[ST_NSLOT];
+
+static void st_scene_of(uint32_t k, px_scene_record *scene)
+{
+    memset(scene, 0, sizeof *scene);
+    if (k < ST_NSLOT && px_scene_start_valid(st_scene[k].start)) {
+        *scene = st_scene[k];
+        if (st_slot[k][14u + PX_NBLK + PX_B_PITCH] == PX_PIT_DROP) px_scene_retire_pitch(scene);
+    }
+}
+
+static uint32_t st_scene_off(uint32_t base, uint32_t slot)
+{
+    return (base == ST_A ? ST_SCENE_A : ST_SCENE_B) +
+           (slot / ST_SCENE_HALF) * 0x1000u + (slot % ST_SCENE_HALF) * sizeof(px_scene_record);
+}
+
 static uint32_t st_seq, st_cur;                 /* sequence of the copy in use, its base (0: none yet) */
 static uint8_t st_booting;
 static uint8_t st_ok;                           /* the store can be written (the flash is the expected part) */
@@ -93,10 +119,16 @@ static uint32_t st_crc(void)
 static uint32_t st_read_copy(uint32_t base, const st_hdr_t *h)
 {
     uint32_t k;
-    (void)h;
+    memset(st_scene, 0, sizeof st_scene);
     for (k = 0; k < ST_NSLOT; k++)
         if (ota_fread(st_slot_off(base, k), st_slot[k], ST_SLOT)) return ~0u;
-    return st_crc();
+    uint32_t c = st_crc();
+    if (h->ver == ST_VER) {
+        for (k = 0; k < ST_NSLOT; k += ST_SCENE_HALF)
+            if (ota_fread(st_scene_off(base, k), (uint8_t *)&st_scene[k], sizeof st_scene / 2u)) return ~0u;
+        c = ota_crc16((const uint8_t *)st_scene, sizeof st_scene, c);
+    }
+    return c;
 }
 
 /* Transition build only: update current format-7 slots in place, preserving
@@ -175,6 +207,7 @@ static void st_load(void)
         st_cur = best;
         st_seq = bseq;
     } else {
+        memset(st_scene, 0, sizeof st_scene);
         memset(st_slot, 0xFF, sizeof st_slot);
         st_last = 0;
         st_midi = 0;
@@ -182,7 +215,7 @@ static void st_load(void)
     }
     if (st_last >= ST_NSLOT) st_last = 0;
     if (best && bh.ver == 7u) st_upgrade_current(cfgraw[11] <= 100u ? cfgraw[11] : 0u);
-    else if (best && bh.ver != ST_VER) st_ok = 0; /* preserve unknown stores, never overwrite them */
+    else if (best && bh.ver < ST_BASE_VER) st_ok = 0; /* preserve unknown stores, never overwrite them */
 }
 
 #define ST_VALVE_OFF (PX_PRESET_BASE_SIZE + 5u)
@@ -227,7 +260,15 @@ static int st_commit(void)
     int rc = 0;
     if (!st_ok) return -1;
     memset(&h, 0, sizeof h);
-    h.magic = ST_MAGIC; h.seq = st_seq + 1u; h.crc = (uint16_t)st_crc(); h.ver = ST_VER; h.nslot = ST_NSLOT; h.last = st_last; h.pad[0] = st_midi; h.pad[1] = st_usb; h.pad[2] = st_ui;
+    uint32_t version = ST_BASE_VER;
+    uint32_t crc = st_crc();
+    for (k = 0; k < ST_NSLOT; k++) {
+        if (!st_scene[k].start) continue;
+        version = ST_VER;
+        crc = ota_crc16((const uint8_t *)st_scene, sizeof st_scene, crc);
+        break;
+    }
+    h.magic = ST_MAGIC; h.seq = st_seq + 1u; h.crc = (uint16_t)crc; h.ver = (uint8_t)version; h.nslot = ST_NSLOT; h.last = st_last; h.pad[0] = st_midi; h.pad[1] = st_usb; h.pad[2] = st_ui;
     st_audio_hold(1);
     if (fl_erase4k(base, &k) || fl_erase4k(base + 0x1000u, &k)) rc = -2;
     for (k = ST_S0N; !rc && k < ST_NSLOT; k++)
@@ -236,6 +277,17 @@ static int st_commit(void)
     uint8_t cfgraw[16];
     st_cfg_pack(cfgraw);
     if (!rc && fl_write(base + ST_CFG_OFF, cfgraw, sizeof cfgraw)) rc = -3;  /* v75: the global settings, before the header */
+    if (version == ST_VER) {
+        for (k = 0; !rc && k < ST_NSLOT; k += ST_SCENE_HALF) {
+            uint32_t off = st_scene_off(base, k), erased;
+            if (fl_erase4k(off, &erased) ||
+                fl_write(off, (const uint8_t *)&st_scene[k], sizeof st_scene / 2u)) rc = -3;
+        }
+        px_scene_record check;
+        for (k = 0; !rc && k < ST_NSLOT; k++)
+            if (ota_fread(st_scene_off(base, k), &check, sizeof check) ||
+                memcmp(&check, &st_scene[k], sizeof check)) rc = -5;
+    }
     if (!rc && fl_write(base, (const uint8_t *)&h, sizeof h)) rc = -4;      /* header last */
     if (!rc) {                                    /* read back */
         st_hdr_t r;
@@ -281,6 +333,7 @@ static void st_gs_of(uint32_t k, uint8_t *out)
 }
 static void st_pack_preset(uint32_t k, const px_preset_t *p)
 {
+    memset(&st_scene[k], 0, sizeof st_scene[k]);
     memset(st_slot[k], 0xFF, ST_SLOT);
     memcpy(st_slot[k], p, PX_PRESET_BASE_SIZE);
     st_slot[k][PX_PRESET_BASE_SIZE] = ST_MARK;
@@ -290,14 +343,29 @@ static void st_pack_preset(uint32_t k, const px_preset_t *p)
     st_slot[k][PX_PRESET_BASE_SIZE + 8u] = p->patch_volume;
 }
 /* save p, with its footswitch assignment fs and gestures gs (4 bytes, or 0: none), to slot k (becomes the start slot) */
-static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs)
+static int st_save_scene(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs,
+                         const px_scene_record *scene)
 {
-    if (k >= ST_NSLOT) return -1;
+    if (k >= ST_NSLOT || !st_ok) return -1;
+    uint8_t old_slot[ST_SLOT], old_last = st_last;
+    px_scene_record old_scene = st_scene[k];
+    memcpy(old_slot, st_slot[k], sizeof old_slot);
     st_pack_preset(k, p);
+    if (scene) st_scene[k] = *scene;
     if (gs) memcpy(&st_slot[k][ST_GS_OFF], gs, 4);
     st_slot[k][ST_SLOT - 1u] = fs;
     st_last = (uint8_t)k;
-    return st_commit();
+    const int rc = st_commit();
+    if (rc) {
+        memcpy(st_slot[k], old_slot, sizeof old_slot);
+        st_scene[k] = old_scene;
+        st_last = old_last;
+    }
+    return rc;
+}
+static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs)
+{
+    return st_save_scene(k, p, fs, gs, 0);
 }
 static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs) { return st_save_fsg(k, p, fs, 0); }
 static int st_save(uint32_t k, const px_preset_t *p) { return st_save_fs(k, p, 0xFFu); }
@@ -306,8 +374,17 @@ static int st_save(uint32_t k, const px_preset_t *p) { return st_save_fs(k, p, 0
 static int st_reset(uint32_t k)
 {
     if (k >= ST_NSLOT) return -1;
+    uint8_t old_slot[ST_SLOT];
+    px_scene_record old_scene = st_scene[k];
+    memcpy(old_slot, st_slot[k], sizeof old_slot);
+    memset(&st_scene[k], 0, sizeof st_scene[k]);
     memset(st_slot[k], 0xFF, ST_SLOT);
-    return st_commit();
+    const int rc = st_commit();
+    if (rc) {
+        memcpy(st_slot[k], old_slot, sizeof old_slot);
+        st_scene[k] = old_scene;
+    }
+    return rc;
 }
 
 /* boot, after px_flash_boot and before px_usb_start, which presents the USB device as the settings say (interrupts off

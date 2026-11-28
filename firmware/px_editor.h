@@ -19,7 +19,7 @@
 #define ED_H0 0x7Du
 #define ED_H1 0x4Fu
 #define ED_H2 0x50u
-#define ED_PROTO 12u                             /* 11: Valve Level; 10: per-preset valve; 9: v75, GLOBAL (the global settings, TUNER); 8: v75, SHED (the blocks switched off for the load); 7: v75, ten blocks (BST); 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
+#define ED_PROTO 16u                             /* 11: Valve Level; 10: per-preset valve; 9: v75, GLOBAL (the global settings, TUNER); 8: v75, SHED (the blocks switched off for the load); 7: v75, ten blocks (BST); 6: v70 OpenPocket Synth, no NAM models or IRs (their commands get no reply); 5: v48, FOOTSWITCH; 4: v42, USB_AUDIO; 3: v38, cabinet IRs (IR_LIST .. IR_ERASE); 2: v37, NAM models */
 #define ED_NAME_MAX 13u
 #define ED_P_SIZE PX_PRESET_BASE_SIZE          /* the name, then per block on, type, 5 settings and its place in the order: v75: 10 blocks, 94 bytes; v70: 9, 86 */
 #if OP_UADEV
@@ -38,7 +38,7 @@ enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_OR
        ED_USB_AUDIO,                                           /* v42: 28 */
        ED_FOOTSWITCH,                                          /* v48: 29 */
        ED_SHED,                                                /* v75: 30 */
-       ED_GLOBAL, ED_TUNER };                                  /* v75: 31, 32 */
+       ED_GLOBAL, ED_TUNER, ED_SCENE };                                  /* v75: 31, 32 */
 
 static uint8_t ed_out[1024];
 static uint32_t ed_n;
@@ -62,12 +62,42 @@ static void ed_preset(const px_preset_t *p)
     for (uint32_t i = 0; i < sizeof *p; i++) ed_b(b[i]);
 }
 
+static void ed_scene_record(const px_scene_record *scene)
+{
+    const uint8_t *bytes = (const uint8_t *)scene;
+    ed_b(scene->start);
+    if (scene->start)
+        for (unsigned i = 1; i < sizeof *scene; i++) ed_b(bytes[i]);
+}
+
+static int ed_take_scene(px_scene_record *scene, const uint8_t *bytes, uint32_t n)
+{
+    memset(scene, 0, sizeof *scene);
+    if (!n || (n == 1 && !bytes[0])) return 1;
+    if (n != sizeof *scene || !bytes[0] || !px_scene_start_valid(bytes[0])) return 0;
+    memcpy(scene, bytes, sizeof *scene);
+    for (unsigned i = 0; i < PX_SCENES; i++) {
+        for (unsigned j = 0; j < PX_SCENE_NAME - 1u; j++)
+            if ((uint8_t)scene->name[i][j] < 32u && scene->name[i][j]) return 0;
+        scene->name[i][PX_SCENE_NAME - 1u] = 0;
+    }
+    for (unsigned i = 0; i < PX_SCENES - 1u; i++) {
+        const px_scene_sound *sound = &scene->other[i];
+        if (sound->volume > 100u || sound->valve_drive > 100u ||
+            sound->valve_level > PX_VALVE_LEVEL_MAX || sound->valve_on > 1u ||
+            sound->on[0] > 127u || sound->on[1] >= (1u << (PX_NBLK - 7))) return 0;
+        for (unsigned b = 0; b < PX_NBLK; b++)
+            for (unsigned j = 0; j < PX_NPAR; j++)
+                if (sound->p[b][j] > 100u) return 0;
+    }
+    return 1;
+}
+
 /* a received preset: every field in range, the name cleaned; 0 = invalid */
 static int ed_take_preset(const uint8_t *a, uint32_t n, px_preset_t *q)
 {
     uint32_t i, k;
-    memcpy(q, a, ED_P_SIZE);
-    if (n != sizeof *q) return 0;
+    if (n < sizeof *q) return 0;
     memcpy(q, a, sizeof *q);
     if (q->valve_on > 1u || q->valve_drive > 100u || q->valve_level > PX_VALVE_LEVEL_MAX || q->patch_volume > 100u) return 0;
     for (i = 0; i < 14u; i++) {
@@ -85,13 +115,6 @@ static int ed_take_preset(const uint8_t *a, uint32_t n, px_preset_t *q)
 }
 
 /* the sound differs from what its slot holds (the pedal's "*") */
-static int ed_dirty(void)
-{
-    static px_preset_t ref;
-    static uint32_t ref_slot = ~0u, ref_gen = ~0u;
-    if (ref_slot != cur_preset || ref_gen != st_gen) { st_get(cur_preset, &ref); ref_slot = cur_preset; ref_gen = st_gen; }
-    return memcmp(&ref, &PRESET, sizeof ref) != 0 || ui_fs != st_fs_of(cur_preset) || ui_gs_diff();   /* v48: and its footswitches; v75: their gestures */
-}
 static uint32_t ed_state_hash(void)
 {
     const uint8_t *b = (const uint8_t *)&PRESET;
@@ -101,15 +124,21 @@ static uint32_t ed_state_hash(void)
     h = (h ^ ui_blk) * 16777619u;
     h = (h ^ (ui_fs | (uint32_t)ui_stomp << 8 | (uint32_t)ui_byp << 9)) * 16777619u;   /* v48: footswitches, STOMP, BYPASS */
     for (uint32_t i = 0; i < 4u; i++) h = (h ^ ui_gs[i]) * 16777619u;                  /* v75: their gestures */
+    h = (h ^ (ui_scene_start | ui_scene << 2 | ui_scene_mode << 4)) * 16777619u;
+    h = (h ^ ui_scene_revision) * 16777619u;
     return (h ^ st_gen) * 16777619u;
 }
 static void ed_state_frame(void)
 {
     ed_begin(ED_STATE);
     ed_b(cur_preset);
-    ed_b((ed_dirty() ? 1u : 0u) | (st_saved(cur_preset) ? 2u : 0u));
+    ed_b((ui_dirty() ? 1u : 0u) | (st_saved(cur_preset) ? 2u : 0u));
     ed_b(ui_blk);
     ed_preset(&PRESET);
+    ed_b(ui_scene_start); ed_b(ui_scene); ed_b(ui_scene_mode);
+    if (ui_scene_start)
+        for (unsigned i = 0; i < PX_SCENES; i++) ed_str(ui_scene_names[i], PX_SCENE_NAME - 1u);
+    ed_b(ui_scene_start ? ui_scene_count : 0u);
 }
 static void ed_ui_fix(void)                       /* the block page after a type change, a new preset... */
 {
@@ -206,12 +235,22 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         memcpy(PRESET.name, q.name, 14);
         ed_str(PRESET.name, 14);
         break;
-    case ED_PUT:
+    case ED_PUT: {
         if (n < ED_P_SIZE) return;
         rc = ed_take_preset(a, n, &q) ? 0 : 1;
-        if (!rc) { PRESET = q; ed_ui_fix(); }
+        px_scene_record scene;
+        if (!rc && n > sizeof q && !ed_take_scene(&scene, a + sizeof q, n - sizeof q)) rc = 1;
+        if (!rc) {
+            PRESET = q;
+            if (n > sizeof q) {
+                if (a[14u + PX_NBLK + PX_B_PITCH] == PX_PIT_DROP) px_scene_retire_pitch(&scene);
+                ui_scene_load(&scene);
+            }
+            ed_ui_fix();
+        }
         ed_b((uint32_t)rc);
         break;
+    }
     case ED_SELECT:
         if (n < 1u) return;
         rc = a[0] < ST_NSLOT ? 0 : 1;
@@ -236,22 +275,39 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         for (k = s; k < s + c; k++) { st_get(k, &q); ed_b(st_saved(k) ? 1u : 0u); ed_str(q.name, 14); }
         break;
     }
-    case ED_SLOT_GET:
+    case ED_SLOT_GET: {
         if (n < 1u || a[0] >= ST_NSLOT) return;
         st_get(a[0], &q);
         ed_b(a[0]); ed_b(st_saved(a[0]) ? 1u : 0u); ed_preset(&q);
+        px_scene_record scene;
+        st_scene_of(a[0], &scene);
+        ed_scene_record(&scene);
         break;
-    case ED_SLOT_PUT:
+    }
+    case ED_SLOT_PUT: {
         if (n < 2u || a[0] >= ST_NSLOT) return;
         rc = 0;
         if (a[1] & 1u) {
             if (n < 2u + ED_P_SIZE || !ed_take_preset(a + 2, n - 2u, &q)) rc = 1;
-            else st_pack_preset(a[0], &q);
-        } else memset(st_slot[a[0]], 0xFF, ST_SLOT);
+            else {
+                px_scene_record scene;
+                const uint32_t base = 2u + sizeof q;
+                if (!ed_take_scene(&scene, n > base ? a + base : a, n > base ? n - base : 0u)) rc = 1;
+                else {
+                    if (a[2u + 14u + PX_NBLK + PX_B_PITCH] == PX_PIT_DROP) px_scene_retire_pitch(&scene);
+                    st_pack_preset(a[0], &q);
+                    st_scene[a[0]] = scene;
+                }
+            }
+        } else {
+            memset(st_slot[a[0]], 0xFF, ST_SLOT);
+            memset(&st_scene[a[0]], 0, sizeof st_scene[a[0]]);
+        }
         if (!rc && (a[1] & 2u)) rc = st_commit() ? 2 : 0;
         st_gen++;
         ed_b(a[0]); ed_b((uint32_t)rc);
         break;
+    }
     case ED_COMMIT:
         rc = st_commit() ? 2 : 0;
         st_gen++;
@@ -259,7 +315,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         break;
     case ED_SAVE:
         if (n < 1u || a[0] >= ST_NSLOT) return;
-        rc = st_save_fsg(a[0], &PRESET, ui_fs, ui_gs) ? 2 : 0;   /* v48: with its footswitches; v75: and their gestures */
+        rc = ui_save_patch(a[0]) ? 2 : 0;   /* v48: with its footswitches; v75: and their gestures */
         if (!rc) cur_preset = a[0];
         st_gen++;
         if (!rc) load_preset(cur_preset);
@@ -301,12 +357,47 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
     case ED_FOOTSWITCH:                                /* v48: the current preset's footswitches, STOMP mode, BYPASS */
         if (n >= 3u) {                                 /* (each: a value to set, or 127 to leave it) */
             for (k = 0; k < 2u; k++) if (a[k] != 127u) ui_fs_put((int)k, ui_fs_valid(a[k]) ? a[k] : UI_FS_NONE);   /* (v75: a block, BYPASS, or nothing: 10 and 11 are not blocks) */
-            if (a[2] != 127u && (a[2] ? 1u : 0u) != ui_stomp) ui_stomp_toggle();
+            if (a[2] != 127u) {
+                ui_scene_mode = 0;
+                ui_stomp = a[2] != 0u;
+                if (!ui_stomp) ui_byp = 0;
+            }
         }
         if (n >= 7u) for (k = 0; k < 4u; k++) if (a[3 + k] != 127u) ui_gs[k] = ui_ga_valid(a[3 + k]) ? a[3 + k] : 0xFFu;   /* v75: the gestures: an action, 15 nothing, 127 leave it */
         ed_b(ui_fs_get(0)); ed_b(ui_fs_get(1)); ed_b(ui_stomp); ed_b(ui_byp);
         for (k = 0; k < 4u; k++) ed_b(ui_ga_valid(ui_gs[k]) ? ui_gs[k] : 15u);
         break;
+    case ED_SCENE: {
+        rc = 0;
+        if (n) {
+            if (a[0] == 1u && n == 2u) {
+                ui_scene_enable(a[1] != 0u);
+            } else if (a[0] == 7u && n == 2u && ui_scene_start && (a[1] == 2u || a[1] == 3u)) {
+                ui_scene_set_count(a[1]);
+            } else if (ui_scene_start && n >= 2u && (a[0] == 6u || a[1] < ui_scene_count)) {
+                if (a[0] == 2u && n == 2u) ui_scene_select(a[1]);
+                else if (a[0] == 3u && n == 2u) ui_scene_default(a[1]);
+                else if (a[0] == 4u && n == 2u)
+                    ui_scene_copy(a[1]);
+                else if (a[0] == 5u && n <= 2u + PX_SCENE_NAME - 1u) {
+                    char name[PX_SCENE_NAME] = {0};
+                    for (k = 2; k < n; k++)
+                        name[k - 2] = a[k] >= 32u && a[k] <= 126u ? (char)a[k] : '?';
+                    ui_scene_name(a[1], name);
+                } else if (a[0] == 6u && n == 2u && a[1] <= 1u) {
+                    ui_scene_switches(a[1]);
+                } else rc = 1;
+            } else rc = 1;
+        }
+        ed_b((unsigned)rc);
+        if (!n) {
+            px_scene_record scene;
+            ui_scene_pack(&q, &scene);
+            ed_preset(&q);
+            ed_scene_record(&scene);
+        }
+        break;
+    }
     case ED_SHED:                                      /* v75 (protocol 8): the blocks the load safeguard switched off (px_shed.h) */
         if (n >= 1u && a[0] == 1u) ed_shed_clear();    /* 1: bring them back (they fade in at the next block) */
         { const uint32_t m = ed_shed_mask(), c = ed_shed_count(); ed_b(m); ed_b(m >> 7); ed_b(c); ed_b(c >> 7); }
@@ -362,11 +453,11 @@ static void ed_service(uint32_t now)
     if (!ota_frame_get(&p, &n) || n < 4u || p[0] != ED_H0 || p[1] != ED_H1 || p[2] != ED_H2)
         return;
     {
-        static uint8_t f[160];                         /* the longest requests: NAM_WRITE 4 + 1 + 2 + 128, SLOT_PUT */
-        uint32_t k = n > sizeof f ? sizeof f : n, i;
+        static uint8_t f[4u + 2u + sizeof(px_preset_t) + sizeof(px_scene_record)]; /* SLOT_PUT with scenes */
+        uint32_t k = n > sizeof f ? 0u : n, i;
         for (i = 0; i < k; i++) f[i] = p[i];
         ota_frame_done();                              /* free the frame buffer before replying */
         ed_w.last_ms = now;
-        ed_handle(f + 4, k - 4u);
+        if (k) ed_handle(f + 4, k - 4u);
     }
 }

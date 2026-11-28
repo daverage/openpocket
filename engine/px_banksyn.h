@@ -54,7 +54,7 @@ static const bs_voice BS_VOICES[] = {
     /* PX_SYN_SQ_FLUTE   */ {BS_SQUARE, 2, 0, 0, {0}, 0.398f},
 };
 static inline int bs_index(int t) { return t - PX_SYN_BS_STRINGS; }
-static inline int px_syn_bs(int t) { return t >= PX_SYN_BS_STRINGS && t <= PX_SYN_SQ_FLUTE; }
+static inline int px_syn_bs(int t) { return t >= PX_SYN_BS_STRINGS && t < PX_SYN_COUNT; }
 
 /* the choir's vowels: three formants (Hz) and their levels */
 static const float BS_VOWEL[5][6] = {
@@ -175,6 +175,8 @@ static inline float bs_svf(px_bsyn *b, float x, float hz, float damp)
 static void bs_setup(px_engine *e, int t, const uint8_t *q)
 {
     px_bsyn *b = &e->bs;
+    const int octave_mix = t == PX_SYN_BS_STRINGS_OCT || t == PX_SYN_BS_CHOIR_OCT;
+    if (octave_mix) t = t == PX_SYN_BS_STRINGS_OCT ? PX_SYN_BS_STRINGS : PX_SYN_BS_CHOIR;
     const bs_voice *v = &BS_VOICES[bs_index(t)];
     const float k0 = f01(q[0]), k1 = f01(q[1]), k2 = f01(q[2]), k3 = f01(q[3]), k4 = f01(q[4]);
     b->family = v->family; b->wave = v->wave; b->oct = v->oct; b->formant = v->formant;
@@ -184,7 +186,13 @@ static void bs_setup(px_engine *e, int t, const uint8_t *q)
     b->tone_hz = 600.0f + 7000.0f * k0 * k0;
     b->att = onepole_k(sr, 0.004f + 0.9f * k1 * k1);           /* ATTACK 4 ms .. 0.9 s */
     b->rel = onepole_k(sr, 0.03f + 2.5f * k2 * k2);            /* RELEASE 30 ms .. 2.5 s */
-    b->chorus = k3;
+    b->chorus = octave_mix ? 0.5f : k3;
+    if (octave_mix) {
+        /* Scale only the existing octave down and octave up weights.
+         * This runs on edits, so the audio loop has the same work at 50–100%. */
+        b->w[0] *= 2.0f * k3;
+        b->w[2] *= 2.0f * k3;
+    }
     b->k0 = k0; b->k1 = k1; b->k2 = k2; b->k3 = k3;
     if (t == PX_SYN_BS_CHOIR) {
         const int vw = q[0] * 5 / 101;
@@ -355,6 +363,8 @@ static float ps_gain(float semis)
     const int k = (int)i; const float f = i - (float)k;
     return k >= 24 ? G[24] : G[k] + f * (G[k + 1] - G[k]);
 }
+static int ps_octave(float ratio) { return ratio == 2.0f ? 1 : ratio == 0.5f ? -1 : 0; }
+
 static void ps_reset(px_engine *e)
 {
     memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
@@ -362,12 +372,19 @@ static void ps_reset(px_engine *e)
     memset(p->upr, 0, sizeof p->upr); memset(p->upi, 0, sizeof p->upi);
     for (int i = 0; i < ERB_O_BANDS; ++i) { p->wr[i] = 1.0f; p->wi[i] = 0.0f; }
     p->fast = p->slow = 0.0f; p->since = 1 << 20; p->r = p->rt;
+    p->last = p->correction = 0.0f; p->octave = ps_octave(p->rt);
 }
-static PX_HOT float ps_bank(px_engine *e, float x, int pick)
+static PX_HOT float ps_bank(px_engine *e, float x, int pick, int octave)
 {
     px_erb_octave *s = &e->erb_pitch;
     px_pshift *p = &e->psh;
     const float r = p->r;
+    if (octave) {
+        /* The octave kernels keep all bands phase-coherent and use the same
+         * level and range as a full-wet POLY OCTAVE HQ voice. */
+        return erb_bank(e, s, x, octave > 0 ? octave_up_level(1.0f, 1) : 0.0f,
+                        octave < 0 ? octave_down_level(1.0f, 1) : 0.0f, 0.0f, ERB_FULL);
+    }
     float y = 0.0f;
     for (int i = 0; i < ERB_O_BANDS; ++i) {
         const px_erb_band *f = &erb_oband[i];
@@ -376,20 +393,22 @@ static PX_HOT float ps_bank(px_engine *e, float x, int pick)
         s->z1[i].i = f->b1.i * x - (f->a1.r * imag + f->a1.i * real) + s->z2[i].i;
         s->z2[i].r = f->b2.r * x - (f->a2.r * real - f->a2.i * imag);
         s->z2[i].i = f->b2.i * x - (f->a2.r * imag + f->a2.i * real);
-        const float power = real * real + imag * imag + 1e-24f, inv = erb_inverse_root(power), mag = power * inv;
+        const float power = real * real + imag * imag + 1e-24f, inv = erb_inverse_root(power);
         const float ur = real * inv, ui = imag * inv;
         const float top = erb_ofc[i] * r;              /* the shifted band's place: fade out from 4.2 to 5 kHz */
         const float wgt = top < 4200.0f ? 1.0f : (top > 5000.0f ? 0.0f : (5000.0f - top) * (1.0f / 800.0f));
         if (wgt > 0.0f) {
-            if (pick) { p->wr[i] = ur; p->wi[i] = ui; }
+            if (pick || (p->upr[i] == 0.0f && p->upi[i] == 0.0f)) {
+                p->wr[i] = 1.0f; p->wi[i] = 0.0f;
+            }
             else {
                 const float cr = ur * p->upr[i] + ui * p->upi[i], ci = ui * p->upr[i] - ur * p->upi[i];   /* u conj(u_prev) */
-                float sn, cs; ps_sincos(r * bs_atan2(ci, cr), &sn, &cs);
+                float sn, cs; ps_sincos((r - 1.0f) * bs_atan2(ci, cr), &sn, &cs);
                 const float nr = p->wr[i] * cs - p->wi[i] * sn, ni = p->wr[i] * sn + p->wi[i] * cs;
                 const float k = 1.5f - 0.5f * (nr * nr + ni * ni);    /* (keep |w| = 1) */
                 p->wr[i] = nr * k; p->wi[i] = ni * k;
             }
-            y += wgt * mag * p->wr[i];
+            y += wgt * (real * p->wr[i] - imag * p->wi[i]);
         }
         p->upr[i] = ur; p->upi[i] = ui;
     }
@@ -404,103 +423,25 @@ static PX_HOT float ps_run(px_engine *e, float input)
     p->fast += (a - p->fast) * 0.0224f; p->slow += (a - p->slow) * 0.0011f;
     if (p->fast > (3.0f - 1.6f * p->attack) * p->slow && p->fast > 2e-3f && p->since > 2646 && p->attack > 0.0f) p->since = 0;   /* a pick: the bank's next sample restarts the phasors */
     if (p->since < (1 << 20)) p->since++;
-    p->r += (p->rt - p->r) * 0.002f;                   /* (a turned SHIFT glides over ~10 ms) */
+    const float error = p->rt - p->r;
+    p->r = fabsf(error) < 1e-5f ? p->rt : p->r + error * 0.002f;                   /* (a turned SHIFT glides over ~10 ms) */
     const unsigned pos = s->pos;
     s->input[pos] = input;
     if ((pos & 1) == 0) {
         const unsigned p2 = s->pos2;
         s->in2[p2] = erb_halfband(s->input, pos, erb_hb);
-        if ((p2 & 1) == 0) { s->up2[p2] = ps_bank(e, erb_halfband(s->in2, p2, erb_hb), p->since >= 1 && p->since <= 4) * p->gain; }
-        s->up[pos] = (p2 & 1) ? s->up2[(p2 - 15) & 31] : 2.0f * erb_halfband(s->up2, p2, erb_hb);
-        s->pos2 = (p2 + 1) & 31;
-    }
-    s->pos = (pos + 1) & 31;
-    if (pos & 1) return s->up[(pos - 15) & 31];
-    return 2.0f * erb_halfband(s->up, pos, erb_hb);
-}
-
-/* ---- DROP TUNE: the low E string retuned, the other five left alone ----
- * One pickup mixes the strings, but a note under A2 can only come from the low string (E2 .. G#2, its frets 0..4; RANGE moves that
- * top). The bank's lowest sounding band holds the lowest note; when its frequency (the band's phase step) is under the top, that
- * note's harmonic series (the bands at 1x .. 8x its frequency) is moved by DROP, as POLY SHIFTER moves a band; every other band is
- * given back as it is. A partial shared with another string's note moves with the low note (an open E chord's E3 and B3 are also
- * the low E's 2nd and 3rd harmonics): only the lowest harmonics are moved fully, the upper ones by less (DT_KMAX). */
-#define DT_KMAX 6
-#ifndef DT_TOL_LOW
-#define DT_TOL_LOW 0.3f
-#endif
-#ifndef DT_TOL_UP1
-#define DT_TOL_UP1 0.3f
-#endif
-#ifndef DT_UPPER
-#define DT_UPPER 1.0f
-#endif
-static PX_HOT float dt_bank(px_engine *e, float x)
-{
-    px_erb_octave *s = &e->erb_pitch;
-    px_pshift *p = &e->psh;
-    float y = 0.0f, top = 0.0f;
-    for (int i = 0; i < ERB_O_BANDS; ++i) {
-        const px_erb_band *f = &erb_oband[i];
-        const float real = f->b0 * x + s->z1[i].r, imag = s->z1[i].i;
-        s->z1[i].r = f->b1.r * x - (f->a1.r * real - f->a1.i * imag) + s->z2[i].r;
-        s->z1[i].i = f->b1.i * x - (f->a1.r * imag + f->a1.i * real) + s->z2[i].i;
-        s->z2[i].r = f->b2.r * x - (f->a2.r * real - f->a2.i * imag);
-        s->z2[i].i = f->b2.i * x - (f->a2.r * imag + f->a2.i * real);
-        const float power = real * real + imag * imag + 1e-24f, inv = erb_inverse_root(power), mag = power * inv;
-        const float ur = real * inv, ui = imag * inv;
-        float *env = &s->low_env[i];
-        *env += (mag - *env) * (mag > *env ? 0.05f : 0.004f);
-        if (*env > top) top = *env;
-        const float cr = ur * p->upr[i] + ui * p->upi[i], ci = ui * p->upr[i] - ur * p->upi[i];
-        const float step = bs_atan2(ci, cr);           /* this band's phase step: its partial's frequency now */
-        { const float hz = step * (erb_rate / (2.0f * PI_F)); if (hz > 30.0f) p->bhz[i] += (hz - p->bhz[i]) * 0.05f; }
-        if (i == p->sel) p->hz = p->bhz[i];
-        const float m = p->m[i];
-        if (m > 0.0f) {                                /* in the low note's series: turn by DROP x the step */
-            float sn, cs; ps_sincos(p->r * step, &sn, &cs);
-            const float nr = p->wr[i] * cs - p->wi[i] * sn, ni = p->wr[i] * sn + p->wi[i] * cs;
-            const float k = 1.5f - 0.5f * (nr * nr + ni * ni);
-            p->wr[i] = nr * k; p->wi[i] = ni * k;
-        } else { p->wr[i] = ur; p->wi[i] = ui; }       /* (out of it: the phasor follows the band, so it joins without a jump) */
-        y += mag * (m * p->wr[i] + (1.0f - m) * ur);
-        p->upr[i] = ur; p->upi[i] = ui;
-    }
-    /* the lowest band with a quarter of the loudest band's level, and whether its note is the low string's */
-    int low = -1;
-    for (int i = 0; i < ERB_O_BANDS; ++i) if (s->low_env[i] > top * 0.25f + 2e-4f) { low = i; break; }
-    if (low != p->sel) { p->sel = low; if (low >= 0) p->hz = p->bhz[low]; }
-    /* (with a margin: the band's reading wobbles by a semitone or so as its partials beat; the note counts as the low string's
-     *  from under the top, and stops counting only well over it) */
-    if (low < 0 || p->hz < 72.0f) p->on = 0;       /* (under 72 Hz: not a guitar note in standard tuning; mains hum at 50 / 60 Hz is left alone) */
-    else if (p->hz < p->top_hz) p->on = 1;
-    else if (p->hz > p->top_hz * 1.12f) p->on = 0;
-    const int on = p->on;
-    for (int i = 0; i < ERB_O_BANDS; ++i) {
-        float want = 0.0f;
-        if (on) {
-            const float h = p->bhz[i] / p->hz;       /* which harmonic of the low note this band holds now (its own frequency, not its centre) */
-            int k = (int)(h + 0.5f); if (k < 1 && h > 0.6f) k = 1;
-            if (k >= 1 && k <= DT_KMAX) {
-                const float d = h / (float)k - 1.0f, dd = d < 0.0f ? -d : d;
-                const float tol = k == 1 ? (d > 0.0f ? DT_TOL_UP1 : DT_TOL_LOW) : k == 2 ? DT_TOL_LOW : 0.12f;   /* (over the fundamental the window is narrower: A2 is only a fourth over E2) */ /* (the low bands are wide: one holds the 1st and 2nd harmonics, and reads between them) */
-                want = dd < tol ? 1.0f : (dd > tol + 0.08f ? 0.0f : (tol + 0.08f - dd) * 12.5f);
-                if (k > 3) want *= DT_UPPER;           /* (upper harmonics: shared with the other strings more often) */
-            }
+        if ((p2 & 1) == 0) {
+            const int octave = ps_octave(p->r);
+            const int changed = octave != p->octave;
+            const int onset = p->since >= 1 && p->since <= 4;
+            const float raw = ps_bank(e, erb_halfband(s->in2, p2, erb_hb), onset || changed, octave) *
+                              (octave ? p->octave_gain : p->gain);
+            /* De-click the handoff between phase integration and the octave kernels. */
+            if (changed) p->correction = p->last - raw;
+            s->up2[p2] = p->last = raw + p->correction;
+            p->correction *= 0.975f;
+            p->octave = octave;
         }
-        p->m[i] += (want - p->m[i]) * 0.01f;           /* (~10 ms: no clicks as notes come and go) */
-    }
-    return y;
-}
-static PX_HOT float dt_run(px_engine *e, float input)
-{
-    px_erb_octave *s = &e->erb_pitch;
-    const unsigned pos = s->pos;
-    s->input[pos] = input;
-    if ((pos & 1) == 0) {
-        const unsigned p2 = s->pos2;
-        s->in2[p2] = erb_halfband(s->input, pos, erb_hb);
-        if ((p2 & 1) == 0) s->up2[p2] = dt_bank(e, erb_halfband(s->in2, p2, erb_hb)) * e->psh.gain;
         s->up[pos] = (p2 & 1) ? s->up2[(p2 - 15) & 31] : 2.0f * erb_halfband(s->up2, p2, erb_hb);
         s->pos2 = (p2 + 1) & 31;
     }

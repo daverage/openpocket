@@ -96,3 +96,36 @@ SET block/action 11, operation 0, parameter 0 edits patch volume independently o
 JSON presets carry `patchVolume` at patch level. GATE parameters are THRESH, RELEASE, HUM and HUSH; NOISE GATE exposes only the first two. GLOBAL byte 9 is reserved and returned as zero.
 
 Flash format 8 retains the 112-byte slots: the base preset and mark stay at 0..94, gestures at 95..98, Valve at 99..101, patch volume at 102, and footswitch assignment at 111. The transition build rewrites current format-7 slots once through the existing CRC-protected dual-copy commit. Unsupported older stores are retained read-only.
+
+### Scenes in protocol 13
+
+`STATE` appends the default scene plus one (zero when disabled), active scene (0–2), and Scene footswitch mode (0 or 1).
+Enabled patches append three zero-terminated scene names. `SCENE` (33) takes one operation and its arguments.
+Write replies contain a status byte (0 for success).
+
+| Operation | Arguments |
+|---|---|
+| Enable or disable (1) | 1 or 0 |
+| Select (2) | Scene index |
+| Set default (3) | Scene index |
+| Copy sound from the active scene (4) | Destination scene index |
+| Name (5) | Scene index and up to nine printable ASCII bytes |
+| Set Scene footswitch mode (6) | 1 or 0 |
+
+With no arguments, `SCENE` returns status, the current patch encoded with its default scene active, and its scene record.
+`SLOT_GET` appends the same record to its stored patch. `SLOT_PUT` and `PUT` can append it after the full preset.
+The record starts with the default scene plus one. Zero represents a one-byte disabled record.
+An enabled record has three 10-byte zero-padded names and two scene sounds in A-to-C order, skipping the default.
+Each sound holds two 7-bit block-on masks, 50 block parameter bytes in block order, then Valve on, drive, level and patch volume.
+`PUT` without a scene record edits the active sound. `SAVE` persists the whole patch.
+
+Scene-enabled stores use flash format 9. The ordinary slot holds the shared patch and the default scene's sound.
+The matching flash copy holds the scene records in two extension sectors. The header CRC covers both the ordinary
+slots and the extension, and the header is published after both have been written. Stores without scenes continue
+to use format 8.
+
+Protocol 14 retires Drop Tune from the catalogue while reserving its original type index. Older patches using that index open with the pitch block bypassed.
+
+Protocol 16 appends scene count (0, 2 or 3) after the names in `STATE`. `SCENE` operation 7 takes 2 or 3.
+In saved and exported scene records, bit 2 of the default-scene byte marks a two-scene patch.
+The low two bits still encode the default plus one. Both alternate sounds and all three names stay in the record.

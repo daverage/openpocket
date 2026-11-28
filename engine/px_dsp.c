@@ -503,14 +503,13 @@ static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
 static const char *const PN_PSH[] = {"SHIFT", "FINE", "MIX", "ATTACK"};   /* v75 POLY SHIFTER */
-static const char *const PN_DROP[] = {"DROP", "RANGE", "MIX"};   /* DROP TUNE: semitones down, the highest fret counted as the low string, the dry share */
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT},
     {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
     {"DETUNE", 2, PN_DET}, {"POLY OCTAVE HQ", 5, PN_POLY_HQ},
     {"LOWEST OCTAVE HQ", 4, PN_POLY_HQ},   /* DRY, OCT -1, OCT +1, RANGE (the same note cut as POLY OCTAVE HQ) */
     {"POLY SHIFTER", 4, PN_PSH},           /* v75: SHIFT -12..+12 semitones, FINE -50..+50 cents, MIX, ATTACK (how readily a pick restarts the phases) */
-    {"DROP TUNE", 3, PN_DROP},             /* the low E string a tone (DROP 2) or more down; the other strings stay */
+    {"", 0, 0},                          /* retired Drop Tune ID */
 };
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
@@ -543,6 +542,8 @@ static const char *const PN_OCT_FUZZ[] = {"DOWN", "UP", "FUZZ", "TONE", "LEVEL"}
 static const char *const PN_ORGAN[] = {"REGISTER", "PERC", "SUSTAIN", "TONE", "LEVEL"};
 static const char *const PN_BS_PAD[] = {"TONE", "ATTACK", "RELEASE", "CHORUS", "LEVEL"};
 static const char *const PN_BS_CHOIR[] = {"VOWEL", "ATTACK", "RELEASE", "CHORUS", "LEVEL"};
+static const char *const PN_BS_PAD_OCT[] = {"TONE", "ATTACK", "RELEASE", "OCTAVE MIX", "LEVEL"};
+static const char *const PN_BS_CHOIR_OCT[] = {"VOWEL", "ATTACK", "RELEASE", "OCTAVE MIX", "LEVEL"};
 static const char *const PN_BS_BRASS[] = {"TONE", "BITE", "RELEASE", "WIDTH", "LEVEL"};
 static const char *const PN_BS_PIPE[] = {"STOPS", "SWELL", "RELEASE", "TONE", "LEVEL"};
 static const char *const PN_BS_LEAD[] = {"CUTOFF", "RESONANCE", "ENVELOPE", "SUB", "LEVEL"};
@@ -558,6 +559,7 @@ static const tdef T_SYN[PX_SYN_COUNT] = {
     SYN_TOMB, SYN_TOMB,                                /* 12-STRING, BELL PAD: retired 2026-11-28 */
     SYN_TOMB, SYN_TOMB, SYN_TOMB, SYN_TOMB,            /* SAW, PULSE, SUB BASS, ANALOG LEAD: retired 2026-11-28 */
     {"SQ BRASS", 5, PN_BS_LEAD}, {"SQ BASS", 5, PN_BS_LEAD}, {"SQ FLUTE", 5, PN_BS_LEAD},
+    {"STRINGS OCTAVE", 5, PN_BS_PAD_OCT}, {"CHOIR OCTAVE", 5, PN_BS_CHOIR_OCT},
 };
 static const tdef T_BST[PX_BST_COUNT] = {{"RANGEMASTER", 3, PN_RM}, {"EP BOOST", 2, PN_EP}, {"MAXIMIZER", 2, PN_BBE}, {"FIXED WAH", 3, PN_VW}, {"ENHANCE", 2, PN_ENH}, {"FUZZ FACE", 5, PN_FF}, {"ACOUSTIC PRE", 5, PN_AP}, {"SIGNATURE", 5, PN_SIGNATURE}};
 /* v75: the SFX types that moved to the BST block and the BST type each became (-1: still an SFX type). The one place that lists them
@@ -575,7 +577,7 @@ static int px_sfx_to_bst(int t)
 int px_type_retired(int b, int t)
 {
     return (b == PX_B_SYN && !px_syn_runs(t)) || (b == PX_B_SFX && (t == PX_SFX_APPLAUSE || t == PX_SFX_CROSS_OSC || t == PX_SFX_SYNTH_HQ || px_sfx_to_bst(t) >= 0)) ||
-           (b == PX_B_COMP && t == PX_CMP_VALVE);
+           (b == PX_B_COMP && t == PX_CMP_VALVE) || (b == PX_B_PITCH && t == PX_PIT_DROP);
 }
 int px_nlive(int b) { int n = 0; for (int t = 0; t < px_ntypes(b); t++) n += !px_type_retired(b, t); return n; }
 int px_live_type(int b, int i)
@@ -810,8 +812,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             }
             return 1;
         }
-        if (t == PX_PIT_DROP && k == 0) { put_int(buf, -dt_semis(v), 1); return 1; }   /* DROP in semitones */
-        if (t == PX_PIT_DROP && k == 1) { put_str(buf, "FRET "); put_int(buf + 5, dt_frets(v), 0); return 1; }   /* RANGE: the highest fret on the low string */
         if (t == PX_PIT_POLYSHIFT && k == 0) { put_int(buf, (int)(x * 24.0f + 0.5f) - 12, 1); return 1; }              /* SHIFT in semitones */
         if (t == PX_PIT_POLYSHIFT && k == 1) { put_int(buf, (int)((x - 0.5f) * 100.0f + (x >= 0.5f ? 0.5f : -0.5f)), 1); return 1; }   /* FINE in cents */
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
@@ -850,7 +850,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_SYN:
         if (t == PX_SYN_ORGAN && k == 0) { static const char *const r[] = {"JAZZ", "FULL", "GOSPEL", "CHURCH"}; put_str(buf, r[v >= 75 ? 3 : v >= 50 ? 2 : v >= 25 ? 1 : 0]); return 1; }
-        if (t == PX_SYN_BS_CHOIR && k == 0) { static const char *const r[] = {"AH", "OH", "OO", "EH", "EE"}; put_str(buf, r[v * 5 / 101]); return 1; }
+        if ((t == PX_SYN_BS_CHOIR || t == PX_SYN_BS_CHOIR_OCT) && k == 0) { static const char *const r[] = {"AH", "OH", "OO", "EH", "EE"}; put_str(buf, r[v * 5 / 101]); return 1; }
         if (t == PX_SYN_BS_PIPE && k == 0) { static const char *const r[] = {"FLUTES", "DIAPASON", "FULL", "MIXTURE"}; put_str(buf, r[v * 4 / 101]); return 1; }
         break;
     case PX_B_DELAY:
@@ -1137,19 +1137,14 @@ static void rc_pitch(px_engine *e)
             e->ps_lvl[0] *= powf(100.0f / (float)q[3], PX_POLY_RANGE_MAKEUP) * powf(10.0f, PX_POLY_RANGE_LIFT * 0.05f * (fade > 1.0f ? 1.0f : fade));
         }
         break;
-    case PX_PIT_DROP: {                                /* DROP TUNE (px_banksyn.h): the low string's notes moved by DROP */
-        e->psh.rt = e->psh.r = expf(-(float)dt_semis(q[0]) * 0.05776227f);
-        e->psh.top_hz = 82.41f * expf((float)dt_frets(q[1]) * 0.05776227f) * 1.03f;   /* (a quarter tone over the top fret) */
-        e->psh.mix = f01(q[2]); e->psh.gain = 2.436f;   /* (POLY SHIFTER's level with no shift) */
-        erb_prepare(e);
-    } break;
     case PX_PIT_POLYSHIFT: {                           /* on POLY OCTAVE HQ's bank (px_banksyn.h): a whole number of semitones and the cents */
         const int st = (int)(f01(q[0]) * 24.0f + 0.5f) - 12;
         const float semis = (float)st + (f01(q[1]) - 0.5f);
-        e->psh.rt = expf(semis * 0.05776227f);         /* 2^(st/12), the cents: +-50 of 100 per semitone */
+        e->psh.rt = semis == 12.0f ? 2.0f : semis == -12.0f ? 0.5f : expf(semis * 0.05776227f);         /* 2^(st/12), the cents: +-50 of 100 per semitone */
         if (e->psh.r <= 0.0f) e->psh.r = e->psh.rt;
         e->psh.mix = f01(q[2]); e->psh.attack = f01(q[3]);
         e->psh.gain = ps_gain(semis);
+        e->psh.octave_gain = powf(10.0f, (PIT_DB[PX_PIT_POLYOCT_HQ] - PIT_DB[PX_PIT_POLYSHIFT]) * 0.05f);
         erb_prepare(e);
     } break;
     case PX_PIT_WHAMMY: {
@@ -1205,10 +1200,10 @@ void px_type_defaults(int blk, int type, uint8_t *p)
     if (blk == PX_B_SFX && type == PX_SFX_FORMANT) { d[0] = 55; d[1] = 65; d[2] = 45; d[3] = 80; }
     if (blk == PX_B_SFX && (type == PX_SFX_CROSS_SAW || type == PX_SFX_CROSS_TRI)) { d[0] = 45; d[1] = 40; d[2] = 70; d[3] = 80; }
     if (blk == PX_B_SFX && type == PX_SFX_CROSS_OSC) { d[0] = 0; d[1] = 45; d[2] = 40; d[3] = 50; d[4] = 80; }
-    if (blk == PX_B_PITCH && type == PX_PIT_DROP) d[2] = 100;                 /* DROP TUNE: MIX 100 (a retuned string, not the two pitches together); DROP 50 = -2 (drop D), RANGE 50 = fret 3 */
     if (blk == PX_B_SYN) switch (type) {                                       /* the waveform-following synths */
     case PX_SYN_ORGAN: d[0] = 10; d[2] = 25; break;                            /* JAZZ, SUSTAIN low: the picks still shape it */
-    case PX_SYN_BS_STRINGS: case PX_SYN_BS_CHOIR: d[1] = 35; break;
+    case PX_SYN_BS_STRINGS: case PX_SYN_BS_CHOIR:
+    case PX_SYN_BS_STRINGS_OCT: case PX_SYN_BS_CHOIR_OCT: d[1] = 35; break;
     case PX_SYN_BS_PIPE: d[0] = 40; d[1] = 30; break;
     case PX_SYN_BS_BELL: d[3] = 40; break;
     case PX_SYN_BS_SAW: case PX_SYN_BS_PULSE: case PX_SYN_BS_ANALOG: d[1] = 35; d[3] = 0; break;
@@ -1931,7 +1926,7 @@ static void px_spill_plan(px_engine *e, const px_preset_t *p, const uint8_t *was
             if (e->spill[L]) { e->spill[L] = 0; if (!full) { if (L) rc_reverb(e); else rc_delay(e); } }   /* back to the preset's own settings (px_recalc does it for a full set) */
             continue;
         }
-        if (e->glob.tails && was_on[L] && e->run.on[b] && e->bf[b] >= 1.0f && !e->spill[L]) {
+        if (e->glob.tails && was_on[L] && e->run.on[b] && e->bf[b] > 0.0f && !e->spill[L]) {
             e->spill[L] = (int16_t)((L ? 6.0f : 3.0f) * e->sr / 64.0f);
             e->sp_type[L] = was_type[L];
         }
@@ -1970,9 +1965,10 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
     px_recalc(e);
     if (e->cur.on[PX_B_PITCH] && e->cur.type[PX_B_PITCH] == PX_PIT_LOWEST_HQ)
         lowest_pitch_reset(e);
-    if (e->cur.type[PX_B_PITCH] == PX_PIT_POLYSHIFT || e->cur.type[PX_B_PITCH] == PX_PIT_DROP) ps_reset(e);   /* a new preset: the bank from silence */
+    if (e->cur.type[PX_B_PITCH] == PX_PIT_POLYSHIFT) ps_reset(e);   /* a new preset: the bank from silence */
     e->run = e->cur;                                   /* v38: nothing gliding, nothing fading */
     for (int L = 0; L < 2; L++) if (e->spill[L]) { const int b = L ? PX_B_REVERB : PX_B_DELAY; e->run.on[b] = 1; e->run.type[b] = e->sp_type[L]; }   /* v75: the tails play on */
+    e->rv_spill_dry = e->spill[1] > 0;
     wl_clear(e);                                       /* v39: the lanes start empty (the output fades in) */
     e->gl_left = 0;
     for (int b = 0; b < PX_NBLK; b++) { e->bf[b] = e->bfa[b] = e->run.on[b] ? 1.0f : 0.0f; e->bfd[b] = 0; }
@@ -1987,7 +1983,9 @@ void px_engine_set(px_engine *e, const px_preset_t *p)
 static const uint32_t GL_F[] = {
     GLF_(cmp_make), GLF_(cmp_mix), GLF_(cmp_k), GLF_(triode.drive), GLF_(triode.level),
     GLF_(oct_dry), GLF_(oct_s1), GLF_(oct_s2), GLF_(oct_up), GLF_(ps_dry), GLF_(ps_lvl[0]), GLF_(ps_lvl[1]), GLF_(erb_pitch_range),
+    GLF_(psh.mix), GLF_(psh.gain),
     GLF_(sfx_mix), GLF_(sfx_c), GLF_(sfx_d),
+    GLF_(bs.w[0]), GLF_(bs.w[2]),
     GLF_(syn_out), GLF_(syn_lvl[0]), GLF_(syn_lvl[1]), GLF_(syn_lvl[2]),
     GLF_(syn_fuzz.gain), GLF_(syn_fuzz_tone),
     GLF_(mod_mix), GLF_(mod_depth), GLF_(mod_fb), GLF_(mod_base), GLF_(mod_sweep), GLF_(mod_shape), GLF_(ph_lo),
@@ -2069,12 +2067,15 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYOCT_HQ)
                 memset(&e->erb_pitch, 0, sizeof e->erb_pitch);
             if (b == PX_B_PITCH && p->type[b] == PX_PIT_LOWEST_HQ) lowest_pitch_reset(e);
-            if (b == PX_B_PITCH && (p->type[b] == PX_PIT_POLYSHIFT || p->type[b] == PX_PIT_DROP)) ps_reset(e);
+            if (b == PX_B_PITCH && p->type[b] == PX_PIT_POLYSHIFT) ps_reset(e);
             if (b == PX_B_SYN && (p->type[b] == PX_SYN_OCT_FUZZ || p->type[b] == PX_SYN_ORGAN)) {
                 memset(&e->erb_syn, 0, sizeof e->erb_syn);
                 syn_fuzz_reset(e);
             }
-            if (b == PX_B_SYN && px_syn_bs(p->type[b])) bs_reset(e);
+            if (b == PX_B_SYN && px_syn_bs(p->type[b])) {
+                bs_reset(e);
+                bs_setup(e, p->type[b], p->p[b]);
+            }
             if (b == PX_B_SYN && px_syn_mono(p->type[b])) px_s2_reset(e, p->type[b], p->p[b]);
 #ifdef PX_SFX_SYNTH_HQ_LIVE
             if (b == PX_B_SFX && p->type[b] == PX_SFX_SYNTH_HQ) {
@@ -2783,15 +2784,6 @@ static __attribute__((noinline)) void pitch_run(px_engine *e, int type, float *x
         e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
         return;
     }
-    if (type == PX_PIT_DROP) {                         /* the whole guitar from the bank (the low string's note moved), the highs from the input */
-        const float m = e->psh.mix;
-        for (int k = 0; k < n0; ++k) {
-            const float x = xb[k];
-            xb[k] = (dt_run(e, x) * m + x * (1.0f - m)) * strim;
-        }
-        e->dn = ((n0 - 1) & 1) ? 1e-15f : -1e-15f;
-        return;
-    }
     if (type == PX_PIT_POLYSHIFT) {                    /* the bank's shifted voice, mixed with the input (no delay: the bank's own few ms) */
         const float m = e->psh.mix;
         for (int k = 0; k < n0; ++k) {
@@ -3127,6 +3119,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         int b = e->ord[i];
         if (b != PX_B_GATE && !p->on[b]) continue;
         if (b == PX_B_SYN && !px_syn_runs(syn_t)) continue;   /* Synth2: a retired SYNTH type is bypassed (docs/research/synth2/SYNTH2-PLAN.md) */
+        if (b == PX_B_PITCH && pit_t == PX_PIT_DROP) continue;
         if (b == PX_B_SFX && sfx_gone) continue;   /* APPLAUSE was removed, and v75 moved three pedals to BST: a stored one is bypassed, its settings kept */
         tr[ns] = e->btr[b];
         st[ns++] = (uint8_t)b;
@@ -3164,14 +3157,24 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         if (sblk == PX_B_DELAY || sblk == PX_B_REVERB) {   /* v38: over the block, each type's own loop */
             if (p->on[sblk]) {
                 const int L = sblk == PX_B_REVERB, sp = e->spill[L] > 0;   /* v75: a tail playing out: nothing is sent in, the dry stays whole */
+                float dry = 1.0f, dry_step = 0.0f;
+                if (L) {
+                    const float live_dry = 1.0f - 0.4f * e->rv_mix;
+                    dry = e->rv_spill_dry ? 1.0f : live_dry;
+                    if (sp != e->rv_spill_dry) {
+                        const float target = sp ? 1.0f : live_dry;
+                        dry_step = (target - dry) / (float)n;
+                        e->rv_spill_dry = (uint8_t)sp;
+                    }
+                }
                 if (e->wl_on && e->wl_p[L] + n <= PX_WL_N) {   /* v39: the lane: the send in, two blocks old wet out */
-                    const float dg = (L && !sp) ? 1.0f - 0.4f * e->rv_mix : 1.0f;
                     float *bw = px_wl[L][e->wl_b] + e->wl_p[L];
                     const int rd = (int)e->wl_rd[L] - (int)e->wl_p[L];
                     for (int k = 0; k < n; k++) {
                         const float x = xb[k], w = k < rd ? bw[k] : 0.0f;
                         bw[k] = sp ? 0.0f : x;
-                        xb[k] = x * dg + w;
+                        xb[k] = x * dry + w;
+                        dry += dry_step;
                     }
                     e->wl_p[L] = (uint16_t)(e->wl_p[L] + n);
                     e->wl_n[L][e->wl_b] = e->wl_p[L];
@@ -3182,8 +3185,10 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     const float *const src = sp ? zb : xb;
                     if (L) {
                         rv_block(e, src, wb, n);
-                        const float dg = sp ? 1.0f : 1.0f - 0.4f * e->rv_mix;
-                        for (int k = 0; k < n; k++) xb[k] = xb[k] * dg + wb[k];
+                        for (int k = 0; k < n; k++) {
+                            xb[k] = xb[k] * dry + wb[k];
+                            dry += dry_step;
+                        }
                     } else {
                         dly_block(e, src, wb, n, dly_t);
                         for (int k = 0; k < n; k++) xb[k] = xb[k] + wb[k];

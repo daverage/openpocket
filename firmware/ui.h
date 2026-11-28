@@ -28,13 +28,17 @@
  * MOD DLY REV, BYPASS, nothing (v75: BST, PRE / BOOST, is a block like the others). The assignment is part of the preset (EDITED, hold PUSH to save).
  */
 #pragma once
+#include "px_scene.h"
 
-enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_VALVE, M_GLOBAL, M_PATCH };
+enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_VALVE, M_GLOBAL, M_PATCH, M_SCENES };
 static uint32_t st_gen;                 /* bumped on each save: the "EDITED" reference reloads */
 static void st_get(uint32_t k, px_preset_t *p);
 static int st_save(uint32_t k, const px_preset_t *p);
 static int st_save_fs(uint32_t k, const px_preset_t *p, uint8_t fs);   /* v48: with the footswitches' assignment */
 static int st_save_fsg(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs);   /* v75: and their gestures */
+static void st_scene_of(uint32_t k, px_scene_record *scene);
+static int st_save_scene(uint32_t k, const px_preset_t *p, uint8_t fs, const uint8_t *gs,
+                         const px_scene_record *scene);
 static int ui_gs_diff(void);
 static uint8_t st_fs_of(uint32_t k);
 static void st_gs_of(uint32_t k, uint8_t *out);
@@ -100,7 +104,8 @@ enum { UI_ST_NORM, UI_ST_LATE, UI_ST_BYPASS, UI_ST_LOADING, UI_ST_HIGH };
 static struct {
     int full, screen;                  /* screen: 0 PLAY, 1 EDIT, -1 another page was drawn over it */
     uint32_t preset, vol; char name[14];
-    int dirty, amp_t, cab_t, amp_on, cab_on;   /* (v70: SYNTH and OCTAVE under the number) */
+    int dirty;
+    char play_title[20], play_level[16];
     uint8_t tile_on[PX_NBLK], tile_sel[PX_NBLK], tile_blk[PX_NBLK], tile_mv[PX_NBLK];
     int info_b, info_t, info_on, info_m;
     int blk, type, np, item, mode, on;
@@ -165,15 +170,119 @@ static void draw_battery(int force)
 
 /* ---- status bar / footer, shared ---- */
 static px_preset_t ui_ref;             /* what the current slot holds */
+static px_scene_sound ui_sounds[PX_SCENES];
+static char ui_scene_names[PX_SCENES][PX_SCENE_NAME];
+static uint8_t ui_scene_start, ui_scene, ui_scene_mode, ui_scene_recall;
+static uint8_t ui_scene_count = PX_SCENES;
+static uint32_t ui_scene_revision;
+
+static void ui_scene_pack(px_preset_t *base, px_scene_record *record)
+{
+    *base = PRESET;
+    memset(record, 0, sizeof *record);
+    record->start = (uint8_t)(ui_scene_start | (ui_scene_start && ui_scene_count == 2u ? PX_SCENE_TWO : 0u));
+    if (!ui_scene_start) return;
+    px_scene_sound active;
+    px_scene_capture(&active, &PRESET);
+    memcpy(record->name, ui_scene_names, sizeof record->name);
+    unsigned other = 0;
+    for (unsigned i = 0; i < PX_SCENES; i++) {
+        const px_scene_sound *sound = i == ui_scene ? &active : &ui_sounds[i];
+        if (i + 1u == ui_scene_start) px_scene_apply(base, sound);
+        else record->other[other++] = *sound;
+    }
+}
+
+static void ui_scene_load(const px_scene_record *record)
+{
+    uc.hint = -1;
+    ui_scene_revision++;
+    ui_scene_start = record->start & (PX_SCENE_TWO - 1u);
+    ui_scene_count = record->start & PX_SCENE_TWO ? 2u : PX_SCENES;
+    ui_scene = ui_scene_start ? ui_scene_start - 1u : 0u;
+    if (!ui_scene_start) ui_scene_mode = 0;
+    memcpy(ui_scene_names, record->name, sizeof ui_scene_names);
+    unsigned other = 0;
+    for (unsigned i = 0; i < PX_SCENES; i++) {
+        if (!ui_scene_start || i == ui_scene) px_scene_capture(&ui_sounds[i], &PRESET);
+        else ui_sounds[i] = record->other[other++];
+    }
+}
+
+static void ui_scene_select(unsigned scene)
+{
+    if (!ui_scene_start || scene >= ui_scene_count || scene == ui_scene) return;
+    px_scene_capture(&ui_sounds[ui_scene], &PRESET);
+    ui_scene = (uint8_t)scene;
+    px_scene_apply(&PRESET, &ui_sounds[scene]);
+    ui_scene_recall = 1;
+}
+
+static void ui_scene_enable(int enabled)
+{
+    if (!!ui_scene_start == !!enabled) return;
+    const px_scene_record empty = {0};
+    ui_scene_load(&empty);
+    ui_scene_start = enabled ? 1u : 0u;
+}
+
+static void ui_scene_set_count(unsigned count)
+{
+    if (!ui_scene_start || count == ui_scene_count || (count != 2u && count != PX_SCENES)) return;
+    if (ui_scene >= count) ui_scene_select(0);
+    if (ui_scene_start > count) ui_scene_start = 1;
+    ui_scene_count = (uint8_t)count;
+    ui_scene_revision++;
+}
+
+static void ui_scene_default(unsigned scene)
+{
+    ui_scene_start = (uint8_t)(scene + 1u);
+    ui_scene_revision++;
+}
+
+static void ui_scene_copy(unsigned scene)
+{
+    px_scene_capture(&ui_sounds[scene], &PRESET);
+    ui_scene_revision++;
+}
+
+static void ui_scene_name(unsigned scene, const char *name)
+{
+    memset(ui_scene_names[scene], 0, PX_SCENE_NAME);
+    for (unsigned i = 0; i < PX_SCENE_NAME - 1u && name[i]; i++)
+        ui_scene_names[scene][i] = name[i];
+    uc.hint = -1;
+    ui_scene_revision++;
+}
+
 static int ui_dirty(void)              /* the preset differs from what its slot holds (hold PUSH to save) */
 {
     static uint32_t ref_slot = ~0u, ref_gen = ~0u;
-    if (ref_slot != cur_preset || ref_gen != st_gen) { st_get(cur_preset, &ui_ref); ref_slot = cur_preset; ref_gen = st_gen; }
-    return memcmp(&ui_ref, &PRESET, sizeof ui_ref) != 0 || ui_fs != st_fs_of(cur_preset) || ui_gs_diff();   /* v48: and its footswitches; v75: and their gestures */
+    static px_scene_record saved;
+    if (ref_slot != cur_preset || ref_gen != st_gen) {
+        st_get(cur_preset, &ui_ref);
+        st_scene_of(cur_preset, &saved);
+        ref_slot = cur_preset;
+        ref_gen = st_gen;
+    }
+    px_preset_t base;
+    px_scene_record live;
+    ui_scene_pack(&base, &live);
+    return memcmp(&ui_ref, &base, sizeof base) || memcmp(&saved, &live, sizeof live) ||
+           ui_fs != st_fs_of(cur_preset) || ui_gs_diff();
 }
 /* v75: the footswitches' gestures, beside ui_fs: [0] left double tap, [1] left hold, [2] right double tap, [3] right hold; each an action: 0..9 a block on / off, 12 BYPASS,
  * 16 the tuner, 17 the next preset, 18 the previous preset, 19 STOMP / PATCH mode; anything else (0xFF) nothing. Kept per preset (px_store.h). */
 static uint8_t ui_gs[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+static int ui_save_patch(uint32_t k)
+{
+    px_preset_t base;
+    px_scene_record scene;
+    ui_scene_pack(&base, &scene);
+    return st_save_scene(k, &base, ui_fs, ui_gs, &scene);
+}
+
 static int ui_gs_diff(void) { uint8_t s[4]; st_gs_of(cur_preset, s); return memcmp(s, ui_gs, 4) != 0; }
 enum { UI_GA_TUNER = 16, UI_GA_NEXT = 17, UI_GA_PREV = 18, UI_GA_MODE = 19 };
 static int ui_ga_valid(uint32_t a) { return a < PX_NBLK || a == PX_VALVE_ACTION || a == 12u || (a >= UI_GA_TUNER && a <= UI_GA_MODE); }
@@ -182,6 +291,11 @@ static int ui_ga_valid(uint32_t a) { return a < PX_NBLK || a == PX_VALVE_ACTION 
 #define UI_FS_NONE 15u
 #define UI_HOLD_CAB 800u               /* hold CAB: STOMP mode on / off */
 static uint8_t ui_stomp, ui_byp;       /* STOMP mode; BYPASS engaged (the main loop hands it to the audio) */
+static void ui_scene_switches(int enabled)
+{
+    ui_scene_mode = (uint8_t)enabled;
+    if (enabled) ui_stomp = ui_byp = 0;
+}
 static int ui_fs_valid(uint32_t t) { return t < PX_NBLK || t == PX_VALVE_ACTION || t == UI_FS_BYP; }
 static uint32_t ui_fs_get(int i) { uint32_t t = (uint32_t)(ui_fs >> (4 * i)) & 15u; return ui_fs_valid(t) ? t : UI_FS_NONE; }   /* (v75: 10 blocks, 0..9; 10 and 11 were accepted by the editor of v48..v74 but never meant: nothing; a stored 9 is cleared by st_migrate6) */
 static const char *ui_fs_name(uint32_t t) { return t < PX_NBLK ? px_block_label((int)t) : t == PX_VALVE_ACTION ? "VLV" : t == UI_FS_BYP ? "BYP" : "---"; }
@@ -221,7 +335,7 @@ static int ui_load_kind(uint32_t l, int safe, int bypass, int late, int loading)
 }
 static void ui_status(const char *s, int kind)
 {
-    if (ui_mode == M_TUNER || ui_mode == M_SAVE || ui_mode == M_MIDI || ui_mode == M_LIST || ui_mode == M_DIAG || ui_mode == M_GLOBAL) return;
+    if (ui_mode == M_TUNER || ui_mode == M_SAVE || ui_mode == M_MIDI || ui_mode == M_LIST || ui_mode == M_DIAG || ui_mode == M_GLOBAL || ui_mode == M_SCENES) return;
     int same = uc.status_kind == kind;
     for (int i = 0; i < 12; i++) { if (uc.status[i] != s[i]) same = 0; if (!s[i]) break; }
     if (same && !uc.full) return;
@@ -237,9 +351,11 @@ static void ui_status(const char *s, int kind)
 static void draw_hint(int force)
 {
     int h = (int)ui_mode, alert = uc.status_kind == UI_ST_BYPASS;
+    int scene = !alert && h == M_CHAIN && ui_scene_start;
     int stomp = !alert && h == M_CHAIN && ui_stomp;      /* v48: STOMP mode on PLAY: the footswitches' assignment */
     int save = !alert && !stomp && h == M_CHAIN && uc.dirty;   /* EDITED shows on PLAY: the footer names SAVE */
     int key = h | alert << 4 | save << 5 | stomp << 6 | (stomp && ui_byp) << 7 | (stomp ? (int)ui_fs << 8 : 0);
+    if (scene) key |= (1 + ui_scene + (ui_scene_mode ? 4 : 0)) << 16 | uc.dirty << 20 | (ui_scene_count == 2u) << 21;
     if (!force && uc.hint == key) return;
     uc.hint = key;
     if (alert) {                                         /* overload: what to do (a block page's whole footer turns red) */
@@ -248,6 +364,10 @@ static void draw_hint(int force)
         if (!uc.screen) b_str(t, uc.status);
         if (uc.screen) lcd_rect(0, F_Y, 240, 3, C_ALERT);
         ft_box(0, F_Y + 3u, 240, t, &FT_SM, WHT, uc.screen ? C_ALERT : UI_PANEL, 1);
+        return;
+    }
+    if (scene && ui_scene_mode) {
+        ft_box(0, F_Y + 3u, 240, ui_scene_count == 2u ? "EITHER SWITCH: A / B" : "LEFT: PREV   RIGHT: NEXT", &FT_SM, UI_ACC, UI_PANEL, 1);
         return;
     }
     if (stomp) {
@@ -280,15 +400,30 @@ static void draw_play_top(int force)
         ft_box(6, P_NUM_Y, 84, b, &FT_XL, UI_ACC, UI_BG, 0);
         uc.preset = cur_preset;
     }
-    /* v70: under the number, the SYNTH block's type, then the OCTAVE (pitch) block's */
-    int at = PRESET.type[PX_B_SYN], ct = PRESET.type[PX_B_PITCH], ao = PRESET.on[PX_B_SYN], co = PRESET.on[PX_B_PITCH];
-    if (force || at != uc.amp_t || ao != uc.amp_on) {
-        ft_box(94, P_NUM_Y + 4u, 142, ao ? ui_type_label(PX_B_SYN, at) : "NO SYNTH", &FT_MD, ao ? BLK_COL[PX_B_SYN] : UI_DIM, UI_BG, 0);
-        uc.amp_t = at; uc.amp_on = ao;
+    char title[20] = "", level[16] = "";
+    if (ui_scene_start) {
+        if (ui_scene_names[ui_scene][0]) {
+            title[0] = (char)('A' + ui_scene);
+            b_str(title, " ");
+            b_str(title, ui_scene_names[ui_scene]);
+        } else {
+            b_str(title, "SCENE A");
+            title[6] = (char)('A' + ui_scene);
+        }
+    } else b_str(title, ui_stomp ? "STOMP MODE" : "PATCH MODE");
+    const int db = ((int)PRESET.patch_volume - 50) * 3;
+    const unsigned magnitude = (unsigned)(db < 0 ? -db : db);
+    if (db) b_str(level, db < 0 ? "-" : "+");
+    b_num(level, magnitude / 10u);
+    if (magnitude % 10u) { b_str(level, "."); b_num(level, magnitude % 10u); }
+    b_str(level, " DB");
+    if (force || memcmp(uc.play_title, title, sizeof title)) {
+        ft_box(94, P_NUM_Y + 4u, 142, title, &FT_MD, ui_scene_start ? UI_ACC : UI_TXT, UI_BG, 0);
+        memcpy(uc.play_title, title, sizeof title);
     }
-    if (force || ct != uc.cab_t || co != uc.cab_on) {
-        ft_box(94, P_NUM_Y + 29u, 88, co ? px_type_name(PX_B_PITCH, ct) : "NO OCTAVE", &FT_SM, UI_DIM, UI_BG, 0);
-        uc.cab_t = ct; uc.cab_on = co;
+    if (force || memcmp(uc.play_level, level, sizeof level)) {
+        ft_box(94, P_NUM_Y + 29u, 88, level, &FT_SM, UI_DIM, UI_BG, 0);
+        memcpy(uc.play_level, level, sizeof level);
     }
     int d = ui_dirty();                                /* EDITED: the sound differs from its saved slot */
     if (force || d != uc.dirty) { ft_box(182, P_NUM_Y + 29u, 54, d ? "EDITED" : "", &FT_SM, UI_ACC, UI_BG, 2); uc.dirty = d; }
@@ -487,7 +622,7 @@ static void ui_patch_draw(void)
         lcd_rect(0, 0, 240, 240, UI_BG);
         ft_box(0, 4, 240, "PATCH SETTINGS", &FT_MD, BLK, UI_ACC, 1);
         ft_box(0, 85, 240, "PATCH VOLUME", &FT_MD, UI_TXT, UI_BG, 1);
-        ft_box(0, F_Y + 3u, 240, "KNOB: VOLUME   FX: NEXT", &FT_SM, UI_DIM, UI_PANEL, 1);
+        ft_box(0, F_Y + 3u, 240, "PUSH: SCENES   FX: NEXT", &FT_SM, UI_DIM, UI_PANEL, 1);
     }
     if (shown != PRESET.patch_volume) {
         shown = PRESET.patch_volume;
@@ -500,6 +635,143 @@ static void ui_patch_draw(void)
         ft_box(0, 125, 240, value, &FT_MD, BLK, UI_ACC, 1);
     }
 }
+enum { SC_ENABLE, SC_ACTIVE, SC_NAME, SC_COPY, SC_DEFAULT, SC_SWITCHES, SC_COUNT, SC_ROWS };
+static struct {
+    uint8_t row, editing, value, cursor, source;
+    char name[PX_SCENE_NAME];
+} sc;
+
+static void ui_scenes_open(void)
+{
+    memset(&sc, 0, sizeof sc);
+    ui_mode = M_SCENES;
+}
+
+static void ui_scenes_draw(void)
+{
+    static uint32_t last_revision;
+    static int last_row, last_editing, last_value, last_cursor, last_scene, last_mode;
+    static char last_name[PX_SCENE_NAME];
+    const int redraw = uc.screen != 4 || uc.full;
+    if (redraw) {
+        uc.screen = 4;
+        uc.full = 0;
+        lcd_rect(0, 0, 240, 240, UI_BG);
+        ft_box(0, 4, 240, "SCENES", &FT_MD, BLK, UI_ACC, 1);
+    }
+    if (!redraw && last_revision == ui_scene_revision && last_row == sc.row &&
+        last_editing == sc.editing && last_value == sc.value && last_cursor == sc.cursor &&
+        last_scene == ui_scene && last_mode == ui_scene_mode &&
+        !memcmp(last_name, sc.name, sizeof last_name)) return;
+    last_revision = ui_scene_revision;
+    last_row = sc.row; last_editing = sc.editing; last_value = sc.value; last_cursor = sc.cursor;
+    last_scene = ui_scene; last_mode = ui_scene_mode;
+    memcpy(last_name, sc.name, sizeof last_name);
+
+    static const char *const labels[SC_ROWS] = {"SCENES", "ACTIVE", "NAME", "COPY TO", "DEFAULT", "FOOTSWITCHES", "SCENE COUNT"};
+    for (unsigned row = 0; row < SC_ROWS; row++) {
+        const int selected = row == sc.row;
+        const int editing = selected && sc.editing;
+        const uint16_t bg = editing ? UI_ACC : selected ? C_CARD : UI_BG;
+        const uint16_t fg = editing ? BLK : (row == SC_ENABLE || ui_scene_start) ? UI_TXT : UI_DIM;
+        const unsigned y = 32u + row * 25u;
+        const char *value = "";
+        char letter[2] = {0};
+        if (row == SC_ENABLE) value = (editing ? sc.value : ui_scene_start) ? "ON" : "OFF";
+        else if (ui_scene_start) {
+            switch (row) {
+            case SC_COUNT: value = (editing ? sc.value : ui_scene_count) == 2u ? "2 (A/B)" : "3 (A/B/C)"; break;
+            case SC_ACTIVE: letter[0] = (char)('A' + (editing ? sc.value : ui_scene)); value = letter; break;
+            case SC_NAME: value = ui_scene_names[ui_scene]; break;
+            case SC_COPY: if (editing) letter[0] = (char)('A' + sc.value); value = letter; break;
+            case SC_DEFAULT: letter[0] = (char)('A' + (editing ? sc.value : ui_scene_start - 1u)); value = letter; break;
+            case SC_SWITCHES: value = (editing ? sc.value : ui_scene_mode) ? "SCENE" : ui_stomp ? "STOMP" : "PATCH"; break;
+            }
+        }
+        lcd_rect(0, y, 240, 24, bg);
+        ft_box(8, y + 6u, 115, labels[row], &FT_SM, fg, bg, 0);
+        if (row == SC_NAME && editing) {
+            for (unsigned i = 0; i < PX_SCENE_NAME - 1u; i++) {
+                const char ch[2] = {sc.name[i] == ' ' ? '_' : sc.name[i], 0};
+                ft_box(124u + i * 12u, y + 6u, 12, ch, &FT_SM, i == sc.cursor ? WHT : BLK,
+                       i == sc.cursor ? BLK : bg, 1);
+            }
+        } else ft_box(124, y + 6u, 108, value, &FT_SM, fg, bg, 2);
+    }
+    const char *hint = !sc.editing ? "PUSH: EDIT   HOME: BACK" :
+        sc.row == SC_NAME ? "PUSH: NEXT   FX: DONE" : "PUSH: APPLY   HOME: CANCEL";
+    ft_box(0, F_Y + 3u, 240, hint, &FT_SM, UI_DIM, UI_PANEL, 1);
+}
+
+static void ui_scenes_turn(int delta, int fast)
+{
+    const unsigned count = ui_scene_start ? SC_ROWS : 1u;
+    const unsigned direction = delta > 0 ? 1u : count - 1u;
+    if (!sc.editing) sc.row = (sc.row + direction) % count;
+    else if (sc.row == SC_NAME) {
+        const int step = fast ? 5 : 1;
+        const int ch = sc.name[sc.cursor] - ' ';
+        sc.name[sc.cursor] = (char)(' ' + (ch + 95 + delta * step) % 95);
+    } else if (sc.row == SC_COUNT) sc.value = (uint8_t)(5u - sc.value);
+    else if (sc.row == SC_ENABLE || sc.row == SC_SWITCHES) sc.value ^= 1u;
+    else {
+        const unsigned step = delta > 0 ? 1u : ui_scene_count - 1u;
+        do { sc.value = (sc.value + step) % ui_scene_count; } while (sc.row == SC_COPY && sc.value == ui_scene);
+    }
+}
+
+static void ui_scenes_name_done(void)
+{
+    unsigned len = PX_SCENE_NAME - 1u;
+    while (len && sc.name[len - 1u] == ' ') len--;
+    sc.name[len] = 0;
+    ui_scene_name(sc.source, sc.name);
+    sc.editing = 0;
+}
+
+static void ui_scenes_push(void)
+{
+    if (!sc.editing) {
+        if (sc.row != SC_ENABLE && !ui_scene_start) return;
+        sc.editing = 1;
+        switch (sc.row) {
+        case SC_COUNT: sc.value = ui_scene_count; break;
+        case SC_ENABLE: sc.value = !ui_scene_start; break;
+        case SC_ACTIVE: sc.value = ui_scene; break;
+        case SC_NAME: {
+            const char *name = ui_scene_names[ui_scene];
+            unsigned i = 0;
+            for (; i < PX_SCENE_NAME - 1u && name[i]; i++) sc.name[i] = name[i];
+            for (; i < PX_SCENE_NAME - 1u; i++) sc.name[i] = ' ';
+            sc.cursor = 0; sc.source = ui_scene;
+            break;
+        }
+        case SC_COPY: sc.value = (ui_scene + 1u) % ui_scene_count; break;
+        case SC_DEFAULT: sc.value = ui_scene_start - 1u; break;
+        case SC_SWITCHES: sc.value = !ui_scene_mode; break;
+        }
+        return;
+    }
+    if (sc.row == SC_NAME) {
+        if (sc.cursor == PX_SCENE_NAME - 2u) ui_scenes_name_done();
+        else sc.cursor++;
+        return;
+    }
+    if ((sc.row == SC_ACTIVE || sc.row == SC_DEFAULT || sc.row == SC_COPY) && sc.value >= ui_scene_count) {
+        sc.editing = 0;
+        return;
+    }
+    switch (sc.row) {
+    case SC_COUNT: ui_scene_set_count(sc.value); break;
+    case SC_ENABLE: ui_scene_enable(sc.value); break;
+    case SC_ACTIVE: ui_scene_select(sc.value); break;
+    case SC_COPY: ui_scene_copy(sc.value); break;
+    case SC_DEFAULT: ui_scene_default(sc.value); break;
+    case SC_SWITCHES: ui_scene_switches(sc.value); break;
+    }
+    sc.editing = 0;
+}
+
 static void ui_render(void)
 {
     if (ui_mode == M_TUNER || ui_mode == M_DIAG) return;   /* (the main loop draws them every 100 ms: tuner_draw, diag_draw) */
@@ -507,6 +779,11 @@ static void ui_render(void)
     if (ui_mode == M_MIDI) { midi_draw(); return; }
     if (ui_mode == M_LIST) { list_draw(); return; }
     if (ui_mode == M_PATCH) { ui_patch_draw(); return; }
+    if (ui_mode == M_SCENES) {
+        if (!ui_scene_start && sc.row != SC_ENABLE) sc.row = sc.editing = 0;
+        ui_scenes_draw();
+        return;
+    }
     if (ui_mode == M_VALVE) { ui_valve_draw(); return; }
     if (ui_mode == M_GLOBAL) { global_draw(); return; }
     int scr = UI_PAGE ? 1 : 0;
@@ -595,7 +872,7 @@ static void ui_knob(int dd, int fast)
 }
 static void ui_push(void)
 {
-    if (ui_mode == M_PATCH) return;
+    if (ui_mode == M_PATCH) { ui_scenes_open(); return; }
     if (ui_mode == M_VALVE) { PRESET.valve_on ^= 1u; return; }
     if (ui_mode == M_MOVE) { ui_move_drop(); return; }
     if (ui_mode == M_CHAIN) { ui_mode = M_BLOCK; ui_item = 0; }
@@ -662,7 +939,7 @@ static void save_confirm(void)
     if (sv_dest == SV_FACTORY && !st_saved(cur_preset)) return;
     ft_box(0, 186, 240, "SAVING...", &FT_MD, UI_ACC, UI_BG, 1);
     if (sv_dest == SV_FACTORY) { rc = st_reset(cur_preset); }
-    else { rc = st_save_fsg(sv_dest, &PRESET, ui_fs, ui_gs); if (!rc) cur_preset = sv_dest; }
+    else { rc = ui_save_patch(sv_dest); if (!rc) cur_preset = sv_dest; }
     st_gen++;
     if (!rc) load_preset(cur_preset);
     {
@@ -720,7 +997,7 @@ static void midi_draw(void)
     for (uint32_t r = 0; r < MI_ROWS; r++) {       /* (v42: four rows of 30 px; three of 36 before) */
         uint32_t y = 36u + r * 30u;
         uint16_t bg = r == mi_row ? C_CARD : UI_BG;
-        lcd_rect(0, y, 240, 28, bg);
+        lcd_rect(0, y, 240, 24, bg);
         ft_box(8, y + 6u, 130, NAME[r], &FT_SM, r == mi_row ? UI_TXT : UI_DIM, bg, 0);
         ft_box(140, y + 2u, 92, v[r], &FT_MD, r == mi_row ? UI_ACC : UI_TXT, bg, 2);
     }
@@ -758,6 +1035,8 @@ static void midi_push(void) { if (++mi_row >= MI_ROWS) midi_close(); }
 /* v42: one unsaved edit survives a preset change by foot or from the list: stepping away keeps it, coming back to its slot
  * gives it back (still EDITED). An edit elsewhere takes its place; it is dropped if its slot was saved over meanwhile. */
 static px_preset_t ui_kept;
+static px_scene_record ui_kept_scenes;
+static uint8_t ui_kept_active;
 static uint32_t ui_kept_slot = ~0u, ui_kept_sum;     /* (the sum of what the slot held when the edit was kept) */
 static uint32_t ui_sum(const px_preset_t *p)
 {
@@ -768,11 +1047,20 @@ static uint32_t ui_sum(const px_preset_t *p)
 }
 static void ui_goto(uint32_t n)
 {
-    if (ui_dirty()) { ui_kept = PRESET; ui_kept_slot = cur_preset; ui_kept_sum = ui_sum(&ui_ref); }
+    if (ui_dirty()) {
+        ui_scene_pack(&ui_kept, &ui_kept_scenes);
+        ui_kept_active = ui_scene;
+        ui_kept_slot = cur_preset;
+        ui_kept_sum = ui_sum(&ui_ref);
+    }
     cur_preset = n;
     load_preset(n);
     if (ui_kept_slot == n) {
-        if (ui_sum(&PRESET) == ui_kept_sum) PRESET = ui_kept;
+        if (ui_sum(&PRESET) == ui_kept_sum) {
+            PRESET = ui_kept;
+            ui_scene_load(&ui_kept_scenes);
+            ui_scene_select(ui_kept_active);
+        }
         ui_kept_slot = ~0u;
     }
 }
@@ -1163,7 +1451,9 @@ static void ui_fs_toggle(int i)        /* a footswitch in STOMP mode: what it is
 }
 static void ui_stomp_toggle(void)
 {
-    ui_stomp ^= 1u;
+    if (ui_scene_mode) ui_scene_mode = 0;
+    else if (ui_stomp && ui_scene_start) { ui_stomp = 0; ui_scene_mode = 1; }
+    else ui_stomp ^= 1u;
     if (!ui_stomp) ui_byp = 0;                     /* PATCH mode never leaves the sound bypassed */
 }
 /* holding footswitch i, a block button or FX assigns it (FX steps through every block, BYPASS, nothing) */
@@ -1188,13 +1478,21 @@ static void ui_action(int a)
     case M_SAVE: if (a == UB_PUSH) save_confirm(); else if (a == UB_HOME) save_close(); return;
     case M_MIDI: if (a == UB_PUSH) midi_push(); else if (a == UB_HOME) midi_close(); return;
     case M_TUNER: if (a == UA_TUNER) global_open(); else tuner_close(); return;
+    case M_SCENES:
+        if (a == UB_PUSH) ui_scenes_push();
+        else if (a == UB_HOME) {
+            if (sc.editing) sc.editing = 0;
+            else { ui_mode = M_PATCH; ui_item = 0; }
+        } else if (a == UB_FX && sc.editing && sc.row == SC_NAME) ui_scenes_name_done();
+        else if (a == UA_SAVE && !sc.editing) save_open();
+        return;
     case M_GLOBAL: if (a == UB_PUSH) global_push(); else if (a == UB_HOME) global_back(); return;
     case M_DIAG: if (a != UA_TUNER) diag_close(); return;
     case M_MOVE: if (a == UB_PUSH) ui_move_drop(); else if (a == UB_HOME) ui_move_cancel(); return;
     }
     switch (a) {
-    case UB_FSUP: if (ui_stomp) ui_fs_toggle(1); else ui_preset_step(+1); break;
-    case UB_FSDN: if (ui_stomp) ui_fs_toggle(0); else ui_preset_step(-1); break;
+    case UB_FSUP: if (ui_scene_mode) ui_scene_select((ui_scene + 1u) % ui_scene_count); else if (ui_stomp) ui_fs_toggle(1); else ui_preset_step(+1); break;
+    case UB_FSDN: if (ui_scene_mode) ui_scene_select((ui_scene + ui_scene_count - 1u) % ui_scene_count); else if (ui_stomp) ui_fs_toggle(0); else ui_preset_step(-1); break;
     case UA_STOMP: ui_stomp_toggle(); break;
     case UB_PUSH: if (ui_mode == M_LIST) list_load(); else ui_push(); break;
     case UB_HOME: if (ui_mode == M_CHAIN) list_open(); else if (ui_mode == M_LIST) list_close(); else ui_home(); break;
@@ -1227,6 +1525,7 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
     else if (ui_mode == M_DIAG) diag_turn();
     else if (ui_mode == M_TUNER) tuner_ref_turn(dd);              /* v75: the reference A */
     else if (ui_mode == M_GLOBAL) global_turn(dd, fast);
+    else if (ui_mode == M_SCENES) ui_scenes_turn(dd, fast);
     else if (ui_mode == M_PATCH) {
         int v = (int)PRESET.patch_volume + dd * (fast ? 5 : 1);
         PRESET.patch_volume = (uint8_t)(v < 0 ? 0 : v > 100 ? 100 : v);
@@ -1241,11 +1540,17 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
 }
 static void ui_press(int b, uint32_t now)   /* a button's plain press: at its press, PUSH HOME FX at a short release */
 {
-    if (ui_mode == M_GLOBAL) { ui_action(b); return; }
+    if (ui_mode == M_GLOBAL || ui_mode == M_SCENES) { ui_action(b); return; }
     if (b == UB_FSUP || b == UB_FSDN) {        /* v42: both footswitches = the tuner. The first acts at once, as always; the
                                                 * other one soon after, while the first is still down, takes its step back
                                                 * and opens the tuner */
         ug.clk = 0;
+        if (ui_scene_mode) {
+            ug.fs = ug.fs_b = -1;
+            ug.gt[0] = ug.gt[1] = 0;
+            ui_action(b);
+            return;
+        }
         if (ug.fs >= 0 && ug.fs != b && (ug.held >> ug.fs & 1u) && now - ug.fs_t < UI_FEET) {
             int d = ug.fs_dir;
             ug.fs = -1;
@@ -1293,7 +1598,7 @@ static void ui_buttons(uint32_t now, uint32_t held)   /* every pass: which butto
             ug.t[b] = now; ug.fired[b] = 0;
             if (fsw) memcpy(ug.gs, ui_gs, 4);
             if (!timed) ui_press(b, now);
-            if (fsw && ui_mode != M_TUNER && ui_mode != M_DIAG && ui_mode != M_GLOBAL) { /* v75: a double tap in STOMP mode */
+            if (fsw && ui_mode != M_TUNER && ui_mode != M_DIAG && ui_mode != M_GLOBAL && ui_mode != M_SCENES) { /* v75: a double tap in STOMP mode */
                 const int i = ui_fs_idx(b);
                 if (ug.fs != b) { ug.gt[0] = ug.gt[1] = 0; }             /* (both footswitches: the tuner; no tap of either counts) */
                 else if (ug.gt[i] && now - ug.gt[i] < UI_DTAP && ui_stomp && ui_ga_valid(ug.gs[2 * i])) { ug.gt[i] = 0; ui_gesture(ug.gs[2 * i]); }
@@ -1304,7 +1609,7 @@ static void ui_buttons(uint32_t now, uint32_t held)   /* every pass: which butto
             ug.fired[b] = 1; ug.clk = 0;
             ui_action(b == UB_PUSH ? UA_SAVE : b == UB_HOME ? UA_TUNER : b == UB_CAB ? UA_STOMP : UA_MIDI);
         }
-        else if (fsw && (held >> b & 1u) && !ug.fired[b] && ug.fs == b && !ug.fs_set && ui_mode != M_TUNER && ui_mode != M_DIAG && ui_mode != M_GLOBAL &&
+        else if (fsw && !ui_scene_mode && (held >> b & 1u) && !ug.fired[b] && ug.fs == b && !ug.fs_set && ui_mode != M_TUNER && ui_mode != M_DIAG && ui_mode != M_GLOBAL && ui_mode != M_SCENES &&
                  ui_ga_valid(ug.gs[2 * ui_fs_idx(b) + 1]) && now - ug.t[b] >= UI_HOLD_FS) {   /* v75: a hold: the press's own step is taken back, then the action */
             const int i = ui_fs_idx(b);
             ug.fired[b] = 1; ug.gt[i] = 0;
