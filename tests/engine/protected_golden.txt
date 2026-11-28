@@ -911,17 +911,17 @@ Q POLYOCT_HQ chain 21 wet 0 bs 48 a6ed59cb5906d8f7
 Q POLYOCT_HQ chain 22 wet 1 bs 48 e510038d44ec1b96
 Q POLYOCT_HQ chain 23 wet 1 bs 48 9134f032054ef6de
 Q OCT_FUZZ chain 0 wet 0 bs 64 cbc0f32ea8f8c97e
-Q OCT_FUZZ chain 1 wet 0 bs 64 e0e036d33d7eb260
-Q OCT_FUZZ chain 2 wet 1 bs 64 cd54db0b644d196f
-Q OCT_FUZZ chain 3 wet 1 bs 64 1ad80c6205b32fa2
-Q OCT_FUZZ chain 4 wet 0 bs 48 5e00df91906985ca
+Q OCT_FUZZ chain 1 wet 0 bs 64 69e14b999cf537dc
+Q OCT_FUZZ chain 2 wet 1 bs 64 ecef9f57b033f236
+Q OCT_FUZZ chain 3 wet 1 bs 64 68d758c21600d850
+Q OCT_FUZZ chain 4 wet 0 bs 48 9a3630f56eef7aa0
 Q OCT_FUZZ chain 5 wet 0 bs 48 3d3b9d0dd97fb5a0
 Q OCT_FUZZ chain 6 wet 1 bs 48 d55fe7923fd0c164
 Q OCT_FUZZ chain 7 wet 1 bs 48 a913e92a14f6635a
 Q OCT_FUZZ chain 8 wet 0 bs 16 6bc1cf24b3afefd3
 Q OCT_FUZZ chain 9 wet 0 bs 16 2317be29df784aa6
 Q OCT_FUZZ chain 10 wet 1 bs 16 93de527c8cff4010
-Q OCT_FUZZ chain 11 wet 1 bs 16 e6d04f55c2492d79
+Q OCT_FUZZ chain 11 wet 1 bs 16 6e26afa4f019d81d
 Q OCT_FUZZ chain 12 wet 0 bs 1 1c3bf386f834bee0
 Q OCT_FUZZ chain 13 wet 0 bs 1 71a6199042c8ddd2
 Q OCT_FUZZ chain 14 wet 1 bs 1 b6901230ca0f86aa
@@ -929,9 +929,9 @@ Q OCT_FUZZ chain 15 wet 1 bs 1 332db0bde7c8514c
 Q OCT_FUZZ chain 16 wet 0 bs 64 4e4a3bc9e6fda05e
 Q OCT_FUZZ chain 17 wet 0 bs 64 5e2bb0de9f18bb49
 Q OCT_FUZZ chain 18 wet 1 bs 64 4386c0eaa2fe5f20
-Q OCT_FUZZ chain 19 wet 1 bs 64 8f603fb2dbdaeaa8
+Q OCT_FUZZ chain 19 wet 1 bs 64 13eafa095187846d
 Q OCT_FUZZ chain 20 wet 0 bs 48 7bae90169d119315
 Q OCT_FUZZ chain 21 wet 0 bs 48 0b4513d2cbccf25d
 Q OCT_FUZZ chain 22 wet 1 bs 48 cd8fda161f1e86af
-Q OCT_FUZZ chain 23 wet 1 bs 48 821dcf517ec6e0b9
+Q OCT_FUZZ chain 23 wet 1 bs 48 50032e184deffb4f
 936 runs

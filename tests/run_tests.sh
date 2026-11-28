@@ -32,46 +32,79 @@ set -e
 cd "$(dirname "$0")/.."
 mkdir -p build
 CC="${CC:-cc}"
+status=0
+# Keep successful output short without losing a test's exit status to tail.
+run_summary() {
+  lines=$1
+  shift
+  if "$@" > build/test-summary.log 2>&1; then
+    tail -n "$lines" build/test-summary.log
+  else
+    cat build/test-summary.log
+    status=1
+  fi
+}
 echo "== engine"
-$CC -O2 -Iengine tests/engine/sweep2.c engine/px_dsp.c firmware/px_math.c -lm -o build/sweep && build/sweep | tail -1
-$CC -O2 -Iengine tests/engine/long.c engine/px_dsp.c firmware/px_math.c -lm -o build/long && build/long | tail -1
-$CC -O2 -Iengine -Ifirmware tests/engine/change_test.c firmware/px_math.c -lm -o build/change_test && build/change_test | tail -1
-$CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/wet_test && build/wet_test | tail -1
+$CC -O2 -Iengine tests/engine/sweep2.c engine/px_dsp.c firmware/px_math.c -lm -o build/sweep
+run_summary 1 build/sweep
+$CC -O2 -Iengine tests/engine/long.c engine/px_dsp.c firmware/px_math.c -lm -o build/long
+run_summary 1 build/long
+$CC -O2 -Iengine -Ifirmware tests/engine/change_test.c firmware/px_math.c -lm -o build/change_test
+run_summary 1 build/change_test
+$CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/wet_test
+run_summary 1 build/wet_test
 # Synth2: the SYNTH block's ids (tombstones bypassed, POLY OCT FUZZ running)
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/syn_ids_test.c firmware/px_math.c -lm -o build/syn_ids && build/syn_ids
 # The waveform-following synths (engine/px_banksyn.h, BANK ORGAN): bounds, silence, lead pitch, call-size independence.
 # (ANALOG / ARCADE / INSTRUMENT / ENSEMBLE / CHOIR were retired 2026-11-27: tests/engine/synth_test.c and choir_click_test.c no longer run)
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/banksyn_test.c firmware/px_math.c -lm -o build/banksyn_test && build/banksyn_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/banksyn_test.c firmware/px_math.c -lm -o build/banksyn_test
+run_summary 1 build/banksyn_test
 # SFX ENHANCE v3: warmth (even harmonics of the low-mid band) and presence (an exciter-style high band), level independent; unity, bounds, no clicks
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/enhance_test.c firmware/px_math.c -lm -o build/enhance_test && build/enhance_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pedals_test.c firmware/px_math.c -lm -o build/pedals_test && build/pedals_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/enhance_test.c firmware/px_math.c -lm -o build/enhance_test
+run_summary 1 build/enhance_test
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pedals_test.c firmware/px_math.c -lm -o build/pedals_test
+run_summary 1 build/pedals_test
 # v75: BST (PRE / BOOST) and its VOX FIXED WAH: the catalogue, the move of the SFX pedals, the V847 tone curve, level, no clicks
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/voxwah_test.c firmware/px_math.c -lm -o build/voxwah_test && build/voxwah_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/fuzzface_test.c firmware/px_math.c -lm -o build/fuzzface_test && build/fuzzface_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/acoustic_test.c firmware/px_math.c -lm -o build/acoustic_test && build/acoustic_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/voxwah_test.c firmware/px_math.c -lm -o build/voxwah_test
+run_summary 1 build/voxwah_test
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/fuzzface_test.c firmware/px_math.c -lm -o build/fuzzface_test
+run_summary 1 build/fuzzface_test
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/acoustic_test.c firmware/px_math.c -lm -o build/acoustic_test
+run_summary 1 build/acoustic_test
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/signature_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/signature_test
 build/signature_test
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hum_test.c firmware/px_math.c -lm -o build/hum_test && build/hum_test | tail -1
-$CC -O2 -w tests/tunersim.c -lm -o build/tunersim && build/tunersim | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hum_test.c firmware/px_math.c -lm -o build/hum_test
+run_summary 1 build/hum_test
+$CC -O2 -w tests/tunersim.c -lm -o build/tunersim
+run_summary 1 build/tunersim
 # POLY SHIFTER on the bank (2026-11-28; v75's phase vocoder and tests/engine/pv_test.c retired): chord accuracy, semitones, bounds
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pshift_test.c firmware/px_math.c -lm -o build/pshift_test && build/pshift_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/global_test.c firmware/px_math.c -lm -o build/global_test && build/global_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/pshift_test.c firmware/px_math.c -lm -o build/pshift_test
+run_summary 1 build/pshift_test
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/global_test.c firmware/px_math.c -lm -o build/global_test
+run_summary 1 build/global_test
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/triode_test.c firmware/px_math.c -lm -o build/triode_test
 build/triode_test
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/tails_test.c firmware/px_math.c -lm -o build/tails_test && build/tails_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/tails_test.c firmware/px_math.c -lm -o build/tails_test
+run_summary 1 build/tails_test
 for runs in 0 1; do
   $CC -O2 -w -fno-builtin -ffp-contract=off -DPX_RUNS=$runs -Iengine tests/engine/suppressor_test.c firmware/px_math.c -lm -o build/suppressor_test
   build/suppressor_test
 done
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hush_test.c firmware/px_math.c -lm -o build/hush_test && build/hush_test | tail -1
-$CC -O2 -w -Iengine tests/engine/factory_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/factory_test && build/factory_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/shed_test.c firmware/px_math.c -lm -o build/shed_test && build/shed_test | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -Ifirmware tests/shedsim.c firmware/px_math.c -lm -o build/shedsim && build/shedsim | tail -1
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/poly_range_test.c firmware/px_math.c -lm -o build/poly_range_test && build/poly_range_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/hush_test.c firmware/px_math.c -lm -o build/hush_test
+run_summary 1 build/hush_test
+$CC -O2 -w -Iengine tests/engine/factory_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/factory_test
+run_summary 1 build/factory_test
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/shed_test.c firmware/px_math.c -lm -o build/shed_test
+run_summary 1 build/shed_test
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -Ifirmware tests/shedsim.c firmware/px_math.c -lm -o build/shedsim
+run_summary 1 build/shedsim
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/poly_range_test.c firmware/px_math.c -lm -o build/poly_range_test
+run_summary 1 build/poly_range_test
 # Felucca's own golden renders for the vendored engines
 CC="$CC" sh third_party/felucca-engines/tests/felucca_ref.sh
 # Synth2: the mono tracker's interface (engine/px_mono.h)
-$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/mono_test.c firmware/px_math.c -lm -o build/mono_test && build/mono_test | tail -1
+$CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/mono_test.c firmware/px_math.c -lm -o build/mono_test
+run_summary 1 build/mono_test
 # Synth2 fix pass 1: LOWEST OCTAVE HQ's own gain (x1.4 (+2.9 dB) against the v73 level), the other pitch types untouched
 $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine -DPX_LOWEST_HQ_GAIN=1.0f tests/engine/lowest_gain_test.c firmware/px_math.c -lm -o build/lgt_ref && $CC -O2 -w -fno-builtin -ffp-contract=off -Iengine tests/engine/lowest_gain_test.c firmware/px_math.c -lm -o build/lgt \
   && python3 -c "
@@ -85,9 +118,11 @@ raise SystemExit(0 if ok else 1)"
 # (the reference is the stored hashes since 2026-11-27: tests/protected.sh --update after a deliberate change)
 CC="$CC" tests/protected.sh --golden
 echo "== preset store"
-$CC -O1 -Iengine tests/test_store.c engine/px_dsp.c firmware/px_math.c -lm -o build/test_store && build/test_store | tail -2
+$CC -O1 -Iengine tests/test_store.c engine/px_dsp.c firmware/px_math.c -lm -o build/test_store
+run_summary 2 build/test_store
 echo "== audio callbacks' order (the output block is its interrupt's, whichever callback the driver calls first)"
-$CC -O1 -Wall -Ifirmware tests/test_aorder.c -o build/test_aorder && build/test_aorder | tail -1
+$CC -O1 -Wall -Ifirmware tests/test_aorder.c -o build/test_aorder
+run_summary 1 build/test_aorder
 echo "== USB audio (the device code and the audio glue against a model of the controller and a computer)"
 UAF="-O1 -Wall -Wno-unused-function -Wno-int-to-pointer-cast -Iengine -Ifirmware -Ifirmware/bsp/chip"
 $CC $UAF tests/test_usb_audio.c -lm -o build/test_usb_audio
@@ -146,3 +181,4 @@ echo "== log channel (tools/op.mjs log)"
 $CC -O1 -Wall -Wno-unused-function -DOP_BLE_TEST=1 -o build/edsim_diag tests/edsim.c engine/px_dsp.c firmware/px_math.c -lm
 node tests/test_log.mjs
 if node -e "require('playwright')" 2>/dev/null; then echo "== page"; node tests/browser/test_page.mjs build/page; echo "== editor page"; node tests/browser/test_editor_page.mjs build/editor; echo "== pedal skin"; node tests/browser/test_pedal_page.mjs build/pedal; echo "== pedal sound"; node tests/browser/test_audio_page.mjs build/audio; else echo "(Playwright not installed: page tests skipped)"; fi
+exit "$status"

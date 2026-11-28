@@ -2,7 +2,8 @@
 # OpenPocket Synth2: are POLY OCTAVE HQ and POLY OCT FUZZ bit-identical to commit REF's? (tests/engine/protected.c)
 #   tests/protected.sh REF       e.g. tests/protected.sh 2f3519b5   (a commit's engine as the reference)
 #   tests/protected.sh --golden  against the stored hashes tests/engine/protected_golden*.txt (the reference since 2026-11-27:
-#                                the tree after the waveform-following synths; the v73 commit 2f3519b no longer matched)
+#                                the tree after the waveform-following synths, with v97's Poly Shifter and retired Drop Tune
+#                                cases updated; the v73 commit 2f3519b no longer matched)
 #   tests/protected.sh --update  rewrite the stored hashes from this tree (only after a change to these effects was meant)
 # Built as the pedal builds the engine (-fno-builtin -ffp-contract=off, firmware/px_math.c). Writes to build/protected. Exit 0: identical.
 set -e

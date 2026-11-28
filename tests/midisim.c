@@ -129,7 +129,8 @@ int main(void)
             {   /* a block with several live models: the whole range, first to last */
                 px_cc_t o = {PXM_TYPE, PX_B_PITCH, 0};
                 ch = px_midi_cc_apply(&p, px_cc_of(&o), 127, &master, &mset);
-                ok(p.type[PX_B_PITCH] == px_ntypes(PX_B_PITCH) - 1, "the octave model at 127 is its last");
+                ok(p.type[PX_B_PITCH] == px_live_type(PX_B_PITCH, px_nlive(PX_B_PITCH) - 1) &&
+                   !px_type_retired(PX_B_PITCH, p.type[PX_B_PITCH]), "the octave model at 127 is its last live model");
                 ch = px_midi_cc_apply(&p, px_cc_of(&o), 0, &master, &mset);
                 ok(p.type[PX_B_PITCH] == 0, "and at 0 its first");
             }
