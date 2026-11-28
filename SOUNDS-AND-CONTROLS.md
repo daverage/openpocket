@@ -80,6 +80,7 @@ Played with a normal guitar: no special pickup, no MIDI. Nothing in this block w
 | | BANK ORGAN | REGISTER (JAZZ, FULL, GOSPEL, CHURCH), PERC, SUSTAIN, TONE, LEVEL | drawbars 16' 8' 4' 2 2/3' 2' from POLY OCTAVE HQ's 26 bands. PERC restarts on each pick. Add MOD ROTARY. |
 | | STRINGS | TONE, ATTACK, RELEASE, CHORUS, LEVEL | 16' 8' 4', held level, bowed attack and release, three-voice ensemble chorus |
 | | CHOIR PAD | VOWEL (AH OH OO EH EE), ATTACK, RELEASE, CHORUS, LEVEL | the string pad through three vowel formants |
+| | STRINGS OCTAVE, CHOIR OCTAVE | TONE or VOWEL, ATTACK, RELEASE, OCTAVE MIX, LEVEL | OCTAVE MIX sets the level of the existing octave-down and octave-up voices. At 0 they are muted, at 50 they match the original blend, and at 100 they double in level. Chorus is fixed at 50. |
 | | BRASS | TONE, BITE, RELEASE, WIDTH, LEVEL | drawbars with the 2 2/3', a filter that opens on the pick and settles |
 | | PIPE ORGAN | STOPS (FLUTES, DIAPASON, FULL, MIXTURE), SWELL, RELEASE, TONE, LEVEL | up to 16' .. 1' including the 1 3/5' |
 | One note (Square's crossings) | SQ BRASS, SQ BASS, SQ FLUTE | CUTOFF, RESONANCE, ENVELOPE, SUB, LEVEL | SFX SQUARE SYNTH's square and sub, then a brass filter, a bass filter or a rounded flute with breath |
@@ -113,7 +114,7 @@ See [implementation and validation](research/NOISE-SUPPRESSOR.md).
 |---|---|
 | GT | NOISE GATE (THRESH, RELEASE), NOISE SUPPRESSOR (THRESH, RELEASE, HUM, HUSH) |
 | CMP | SQUASH (Dyna Comp), STUDIO (parallel, MIX), OPTO LA-2 (optical, slow release), SLOW SWELL (violin-style attack) |
-| PIT | OCTAVER (analog: SUB -1, SUB -2, UP +1), POLY OCTAVE (−1 and +1 octave), POLY OCTAVE HQ (same controls, phase-scaled octave voices), WHAMMY (±24 semitones, GLIDE), HARMONIZER (fixed interval −OCT…+OCT), DETUNE (doubling ±cents), POLY SHIFTER (a shifter for chords on POLY OCTAVE HQ's 26-band bank since 2026-11-28: each band's phase turns by the interval, so every partial of every string moves alike, with no frames and no tracking: SHIFT −12..+12 semitones, FINE ±50 cents, MIX, ATTACK (a pick restarts the phases); a few ms of latency; the shifted voice stops near 5 kHz. v75's phase vocoder, [POLY-SHIFTER.md](POLY-SHIFTER.md), was retired. Tune the whole guitar down with it: SHIFT −1 for E♭ standard, −2 for D standard, MIX 100), DROP TUNE (drop tuning from a standard-tuned guitar: the low E string's notes alone move down while the other strings stay. DROP 1..5 semitones (2 = drop D), RANGE the highest fret counted as the low string (0..7, default 3: a note under about A2 can only be on that string), MIX. One pickup mixes the strings, so a partial shared with another string's note moves with the low note, and fretted low-string notes above RANGE are left alone) |
+| PIT | OCTAVER (analog: SUB −1, SUB −2, UP +1), POLY OCTAVE HQ (phase-scaled octave voices), LOWEST OCTAVE HQ, WHAMMY (±24 semitones, GLIDE), HARMONIZER, DETUNE and POLY SHIFTER. POLY SHIFTER shifts chords from −12 to +12 semitones with FINE ±50 cents, MIX and ATTACK. Exact octaves use the POLY OCTAVE HQ voices. Existing Drop Tune presets open with the pitch block bypassed. |
 | SFX | ENVELOPE WAH (Mu-Tron), AUTO WAH (LFO, or fixed wah with DEPTH 0), RING MOD, BITCRUSHER, SLICER (8 rhythm patterns), LO-FI RADIO, ACOUSTIC DRIVE (a drive for a piezo: it takes the lows and fizz off before a soft clipper and blends the dry guitar back; DRIVE, BLEND, PIEZO, TONE, LEVEL), SQUARE SYNTH (square-wave synth + sub, opening filter) (ENHANCE, RANGEMASTER, EP BOOST and MAXIMIZER moved to the BST block in v75: a stored preset is converted) |
 | EQ | 5 BAND, GRAPHIC 5 (the Mesa "V"), PARAMETRIC |
 | MOD | CE CHORUS, DIMENSION (4 modes), FLANGER, PHASE 90, SMALL STONE, UNI-VIBE, OPTO TREMOLO, BIAS TREMOLO, HARMONIC TREM, ROTARY (Leslie, real SLOW↔FAST ramp), VIBRATO |
@@ -168,12 +169,30 @@ limiter (transparent up to -2 dBFS) instead of a hard clip.
 | HOME | Back to PLAY. On PLAY, opens the preset list. Hold for 0.7 s to open the tuner. Release and hold again for **GLOBAL**. |
 | Right / left footswitch | next / previous preset (on a block's EDIT page it also goes back to PLAY, where the preset shows). Coming back to a preset you edited without saving gives the edit back (one edit is kept) |
 | **Both footswitches** | **tuner** (the first one changes the preset at once, as always; the second within about 0.15 s changes it back and opens the tuner). Both again leave it |
-| **Hold CAB** (0.8 s) | Switches between **STOMP** and **PATCH**. In PATCH, the footswitches change presets. In STOMP, they toggle the assigned effect, Valve or bypass. The PLAY footer shows the assignments, for example `STOMP   L: VLV   R: BYP`. Tap CAB to open OCTAVE. |
+| **Hold CAB** (0.8 s) | Cycles **PATCH → STOMP → SCENE** on a patch with scenes enabled. In PATCH, the footswitches change presets. In STOMP, they toggle the assigned effect, Valve or bypass. In SCENE, the left switch selects the previous scene and the right selects the next, wrapping between A and C. The PLAY footer shows the assignments, for example `STOMP   L: VLV   R: BYP`. Tap CAB to open OCTAVE. |
 | Footswitch held + a block button (STOMP) | Assigns that footswitch. MOD, AMP, CAB, DLY and REV directly assign MOD, SYNTH, OCTAVE, DELAY and REVERB. FX cycles through Valve, all ten blocks, BYPASS and unassigned. Save the preset to keep its assignments. |
 | BYPASS on a footswitch (STOMP) | the dry guitar, every block off (DSP off); the footer turns red (`BYPASSED`). Press again to come back. Leaving STOMP mode ends it. STOMP mode is kept in the flash with the next save |
 | AMP, CAB, DLY, REV, MOD | jump to the block; press again = on/off |
 | FX | Cycles through GATE, PRE / BOOST, COMP, SPECIAL FX and EQ in chain order, then **VALVE INPUT**. Hold for 0.8 s for MIDI and USB audio settings. |
 | MASTER | output volume |
+
+On the pedal, press **HOME**, **FX**, then **PUSH** from PLAY to open **Scenes** for the highlighted patch.
+In the web editor, enable **Scenes** on the Sound page to copy the current sound to A, B and C.
+The A/B/C buttons recall scenes in any footswitch mode. Choose **Stomp** under **Footswitches** to keep the pedal
+switches on their stomp assignments while you select scenes in the editor. Choose **Scene** there to use both pedal
+switches for scene navigation.
+On the pedal, turn the knob to select a row and press **PUSH** to edit or confirm it. To enter a name,
+turn the knob to choose a character, press **PUSH** to advance, and tap **FX** to finish. **HOME** cancels
+an edit or returns to Patch Settings. Hold **PUSH** to save the patch.
+Set **Scene Count** to **2** to use A and B. Either scene footswitch toggles between them. If C was active or
+the default, A takes its place. C's sound and name remain saved and become available again at **3**.
+The PLAY header shows the active scene or footswitch mode and the patch output level.
+Each scene has its own block on/off states, settings, Valve and patch volume. Models and routing are shared.
+Select a scene to edit it, and use **Copy scene to** to duplicate its sound settings. Set the default scene
+and save the patch. A scene switch acts on press and skips the usual edit debounce. In SCENE mode the
+footswitches use single presses only. Use **Hold HOME** to open the tuner. With TAILS on, bypassed delay
+and reverb keep ringing with the outgoing settings. Changing a wet block's settings while it stays on also
+changes how its existing tail sounds.
 
 On **GLOBAL**, turn PARA to select **Output EQ**, **Input High-Pass**, **Limiter**, **Tails**,
 **Tuner Lights**, or **Button Lights**. Press PARA to edit, turn it to adjust, and press it again to confirm. The effects

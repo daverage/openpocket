@@ -7,7 +7,7 @@ import { PORT_RE } from "./pxota.js";
 const H = [0x7D, 0x4F, 0x50];
 export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 6, ORDER: 7, NAME: 8, PUT: 9, SELECT: 10,
   FOCUS: 11, LIST: 12, SLOT_GET: 13, SLOT_PUT: 14, COMMIT: 15, SAVE: 16, WATCH: 17, PING: 18,
-  DIAG: 23, USB_AUDIO: 28, FOOTSWITCH: 29, SHED: 30, GLOBAL: 31, TUNER: 32 };   // (19..22 and 24..27, the NAM models and IRs, retired in v70)
+  DIAG: 23, USB_AUDIO: 28, FOOTSWITCH: 29, SHED: 30, GLOBAL: 31, TUNER: 32, SCENE: 33 };   // (19..22 and 24..27, the NAM models and IRs, retired in v70)
 // px_preset_t: a 14-byte name, then on, type, 5 settings and the order for each block (v75: 10 blocks, 94 bytes; v70: 9, 86)
 export const presetSize = (nblk = 10, npar = 5, valveBytes = 0) => 14 + nblk * (3 + npar) + valveBytes;
 export const VALVE_ACTION = 10;
@@ -188,6 +188,8 @@ export class Editor {
     return this.cat;
   }
   // ---- the current sound ----
+  get hasSceneCount() { return this.info?.proto >= 16; }
+  get hasScenes() { return this.info?.proto >= 13; }
   get hasValve() { return this.info?.proto >= 10; }
   get hasValveLevel() { return this.info?.proto >= 11; }
   get valveBytes() { return this.info?.proto >= 12 ? 4 : this.hasValveLevel ? 3 : this.hasValve ? 2 : 0; }
@@ -198,7 +200,13 @@ export class Editor {
   _state(args) {
     const r = new Reader(args);
     const slot = r.b(), flags = r.b(), focus = r.b();
-    return { slot, dirty: !!(flags & 1), saved: !!(flags & 2), focus, preset: this._readPreset(r) };
+    const state = { slot, dirty: !!(flags & 1), saved: !!(flags & 2), focus, preset: this._readPreset(r) };
+    if (this.hasScenes) {
+      const start = r.b(), active = r.b(), mode = !!r.b();
+      const names = start ? [r.s(), r.s(), r.s()] : [];
+      state.scenes = { start, active, mode, names, count: this.hasSceneCount ? r.b() : start ? 3 : 0 };
+    }
+    return state;
   }
   async state() { return this._state(await this.request(C.STATE)); }
   async set(block, what, k, v) { const r = await this.request(C.SET, [block, what, k, v]); return r[3]; }
@@ -207,7 +215,30 @@ export class Editor {
   setType(block, t) { return this.set(block, 2, 0, t); }
   async order(order) { return (await this.request(C.ORDER, order))[0]; }
   async name(s) { return new Reader(await this.request(C.NAME, [...cleanName(s, this.info.nameMax)].map((c) => c.charCodeAt(0)).concat([0]))).s(); }
-  async put(q) { return (await this.request(C.PUT, encodePreset(q, this.info.nblk, this.info.npar, this.valveBytes)))[0]; }
+  async put(q, replaceScenes = false) {
+    const args = encodePreset(q, this.info.nblk, this.info.npar, this.valveBytes);
+    if (this.hasScenes && replaceScenes) args.push(...this._sceneBytes(q));
+    return (await this.request(C.PUT, args))[0];
+  }
+  _sceneBytes(q) {
+    const bytes = [...(q.sceneData || [0])];
+    if (!this.hasSceneCount) bytes[0] &= 3;
+    return bytes;
+  }
+  async scene(op, ...args) { return (await this.request(C.SCENE, [op, ...args]))[0]; }
+  async patchWithScenes() {
+    const r = new Reader(await this.request(C.SCENE));
+    r.b();
+    return this._readPatchWithScenes(r);
+  }
+  _readPatchWithScenes(r) {
+    const preset = this._readPreset(r);
+    if (this.hasScenes) {
+      const start = r.b();
+      if (start) preset.sceneData = [start, ...r.bytes(3 * 10 + 2 * (6 + this.info.nblk * this.info.npar))];
+    }
+    return preset;
+  }
   async select(slot) { return (await this.request(C.SELECT, [slot]))[1]; }
   async focus(block) { await this.request(C.FOCUS, [block]); }
 
@@ -224,12 +255,15 @@ export class Editor {
   async slotGet(slot) {
     const r = new Reader(await this.request(C.SLOT_GET, [slot]));
     r.b(); const saved = !!r.b();
-    return { slot, saved, preset: this._readPreset(r) };
+    return { slot, saved, preset: this._readPatchWithScenes(r) };
   }
   // q null: back to the factory preset. commit: write the flash now
   async slotPut(slot, q, commit) {
     const args = [slot, (q ? 1 : 0) | (commit ? 2 : 0)];
-    if (q) args.push(...encodePreset(q, this.info.nblk, this.info.npar, this.valveBytes));
+    if (q) {
+      args.push(...encodePreset(q, this.info.nblk, this.info.npar, this.valveBytes));
+      if (this.hasScenes && q.sceneData) args.push(...this._sceneBytes(q));
+    }
     return (await this.request(C.SLOT_PUT, args, commit ? 4000 : this.timeout))[1];
   }
   async commit() { return (await this.request(C.COMMIT, [], 4000))[0]; }
@@ -311,6 +345,7 @@ export function presetToJSON(q, cat, slot) {
     v: 82,                                                       // patch-level volume; suppressor controls
     name: q.name,
     patchVolume: q.patchVolume,
+    ...(q.sceneData && { sceneData: [...q.sceneData] }),
     blocks: cat.blocks.map((b, i) => ({ block: b.label, on: !!q.on[i], type: b.types[q.type[i]] ? b.types[q.type[i]].name : q.type[i], params: [...q.p[i]] })),
     order: q.order.map((i) => cat.blocks[i] ? cat.blocks[i].label : i),
     ...(q.valveOn !== undefined && { valve: { on: q.valveOn, drive: q.valveDrive, level: q.valveLevel } }),
@@ -321,6 +356,10 @@ export function filePresets(presets) { return { format: "openpocket-presets", ve
 // a preset from its JSON; problems (unknown block or type) are listed, the rest still comes through
 export function presetFromJSON(o, cat, base) {
   const q = clonePreset(base), warn = [];
+  delete q.sceneData;
+  if (Array.isArray(o.sceneData) && o.sceneData.length === 31 + 2 * (6 + q.p.length * q.p[0].length) &&
+      o.sceneData.every((v) => Number.isInteger(v) && v >= 0 && v <= 127)) q.sceneData = [...o.sceneData];
+  else if (o.sceneData !== undefined) warn.push("scene data could not be read");
   q.name = cleanName(o.name || q.name);
   q.patchVolume = valveValue(o.patchVolume ?? 50);
   if (q.valveOn !== undefined) {

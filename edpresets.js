@@ -41,23 +41,38 @@ const label = (slot) => `${slotName(slot)} ${app.slots[slot] ? app.slots[slot].n
 // ---- compare: hear the slot's saved preset, then come back to the edited sound ----
 let edited = null;                              // the edited sound while the saved one plays
 export const comparing = () => !!edited;
+async function captureSound() {
+  const scenes = app.st.scenes;
+  return {
+    preset: scenes?.start ? await app.ed.patchWithScenes() : clonePreset(app.st.preset),
+    active: scenes?.active,
+    mode: scenes?.mode,
+  };
+}
+async function restoreSound(sound) {
+  if (await app.ed.put(sound.preset, true)) throw new Error("the pedal refused the edited sound");
+  if (sound.preset.sceneData) {
+    await app.ed.scene(2, sound.active);
+    if (sound.mode) await app.ed.scene(6, 1);
+  }
+}
 export async function setCompare(want) {
   if (!app.ed || want === comparing()) return;
   await act(async () => {
     if (want) {
       const saved = (await entry(app.st.slot)).preset;
-      edited = clonePreset(app.st.preset);
-      if (await app.ed.put(saved)) { edited = null; throw new Error("refused"); }
+      edited = await captureSound();
+      if (await app.ed.put(saved, true)) { edited = null; throw new Error("refused"); }
     } else {
       const q = edited; edited = null;
-      await app.ed.put(q);
+      await restoreSound(q);
     }
     await refreshState();
   });
   emit("compare");
 }
 // on the way out of the page the edited sound goes back to the pedal, without waiting for the answer
-export function compareBeforeUnload() { if (edited && app.ed) { try { app.ed.put(edited).catch(() => { }); } catch (_) { } } }
+export function compareBeforeUnload() { if (edited && app.ed) { try { restoreSound(edited).catch(() => { }); } catch (_) { } } }
 on("conn", () => { if (app.conn !== "ready") edited = null; });
 // a preset chosen on the pedal while comparing: the edited sound is gone with it, as on the pedal
 export function compareSlotChanged() { if (edited) { edited = null; emit("compare"); } }
@@ -156,10 +171,11 @@ export function movePreset(from, to) {
     const changes = [];
     for (let s = from; s !== to; s += step) changes.push({ slot: s, preset: e[s + step].preset });
     changes.push({ slot: to, preset: e[from].preset });
-    const cur = app.st.slot, dirty = app.st.dirty, sound = clonePreset(app.st.preset), name = e[from].preset.name;
+    const cur = app.st.slot, dirty = app.st.dirty, name = e[from].preset.name;
+    const sound = dirty ? await captureSound() : null;
     const restore = await writeSlots(changes, "keep");
     const now = cur === from ? to : cur >= lo && cur <= hi ? cur - step : cur;     // the current sound travels with its preset
-    if (now !== cur || !dirty) { await app.ed.select(now); if (dirty) await app.ed.put(sound); }
+    if (now !== cur || !dirty) { await app.ed.select(now); if (sound) await restoreSound(sound); }
     await refreshState();
     return { text: `${name} is preset ${slotName(to)} now.`, action: undo(`the move of ${name}`, restore) };
   });
@@ -193,7 +209,7 @@ export async function restoreFactory(slot) {
 
 // ---- files ----
 export async function exportOne(slot) {
-  const cur = slot === app.st.slot, p = cur ? app.st.preset : (await entry(slot)).preset;
+  const cur = slot === app.st.slot, p = cur ? (app.ed.hasScenes ? await app.ed.patchWithScenes() : app.st.preset) : (await entry(slot)).preset;
   download(`${fileSafe(p.name)}.json`, JSON.stringify(filePresets([presetToJSON(p, app.cat, slot)]), null, 1));
   say(`${p.name} exported${cur && app.st.dirty ? ", with its unsaved changes" : ""}.`, "ok");
 }
@@ -247,7 +263,7 @@ async function importOne(o, fileName) {
   await act(async () => {
     await setCompare(false);
     const r = presetFromJSON(o, app.cat, app.st.preset);
-    if (await app.ed.put(r.preset)) { say("The pedal refused this preset.", "err"); return; }
+    if (await app.ed.put(r.preset, true)) { say("The pedal refused this preset.", "err"); return; }
     await refreshState();
     say(`${r.preset.name} is playing now. Save it to keep it.${r.warn.length ? ` Notes: ${r.warn.join("; ")}.` : ""}`, r.warn.length ? "info" : "ok");
     emit("view-go", "sound");

@@ -1,19 +1,19 @@
 {
-  "version": 96,
+  "version": 97,
   "packages": [
     {
       "model": "PocketX",
-      "product": "PocketX_996",
-      "file": "PocketX_996.fwsc",
-      "size": 675968,
-      "sha256": "0601345efbd773b249c01233f11849ddf3114bb1f38adbd7a6a62538ae93874a"
+      "product": "PocketX_997",
+      "file": "PocketX_997.fwsc",
+      "size": 675971,
+      "sha256": "398a7268f28173f5272357af01dd7e39cc1eb4c267fdd979333c5ec52fbe4691"
     },
     {
       "model": "BlackBox",
-      "product": "BlackBox_996",
-      "file": "BlackBox_996.fwsc",
-      "size": 675968,
-      "sha256": "00ec14cdeba86cf0d7cbc47b15f9b56dd888506ce1af6e3a512c7da8d7abc530"
+      "product": "BlackBox_997",
+      "file": "BlackBox_997.fwsc",
+      "size": 675971,
+      "sha256": "160634f1664fc02b42990f61bdfde6dbdeb07699624cdafd9cc8b132025b8101"
     }
   ]
 }

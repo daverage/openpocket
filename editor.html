@@ -89,70 +89,96 @@
         </div>
       </div>
 
-      <details class="fscard patch-options" id="patchrow" hidden>
-        <summary>Patch settings <span class="patch-value" id="patchsummary">0 dB</span></summary>
-        <label class="valve-param">Patch volume <input id="patchvolume" type="range" min="0" max="100" step="1" value="50"><output id="patchdb" for="patchvolume">0 dB</output></label>
-      </details>
-      <details class="fscard patch-options" id="valverow" hidden>
-        <summary>Valve <span class="patch-value" id="valvesummary"></span></summary>
-        <div class="valve-controls" id="valvecontrols">
-          <button type="button" class="switch" id="valveon" role="switch" aria-label="Valve on" aria-checked="false"><i></i><span>Off</span></button>
-          <label class="valve-param">Drive <input id="valvedrive" type="range" min="0" max="100" step="1" value="71"><output id="valvedb" for="valvedrive">+12 dB</output></label>
-          <label class="valve-param" id="valvelevelrow" hidden>Level <input id="valvelevel" type="range" min="-12" max="12" step="0.5" value="0"><output id="valveleveldb" for="valvelevel">0 dB</output></label>
+      <section class="scene-strip" id="scenerow" aria-label="Scenes" hidden>
+        <div class="scene-bar">
+          <span class="scene-label">Scenes</span>
+          <button type="button" class="switch" id="sceneenable" role="switch" aria-label="Enable scenes" aria-checked="false"><i></i><span>Off</span></button>
+          <div class="seg scene-choices" id="sceneactive" role="group" aria-label="Active scene" hidden>
+            <button type="button" value="0" aria-pressed="false">A</button>
+            <button type="button" value="1" aria-pressed="false">B</button>
+            <button type="button" value="2" aria-pressed="false">C</button>
+          </div>
+          <button type="button" class="btn small" id="scenetune" aria-controls="scenecontrols" aria-expanded="false" hidden>Scene settings</button>
         </div>
-      </details>
+        <div id="scenecontrols" class="scene-fields" hidden>
+          <label id="scenecountrow" hidden>Scene count <select id="scenecount"><option value="2">2 · A/B</option><option value="3">3 · A/B/C</option></select></label>
+          <label>Scene name <input id="scenename" maxlength="9" placeholder="Unnamed"></label>
+          <label>Default scene <select id="scenedefault"><option value="0">A</option><option value="1">B</option><option value="2">C</option></select></label>
+          <label>Copy active scene to <select id="scenecopy"><option value="">Choose scene</option><option value="0">A</option><option value="1">B</option><option value="2">C</option></select></label>
+        </div>
+      </section>
       <div class="chain-wrap">
         <span class="cap-io" aria-hidden="true">IN</span>
         <div class="chain" id="tiles" role="group" aria-label="Signal chain, in the order the sound passes through"></div>
         <span class="cap-io" aria-hidden="true">OUT</span>
       </div>
-      <details class="fscard patch-options" id="fsrow" hidden>
-        <summary>Footswitches <span class="patch-value" id="fsmode"></span></summary>
-        <header class="fshead">
-          <button type="button" class="switch" id="stomp" role="switch" aria-checked="false" aria-describedby="fshelp"><i></i><span>Stomp</span></button>
-          <span class="fsstate" id="fsstate" role="status"></span>
-          <p class="fshelp" id="fshelp"></p>
-        </header>
-        <div class="fsgrid">
-          <div class="fscol">
-            <h4>Left</h4>
-            <label class="fsel"><span>Press</span><select id="fsl"></select></label>
-            <label class="fsel" data-gest><span>Double tap</span><select id="ldbl"></select></label>
-            <label class="fsel" data-gest><span>Hold</span><select id="lhold"></select></label>
-          </div>
-          <div class="fscol">
-            <h4>Right</h4>
-            <label class="fsel"><span>Press</span><select id="fsr"></select></label>
-            <label class="fsel" data-gest><span>Double tap</span><select id="rdbl"></select></label>
-            <label class="fsel" data-gest><span>Hold</span><select id="rhold"></select></label>
-          </div>
-        </div>
-        <details class="fsmore" id="fsgest">
-          <summary>How the footswitches work</summary>
-          <p>In Stomp mode a press toggles its assignment. Press both switches together to open the tuner. A hold (0.7 s) reverses the press before running its action. A double tap runs its action in Stomp mode. In Patch mode a press changes the preset. Save the preset to keep its assignments.</p>
-        </details>
-      </details>
       <p class="hint" id="hint">Drag a block to move it. Arrow keys choose a block, Space switches it, Alt + arrows move it.</p>
 
-      <div class="block" id="block">
-        <div class="block-head">
-          <span class="swatch" aria-hidden="true"></span>
-          <h2 id="bname">AMP</h2>
-          <span class="pos" id="bpos"></span>
-          <span class="grow"></span>
-          <span class="mv">
-            <button type="button" class="btn icon small" id="mvl" aria-label="Move this block earlier in the chain"><svg class="ic"><use href="#i-left"/></svg></button>
-            <button type="button" class="btn icon small" id="mvr" aria-label="Move this block later in the chain"><svg class="ic"><use href="#i-right"/></svg></button>
-          </span>
-          <button type="button" class="switch" id="onoff" role="switch" aria-checked="false"><i></i><span>Off</span></button>
+      <div class="sound-edit-grid">
+        <div class="block" id="block">
+          <div class="block-head">
+            <span class="swatch" aria-hidden="true"></span>
+            <h2 id="bname">AMP</h2>
+            <span class="pos" id="bpos"></span>
+            <span class="grow"></span>
+            <span class="mv">
+              <button type="button" class="btn icon small" id="mvl" aria-label="Move this block earlier in the chain"><svg class="ic"><use href="#i-left"/></svg></button>
+              <button type="button" class="btn icon small" id="mvr" aria-label="Move this block later in the chain"><svg class="ic"><use href="#i-right"/></svg></button>
+            </span>
+            <button type="button" class="switch" id="onoff" role="switch" aria-checked="false"><i></i><span>Off</span></button>
+          </div>
+          <div class="type">
+            <button type="button" id="tprev" aria-label="Previous type"><svg class="ic"><use href="#i-left"/></svg></button>
+            <select id="type" aria-label="Type"></select>
+            <button type="button" id="tnext" aria-label="Next type"><svg class="ic"><use href="#i-right"/></svg></button>
+          </div>
+          <div class="params" id="params"></div>
+          <div class="blocknote" id="blocknote" hidden></div>
         </div>
-        <div class="type">
-          <button type="button" id="tprev" aria-label="Previous type"><svg class="ic"><use href="#i-left"/></svg></button>
-          <select id="type" aria-label="Type"></select>
-          <button type="button" id="tnext" aria-label="Next type"><svg class="ic"><use href="#i-right"/></svg></button>
-        </div>
-        <div class="params" id="params"></div>
-        <div class="blocknote" id="blocknote" hidden></div>
+        <aside class="sound-settings" aria-label="Patch controls">
+          <details class="fscard patch-options" id="patchrow" hidden>
+            <summary>Patch settings <span class="patch-value" id="patchsummary">0 dB</span></summary>
+            <label class="valve-param"><span>Patch volume</span><output id="patchdb" for="patchvolume">0 dB</output><input id="patchvolume" type="range" min="0" max="100" step="1" value="50"></label>
+          </details>
+          <details class="fscard patch-options" id="valverow" hidden>
+            <summary>Valve <span class="patch-value" id="valvesummary"></span></summary>
+            <div class="valve-controls" id="valvecontrols">
+              <button type="button" class="switch" id="valveon" role="switch" aria-label="Valve on" aria-checked="false"><i></i><span>Off</span></button>
+              <label class="valve-param">Drive <input id="valvedrive" type="range" min="0" max="100" step="1" value="71"><output id="valvedb" for="valvedrive">+12 dB</output></label>
+              <label class="valve-param" id="valvelevelrow" hidden>Level <input id="valvelevel" type="range" min="-12" max="12" step="0.5" value="0"><output id="valveleveldb" for="valvelevel">0 dB</output></label>
+            </div>
+          </details>
+          <details class="fscard patch-options" id="fsrow" hidden>
+            <summary>Footswitches <span class="patch-value" id="fsmode"></span></summary>
+            <header class="fshead">
+              <div class="seg fs-modes" role="group" aria-label="Footswitch mode">
+                <button type="button" id="patchmode" aria-pressed="false">Patch</button>
+                <button type="button" id="stomp" aria-pressed="false">Stomp</button>
+                <button type="button" id="scenemode" aria-pressed="false" hidden>Scene</button>
+              </div>
+              <span class="fsstate" id="fsstate" role="status"></span>
+              <p class="fshelp" id="fshelp"></p>
+            </header>
+            <div class="fsgrid" id="fsassignments">
+              <div class="fscol">
+                <h4>Left</h4>
+                <label class="fsel"><span>Press</span><select id="fsl"></select></label>
+                <label class="fsel" data-gest><span>Double tap</span><select id="ldbl"></select></label>
+                <label class="fsel" data-gest><span>Hold</span><select id="lhold"></select></label>
+              </div>
+              <div class="fscol">
+                <h4>Right</h4>
+                <label class="fsel"><span>Press</span><select id="fsr"></select></label>
+                <label class="fsel" data-gest><span>Double tap</span><select id="rdbl"></select></label>
+                <label class="fsel" data-gest><span>Hold</span><select id="rhold"></select></label>
+              </div>
+            </div>
+            <details class="fsmore" id="fsgest">
+              <summary>How the footswitches work</summary>
+              <p>Press both in Stomp or Patch mode to open the tuner. A hold (0.7 s) reverses the press before running its action. Save the patch to keep its stomp assignments.</p>
+            </details>
+          </details>
+        </aside>
       </div>
     </section>
 

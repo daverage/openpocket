@@ -35,10 +35,14 @@ function renderFs() {
   const row = $("fsrow");
   row.hidden = !fs;
   if (!fs || !app.cat) return;
-  const sw = $("stomp"), cmp = comparing();
-  sw.setAttribute("aria-checked", fs.stomp ? "true" : "false");
-  sw.querySelector("span").textContent = fs.stomp ? "Stomp" : "Patch";
-  $("fsmode").textContent = fs.bypass ? "Bypassed" : fs.stomp ? "Stomp" : "Patch";
+  const cmp = comparing(), scenes = app.st?.scenes?.mode;
+  $("patchmode").setAttribute("aria-pressed", String(!scenes && !fs.stomp));
+  $("stomp").setAttribute("aria-pressed", String(!scenes && fs.stomp));
+  $("scenemode").hidden = !app.st?.scenes?.start;
+  $("scenemode").setAttribute("aria-pressed", String(!!scenes));
+  $("fsassignments").hidden = !fs.stomp || !!scenes;
+  $("fsgest").hidden = !!scenes;
+  $("fsmode").textContent = fs.bypass ? "Bypassed" : scenes ? "Scene" : fs.stomp ? "Stomp" : "Patch";
   if (document.activeElement !== $("fsl")) fsOptions($("fsl"), fsValid(fs.left));
   if (document.activeElement !== $("fsr")) fsOptions($("fsr"), fsValid(fs.right));
   document.querySelectorAll("#fsrow [data-gest]").forEach((el) => { el.hidden = !fs.gestures; });   // an older pedal has no gestures
@@ -47,7 +51,7 @@ function renderFs() {
   st.textContent = fs.bypass ? "BYPASSED: the dry guitar" : "";
   st.className = `fsstate${fs.bypass ? " byp" : ""}`;
   const help = $("fshelp");
-  help.textContent = fs.stomp ? "Each footswitch toggles its assignment. Both together open the tuner."
+  help.textContent = scenes ? (app.st.scenes.count === 2 ? "Either footswitch toggles between A and B." : "Left selects the previous scene. Right selects the next scene.") : fs.stomp ? (app.st?.scenes?.start ? "Footswitches use their stomp assignments. Pick scenes above." : "Footswitches use their stomp assignments.")
     : "The footswitches change the preset. The assignments are kept for Stomp mode.";
   row.inert = cmp;
 }
@@ -363,7 +367,16 @@ export function initSound() {
   $("valvedrive").onblur = renderValve;
   $("valvelevel").oninput = (e) => { sendParam(VALVE_ACTION, 1, +e.target.value * 2 + VALVE_LEVEL_UNITY); renderValve(); };
   $("valvelevel").onblur = renderValve;
-  $("stomp").onclick = () => setFs({ stomp: $("stomp").getAttribute("aria-checked") !== "true" });
+  $("patchmode").onclick = () => setFs({ stomp: false });
+  $("stomp").onclick = () => setFs({ stomp: true });
+  $("scenemode").onclick = () => {
+    if (comparing()) return;
+    act(async () => {
+      if (await app.ed.scene(6, 1)) throw new Error("scene mode refused");
+      await sync();
+      await refreshFs();
+    });
+  };
   $("fsl").onchange = () => setFs({ left: +$("fsl").value });
   $("fsr").onchange = () => setFs({ right: +$("fsr").value });
   GEST.forEach(([id], i) => { $(id).onchange = () => setFs({ gestures: GEST.map((_, j) => (j === i ? +$(id).value : undefined)) }); });   // (v75: only the one that changed)

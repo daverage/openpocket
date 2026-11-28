@@ -2,9 +2,9 @@
 // OpenPocket web editor: the start. Finding the pedal and every way that can fail, the sections and the way between
 // them, the DSP load, the keyboard. The sections themselves: edsound.js, edpresets.js, edmidi.js.
 
-import { app, $, h, icon, on, emit, say, busy, toast } from "./edcore.js";
+import { app, $, h, icon, on, emit, say, busy, toast, act } from "./edcore.js";
 import { Editor } from "./pxedit.js";
-import { initPresets, loadBank, refreshSlots, refreshBank, stepPreset, save, comparing, compareSlotChanged, compareBeforeUnload } from "./edpresets.js";
+import { initPresets, loadBank, refreshState, refreshSlots, refreshBank, stepPreset, save, comparing, compareSlotChanged, compareBeforeUnload } from "./edpresets.js";
 import { initSound } from "./edsound.js";
 import { initMidi } from "./edmidi.js";
 import { initGlobal } from "./edglobal.js";
@@ -230,6 +230,69 @@ function renderConnPop() {
 }
 
 // ---- start ----
+function renderScenes() {
+  const s = app.st?.scenes;
+  $("scenerow").hidden = !s;
+  if (!s) return;
+  $("scenerow").inert = comparing();
+  const enabled = !!s.start, toggle = $("sceneenable");
+  toggle.setAttribute("aria-checked", String(enabled));
+  toggle.querySelector("span").textContent = enabled ? "On" : "Off";
+  $("sceneactive").hidden = $("scenetune").hidden = !enabled;
+  $("scenecontrols").hidden = !enabled || $("scenetune").getAttribute("aria-expanded") !== "true";
+  $("scenecountrow").hidden = !app.ed?.hasSceneCount;
+  $("scenecount").value = s.count;
+  if (document.activeElement !== $("scenename") || Number($("scenename").dataset.scene) !== s.active) {
+    $("scenename").value = s.names[s.active] || "";
+    $("scenename").dataset.scene = s.active;
+  }
+  for (const button of $("sceneactive").children) {
+    const index = Number(button.value), name = s.names[index];
+    button.hidden = index >= s.count;
+    button.textContent = name ? `${"ABC"[index]} · ${name}` : "ABC"[index];
+    button.setAttribute("aria-pressed", String(index === s.active));
+    button.title = index + 1 === s.start ? "Default scene" : "";
+  }
+  for (const id of ["scenedefault", "scenecopy"]) {
+    for (const option of $(id).options) {
+      if (!option.value) continue;
+      const index = Number(option.value), name = s.names[index];
+      option.textContent = name ? `${"ABC"[index]} · ${name}` : "ABC"[index];
+      option.hidden = index >= s.count;
+      option.disabled = option.hidden || (id === "scenecopy" && index === s.active);
+    }
+  }
+  $("scenedefault").value = s.start - 1;
+}
+async function changeScene(op, ...args) {
+  await act(async () => {
+    if (await app.ed.scene(op, ...args)) throw new Error("scene change refused");
+    await refreshState();
+  });
+}
+on("state", renderScenes);
+on("conn", renderScenes);
+on("compare", renderScenes);
+$("sceneenable").onclick = () => changeScene(1, Number(!app.st.scenes.start));
+$("sceneactive").onclick = (e) => {
+  const button = e.target.closest("button");
+  if (button) changeScene(2, +button.value);
+};
+$("scenetune").onclick = (e) => {
+  const toggle = e.currentTarget;
+  toggle.setAttribute("aria-expanded", String(toggle.getAttribute("aria-expanded") !== "true"));
+  renderScenes();
+};
+$("scenecount").onchange = (e) => changeScene(7, +e.target.value);
+$("scenedefault").onchange = (e) => changeScene(3, +e.target.value);
+$("scenecopy").onchange = (e) => {
+  const value = e.target.value;
+  e.target.value = "";
+  if (value !== "") changeScene(4, +value);
+};
+$("scenename").onchange = (e) => changeScene(5, +e.target.dataset.scene,
+  ...[...e.target.value.replace(/[^ -~]/g, "?")].map((c) => c.charCodeAt(0)));
+
 initPresets(); initSound(); initMidi(); initGlobal(); initStage();
 on("view-go", (v) => setView(v));
 $("reconnect").onclick = connect;

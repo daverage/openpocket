@@ -13,11 +13,12 @@ export const COST = {
   "OCT:POLY OCTAVE HQ": 26.0,
   "OCT:LOWEST OCTAVE HQ": 19.5,
   "OCT:POLY SHIFTER": 37.0,
-  "OCT:DROP TUNE": 40.0,
   "SYN:POLY OCT FUZZ": 44.0,
   "SYN:BANK ORGAN": 30.0,
   "SYN:STRINGS": 48.0,
   "SYN:CHOIR PAD": 49.0,
+  "SYN:STRINGS OCTAVE": 48.0, // Same bank work as STRINGS with the layer enabled.
+  "SYN:CHOIR OCTAVE": 49.0,
   "SYN:BRASS": 50.0,
   "SYN:PIPE ORGAN": 45.0,
   "SYN:SQ BRASS": 4.0,
