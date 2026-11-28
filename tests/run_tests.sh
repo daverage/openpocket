@@ -2,7 +2,7 @@
 # OpenPocket host tests (Linux / macOS, or in the container: tools/op.mjs test; no pedal, no JieLi toolchain needed):
 #   tests/run_tests.sh [PocketX_016.fwsc]
 #  - engine: every block x model x extreme knob, signal / silence / overload, with the pedal's own libm (px_math.c):
-#    no NaN; long runs (3 s pluck + 8 s silence): nothing runs away (only delays at FDBK 100 hold on, by design)
+#    no NaN; long runs (3 s pluck, then silence): check output bounds and decay, allowing analog feedback to self-oscillate at FDBK 100
 #  - (not run here, it needs the git history: tests/equiv.sh REF, this tree's engine against commit REF's, bit for bit)
 #  - changes without clicks (v38): knob changes glide to exactly where a full set goes, blocks on / off fade, fewer clicks
 #  - Synth2: POLY OCTAVE HQ and POLY OCT FUZZ bit for bit against the last v73 source (tests/protected.sh)

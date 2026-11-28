@@ -923,20 +923,20 @@ static const fact_spec FACT[] = {
     {"HARMONY +3RD",  45, {FB(PX_B_PITCH, PX_PIT_HARMONY, 66, 60, 0, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 40, 55, 15, 0, 0)}},
     {"HARMONY +5TH",  52, {FB(PX_B_PITCH, PX_PIT_HARMONY, 86, 55, 0, 0, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 32, 28, 15, 50, 0)}},
     {"DETUNE",        47, {FB(PX_B_PITCH, PX_PIT_DETUNE, 45, 50, 0, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 12, 0, 0)}},
-    {"POLY SHIFT +7", 53, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 79, 50, 55, 50, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 20, 0, 0)}},
-    {"SHIFT -12 PAD", 60, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 0, 50, 70, 50, 0), FB(PX_B_MOD, PX_MOD_CHORUS, 22, 40, 30, 0, 0), FB(PX_B_REVERB, PX_REV_SHIMMER, 60, 50, 35, 40, 0)}},
+    {"POLY SHIFT +7", 56, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 79, 50, 55, 50, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 20, 0, 0)}},
+    {"SHIFT -12 PAD", 56, {FB(PX_B_PITCH, PX_PIT_POLYSHIFT, 0, 50, 70, 50, 0), FB(PX_B_MOD, PX_MOD_CHORUS, 22, 40, 30, 0, 0), FB(PX_B_REVERB, PX_REV_SHIMMER, 60, 50, 35, 40, 0)}},
     /* 19..30 synths (the first ten as the synth showcase: docs/presets/synth-showcase.json) */
     {"SQUARE LEAD",   32, {FB(PX_B_SFX, PX_SFX_SYNTH, 60, 40, 55, 100, 0), FB(PX_B_DELAY, PX_DLY_ANALOG, 45, 35, 25, 50, 0), FB(PX_B_REVERB, PX_REV_PLATE, 40, 50, 20, 0, 0)}},
-    {"JAZZ ORGAN",    53, {FB(PX_B_SYN, PX_SYN_ORGAN, 10, 50, 25, 50, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 40, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
-    {"STRING PAD",    67, {FB(PX_B_SYN, PX_SYN_BS_STRINGS, 50, 35, 50, 50, 50), FB(PX_B_REVERB, PX_REV_HALL, 60, 50, 30, 0, 0)}},
-    {"CHOIR AAH",     47, {FB(PX_B_SYN, PX_SYN_BS_CHOIR, 5, 40, 55, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
-    {"BRASS SECTION", 55, {FB(PX_B_SYN, PX_SYN_BS_BRASS, 50, 50, 40, 40, 50), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
-    {"PIPE ORGAN",    50, {FB(PX_B_SYN, PX_SYN_BS_PIPE, 40, 30, 50, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 65, 45, 35, 0, 0)}},
-    {"FULL ORGAN",    53, {FB(PX_B_SYN, PX_SYN_ORGAN, 30, 60, 25, 55, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 60, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
-    {"CHOIR OOH",     47, {FB(PX_B_SYN, PX_SYN_BS_CHOIR, 50, 45, 60, 60, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
-    {"SQ FLUTE",      50, {FB(PX_B_SYN, PX_SYN_SQ_FLUTE, 45, 20, 30, 0, 50), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 35, 20, 50, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 25, 0, 0)}},
-    {"SQ BASS",       60, {FB(PX_B_SYN, PX_SYN_SQ_BASS, 30, 30, 50, 30, 50)}},
-    {"SQ BRASS",      50, {FB(PX_B_SYN, PX_SYN_SQ_BRASS, 50, 40, 50, 0, 50), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
+    {"JAZZ ORGAN",    32, {FB(PX_B_SYN, PX_SYN_ORGAN, 10, 50, 25, 50, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 40, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
+    {"STRING PAD",    27, {FB(PX_B_SYN, PX_SYN_BS_STRINGS, 50, 35, 50, 50, 50), FB(PX_B_REVERB, PX_REV_HALL, 60, 50, 30, 0, 0)}},
+    {"CHOIR AAH",     44, {FB(PX_B_SYN, PX_SYN_BS_CHOIR, 5, 40, 55, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
+    {"BRASS SECTION", 23, {FB(PX_B_SYN, PX_SYN_BS_BRASS, 50, 50, 40, 40, 50), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
+    {"PIPE ORGAN",    27, {FB(PX_B_SYN, PX_SYN_BS_PIPE, 40, 30, 50, 50, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 65, 45, 35, 0, 0)}},
+    {"FULL ORGAN",    29, {FB(PX_B_SYN, PX_SYN_ORGAN, 30, 60, 25, 55, 50), FB(PX_B_MOD, PX_MOD_ROTARY, 60, 60, 50, 0, 0), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
+    {"CHOIR OOH",     32, {FB(PX_B_SYN, PX_SYN_BS_CHOIR, 50, 45, 60, 60, 50), FB(PX_B_REVERB, PX_REV_CATHEDRAL, 60, 45, 30, 0, 0)}},
+    {"SQ FLUTE",      35, {FB(PX_B_SYN, PX_SYN_SQ_FLUTE, 45, 20, 30, 0, 50), FB(PX_B_DELAY, PX_DLY_DIGITAL, 30, 35, 20, 50, 0), FB(PX_B_REVERB, PX_REV_HALL, 45, 50, 25, 0, 0)}},
+    {"SQ BASS",       39, {FB(PX_B_SYN, PX_SYN_SQ_BASS, 30, 30, 50, 30, 50)}},
+    {"SQ BRASS",      30, {FB(PX_B_SYN, PX_SYN_SQ_BRASS, 50, 40, 50, 0, 50), FB(PX_B_REVERB, PX_REV_PLATE, 35, 50, 18, 0, 0)}},
     {"POLY FUZZ",     24, {FB(PX_B_SYN, PX_SYN_OCT_FUZZ, 60, 50, 60, 50, 100), FB(PX_B_REVERB, PX_REV_ROOM, 30, 50, 15, 0, 0)}},
     /* 31..43 modulation, delays, reverbs */
     {"CE CHORUS",     46, {FB(PX_B_MOD, PX_MOD_CHORUS, 30, 50, 50, 0, 0), FB(PX_B_REVERB, PX_REV_HALL, 35, 55, 12, 0, 0)}},
@@ -3395,7 +3395,10 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     const float sig = (e->sfx_prev + e->sfx_ff * e->sfx_d) * e->sfx_env;
                     const float env = e->sfx_env > 1.0f ? 1.0f : e->sfx_env;
                     const float cutoff = 180.0f + 6200.0f * e->sfx_c + 7000.0f * env;
-                    const float f = 2.0f * PI_F * cutoff / sr;
+                    /* The two-integrator update is stable for f² + 2*damping*f < 4.
+                     * Keep headroom at full damping when the envelope drives cutoff high. */
+                    const float step = 2.0f * PI_F * cutoff / sr;
+                    const float f = step < 1.2f ? step : 1.2f;
                     const float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
                     e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
                     x = x * (1.0f - e->sfx_mix) + e->sfx_lo * 2.0f * e->sfx_mix;
@@ -3430,7 +3433,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     const float wave = sfx_t == PX_SFX_CROSS_SAW ? 2.0f * phase - 1.0f : 1.0f - 4.0f * px_abs(phase - 0.5f);
                     const float sig = wave * e->sfx_env;
                     const float cutoff = 180.0f + 6200.0f * e->sfx_c + 7000.0f * e->sfx_env;
-                    const float f = 2.0f * PI_F * cutoff / sr;
+                    const float step = 2.0f * PI_F * cutoff / sr;
+                    const float f = step < 1.2f ? step : 1.2f;
                     const float hp = sig - e->sfx_lo - e->sfx_qd * e->sfx_bp;
                     e->sfx_bp += f * hp; e->sfx_lo += f * e->sfx_bp;
                     x = x * (1.0f - e->sfx_mix) + e->sfx_lo * e->sfx_d * 2.0f * e->sfx_mix;

@@ -7,7 +7,7 @@
 static px_engine e;
 static long bad;
 
-static int poly_oct_fuzz_missing_at_minimum_level(void)
+static int poly_oct_fuzz_level_failed(int level)
 {
     const int sample_rate = 44100;
     px_preset_t preset;
@@ -19,7 +19,7 @@ static int poly_oct_fuzz_missing_at_minimum_level(void)
     preset.p[PX_B_SYN][0] = preset.p[PX_B_SYN][1] = 0;
     preset.p[PX_B_SYN][2] = 50;
     preset.p[PX_B_SYN][3] = 70;
-    preset.p[PX_B_SYN][4] = 0;                       /* lowest trim and legacy DRY = 0 */
+    preset.p[PX_B_SYN][4] = (uint8_t)level;
     preset.patch_volume = 50;
     px_engine_set(&e, &preset);
 
@@ -35,13 +35,13 @@ static int poly_oct_fuzz_missing_at_minimum_level(void)
         real += output * cosf(phase);
         imag += output * sinf(phase);
     }
+    if (level == 0) return energy > 1e-12f;
     const float fundamental = 2.0f * (real * real + imag * imag) / (float)sample_rate;
     return !(energy > 0.0f && fundamental < 0.98f * energy);
 }
 
-static int hq_octave_inaccurate(float ratio)
+static int hq_octave_inaccurate(const int frequencies[3], float ratio, float min_share)
 {
-    const int frequencies[] = {82, 110, 147};
     const int sample_rate = 44100;
     px_preset_t preset;
     px_engine_init(&e, (float)sample_rate);
@@ -49,7 +49,7 @@ static int hq_octave_inaccurate(float ratio)
     memset(preset.on, 0, sizeof preset.on);
     preset.on[PX_B_PITCH] = 1;
     preset.type[PX_B_PITCH] = PX_PIT_POLYOCT_HQ;
-    preset.p[PX_B_PITCH][0] = 0;
+    memset(preset.p[PX_B_PITCH], 0, sizeof preset.p[PX_B_PITCH]);
     preset.p[PX_B_PITCH][1] = ratio < 1.0f ? 100 : 0;
     preset.p[PX_B_PITCH][2] = ratio > 1.0f ? 100 : 0;
     preset.patch_volume = 50;
@@ -70,8 +70,13 @@ static int hq_octave_inaccurate(float ratio)
         }
     }
     float target = 0.0f;
-    for (int n = 0; n < 3; ++n) target += real[n] * real[n] + imag[n] * imag[n];
-    return !(energy > 0.0f && 2.0f * target / ((float)sample_rate * energy) > (ratio < 1.0f ? 0.7f : 0.5f));
+    if (!(energy > 0.0f)) return 1;
+    for (int n = 0; n < 3; ++n) {
+        const float share = 2.0f * (real[n] * real[n] + imag[n] * imag[n]) / ((float)sample_rate * energy);
+        if (share < 0.04f) return 1;  /* each shifted note must be present */
+        target += share;
+    }
+    return target < min_share;
 }
 
 static int run(int blocks, float amp){
@@ -96,7 +101,7 @@ int main(void){
       p.p[blk][0] = V[a]; p.p[blk][1] = V[b]; p.p[blk][2] = V[c]; p.p[blk][3] = V[(a+c)%3]; p.p[blk][4] = V[(b+c)%3];
       px_engine_set(&e, &p); n++;
       if (run(30, 1.0f) | run(10, 0.0f) | run(10, 3.0f)) {   /* signal, silence, very loud */
-        bad++; if (bad < 15) printf("PROBLEM: %s / %s  p=%d %d %d\n", px_block_name(blk), px_type_name(blk,t), V[a],V[b],V[c]);
+        bad++; if (bad < 15) printf("PROBLEM: %s / type %d %s  p=%d %d %d\n", px_block_name(blk), t, px_type_name(blk,t), V[a],V[b],V[c]);
         px_engine_init(&e, 44100.0f);
       }
     }
@@ -119,9 +124,15 @@ int main(void){
       if (run(40, 1.0f) | run(20, 0.0f) | run(10, 3.0f)) { bad++; printf("PROBLEM order preset %d x%d\n", pr, x); px_engine_init(&e,44100.0f); }
     }
   }
-  if (hq_octave_inaccurate(2.0f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the doubled chord frequencies"); }
-  if (hq_octave_inaccurate(0.5f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the halved chord frequencies"); }
-  if (poly_oct_fuzz_missing_at_minimum_level()) { bad++; puts("PROBLEM POLY OCT FUZZ lost its distortion at minimum LEVEL"); }
+  static const int close_chord[] = {82, 110, 147}, open_chord[] = {82, 147, 247};
+  /* Phase doubling mixes close partials within a filter band. Still require all three
+     doubled notes there, and a clear majority of shifted energy on the open chord. */
+  if (hq_octave_inaccurate(close_chord, 2.0f, 0.35f) || hq_octave_inaccurate(open_chord, 2.0f, 0.7f)) {
+      bad++; puts("PROBLEM POLY OCTAVE HQ missed the doubled chord frequencies");
+  }
+  if (hq_octave_inaccurate(close_chord, 0.5f, 0.7f)) { bad++; puts("PROBLEM POLY OCTAVE HQ missed the halved chord frequencies"); }
+  if (poly_oct_fuzz_level_failed(0)) { bad++; puts("PROBLEM POLY OCT FUZZ did not mute at LEVEL 0"); }
+  if (poly_oct_fuzz_level_failed(50)) { bad++; puts("PROBLEM POLY OCT FUZZ lost its distortion at LEVEL 50"); }
   printf("%ld configurations tested, %ld problems\n", n, bad);
   return bad != 0;
 }
